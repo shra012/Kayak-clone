@@ -9,7 +9,7 @@ services:
       SWAGGER_JSON: /tmp/openapi.yaml
       BASE_URL: /
     volumes:
-      - ./api-docs/openapi.yaml:/tmp/openapi.yaml:ro
+      - ./openapi.yaml:/tmp/openapi.yaml:ro
   redoc:
     image: redocly/redoc:latest
     container_name: kayak-api-docs-redoc
@@ -19,4 +19,4 @@ services:
     environment:
       SPEC_URL: /openapi.yaml
     volumes:
-      - ./api-docs/openapi.yaml:/usr/share/nginx/html/openapi.yaml:ro
+      - ./openapi.yaml:/usr/share/nginx/html/openapi.yaml:ro
