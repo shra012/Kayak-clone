@@ -80,3 +80,25 @@ variable "log_retention_in_days" {
   type        = number
   default     = 7
 }
+
+variable "vpc_id" {
+  description = "VPC ID where resources will be created"
+  type        = string
+}
+
+variable "bastion_instance_type" {
+  description = "EC2 instance type for bastion host"
+  type        = string
+  default     = "t3.nano"
+}
+
+variable "bastion_subnet_id" {
+  description = "Subnet ID for bastion instance (should be public subnet)"
+  type        = string
+}
+
+variable "bastion_key_name" {
+  description = "Optional EC2 key pair name for SSH access to bastion"
+  type        = string
+  default     = ""
+}

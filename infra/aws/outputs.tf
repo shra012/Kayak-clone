@@ -24,3 +24,13 @@ output "msk_log_group_name" {
   description = "CloudWatch log group used for broker logs"
   value       = aws_cloudwatch_log_group.msk.name
 }
+
+output "bastion_instance_id" {
+  description = "Instance ID of the bastion host for MSK tunnel"
+  value       = aws_instance.bastion.id
+}
+
+output "bastion_security_group_id" {
+  description = "Security group ID of the bastion host"
+  value       = aws_security_group.bastion.id
+}

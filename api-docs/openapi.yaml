@@ -72,7 +72,7 @@ paths:
     post:
       tags: [Users]
       summary: Create user
-      description: Register a new user profile. Validates SSN, address, and payment metadata.
+      description: Register a new user profile. SSN is optional unless the profile type is a property partner.
       operationId: createUser
       requestBody:
         required: true
@@ -150,6 +150,49 @@ paths:
       responses:
         '204':
           description: User deleted successfully.
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /api/v1/users/{userId}/compliance/ssn:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    patch:
+      tags: [Users, Compliance]
+      summary: Provide SSN for property approvals
+      description: Users (or admins) can submit SSN information after signup to unlock property listing approvals.
+      operationId: upsertUserSsn
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SsnUpsertRequest'
+      responses:
+        '200':
+          description: Compliance status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, data]
+                properties:
+                  code:
+                    type: string
+                    example: SUCCESS
+                  data:
+                    type: object
+                    required: [profileType, compliance]
+                    properties:
+                      profileType:
+                        type: string
+                        enum: [traveler, property_owner]
+                      compliance:
+                        $ref: '#/components/schemas/UserCompliance'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
         '404':
           $ref: '#/components/responses/NotFoundError'
   /api/v1/users/{userId}/bookings:
@@ -1363,7 +1406,6 @@ components:
       type: object
       required:
         - id
-        - ssn
         - firstName
         - lastName
         - email
@@ -1378,6 +1420,20 @@ components:
         ssn:
           type: string
           pattern: '^\\d{3}-\\d{2}-\\d{4}$'
+          nullable: true
+          description: Optional SSN stored for property partners. Travelers do not provide this.
+        profileType:
+          type: string
+          enum: [traveler, property_owner]
+          default: traveler
+        requiresSsn:
+          type: boolean
+        hasSsnOnFile:
+          type: boolean
+        compliance:
+          $ref: '#/components/schemas/UserCompliance'
+        partnerDetails:
+          $ref: '#/components/schemas/PartnerProfile'
         firstName:
           type: string
           maxLength: 80
@@ -1412,10 +1468,41 @@ components:
         preferences:
           type: object
           additionalProperties: true
+    UserCompliance:
+      type: object
+      properties:
+        requiresSsn:
+          type: boolean
+          description: Indicates whether the user must provide an SSN before managing properties.
+        ssnOnFile:
+          type: boolean
+          description: True when an SSN has been provided.
+        verifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the SSN was last verified.
+    PartnerProfile:
+      type: object
+      description: Business metadata captured for property partners.
+      properties:
+        companyName:
+          type: string
+        contactName:
+          type: string
+        contactEmail:
+          type: string
+          format: email
+        portfolioSize:
+          type: integer
+          minimum: 0
+          nullable: true
+        website:
+          type: string
+          format: uri
     UserCreateRequest:
       type: object
       required:
-        - ssn
         - firstName
         - lastName
         - email
@@ -1425,6 +1512,13 @@ components:
         ssn:
           type: string
           pattern: '^\\d{3}-\\d{2}-\\d{4}$'
+          nullable: true
+          description: Optional during signup. Required later only for property partners.
+        profileType:
+          type: string
+          enum: [traveler, property_owner]
+          default: traveler
+          description: Travelers can skip SSN. Property partners must supply SSN before listing approvals.
         firstName:
           type: string
           maxLength: 80
@@ -1442,6 +1536,9 @@ components:
         profileImageUrl:
           type: string
           format: uri
+        partnerProfile:
+          $ref: '#/components/schemas/PartnerProfile'
+          description: Required when profileType is `property_owner`.
         paymentInstruments:
           type: array
           items:
@@ -1458,6 +1555,14 @@ components:
         - email
         - phoneNumber
         - address
+    SsnUpsertRequest:
+      type: object
+      required: [ssn]
+      properties:
+        ssn:
+          type: string
+          pattern: '^\\d{3}-\\d{2}-\\d{4}$'
+          description: SSN formatted as XXX-XX-XXXX.
     UserListResponse:
       type: object
       required: [items, pagination]

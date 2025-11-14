@@ -48,7 +48,7 @@ def get_current_account_id() -> Optional[str]:
     result = run_aws_command(['aws', 'sts', 'get-caller-identity'])
     if result:
         account_id = result.get('Account')
-        print(f"{Colors.OKGREEN}✓ Current AWS Account ID: {account_id}{Colors.ENDC}")
+        print(f"{Colors.OKGREEN}[OK] Current AWS Account ID: {account_id}{Colors.ENDC}")
         return account_id
     return None
 
@@ -64,7 +64,7 @@ def get_region() -> Optional[str]:
         )
         region = result.stdout.strip()
         if region:
-            print(f"{Colors.OKGREEN}✓ Region: {region}{Colors.ENDC}")
+            print(f"{Colors.OKGREEN}[OK] Region: {region}{Colors.ENDC}")
             return region
         
         # Fallback to default region
@@ -87,12 +87,12 @@ def get_default_vpc(region: str) -> Optional[Dict]:
     # Try to find default VPC first
     for vpc in result['Vpcs']:
         if vpc.get('IsDefault'):
-            print(f"{Colors.OKGREEN}✓ Found default VPC: {vpc['VpcId']}{Colors.ENDC}")
+            print(f"{Colors.OKGREEN}[OK] Found default VPC: {vpc['VpcId']}{Colors.ENDC}")
             return vpc
     
     # Use first available VPC
     vpc = result['Vpcs'][0]
-    print(f"{Colors.OKGREEN}✓ Using VPC: {vpc['VpcId']}{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}[OK] Using VPC: {vpc['VpcId']}{Colors.ENDC}")
     return vpc
 
 
@@ -121,14 +121,14 @@ def get_subnets(vpc_id: str, region: str, min_count: int = 3) -> List[str]:
     
     if len(supported_subnets) < len(all_subnets):
         filtered_count = len(all_subnets) - len(supported_subnets)
-        print(f"{Colors.WARNING}⚠ Filtered out {filtered_count} subnet(s) in unsupported AZs (us-east-1e){Colors.ENDC}")
+        print(f"{Colors.WARNING}[WARN] Filtered out {filtered_count} subnet(s) in unsupported AZs (us-east-1e){Colors.ENDC}")
     
     subnet_ids = [subnet['SubnetId'] for subnet in supported_subnets[:min_count]]
     
     if len(subnet_ids) < min_count:
-        print(f"{Colors.WARNING}⚠ Found only {len(subnet_ids)} supported subnet(s), MSK requires at least 2{Colors.ENDC}")
+        print(f"{Colors.WARNING}[WARN] Found only {len(subnet_ids)} supported subnet(s), MSK requires at least 2{Colors.ENDC}")
     else:
-        print(f"{Colors.OKGREEN}✓ Found {len(subnet_ids)} supported subnets{Colors.ENDC}")
+        print(f"{Colors.OKGREEN}[OK] Found {len(subnet_ids)} supported subnets{Colors.ENDC}")
     
     for i, subnet in enumerate(supported_subnets[:min_count]):
         az = subnet.get('AvailabilityZone', 'unknown')
@@ -152,7 +152,7 @@ def get_or_create_security_group(vpc_id: str, region: str, project: str, environ
     
     if result and result.get('SecurityGroups'):
         sg_id = result['SecurityGroups'][0]['GroupId']
-        print(f"{Colors.OKGREEN}✓ Found existing security group: {sg_id}{Colors.ENDC}")
+        print(f"{Colors.OKGREEN}[OK] Found existing security group: {sg_id}{Colors.ENDC}")
         return sg_id
     
     # Create new security group
@@ -169,7 +169,7 @@ def get_or_create_security_group(vpc_id: str, region: str, project: str, environ
         return None
     
     sg_id = result['GroupId']
-    print(f"{Colors.OKGREEN}✓ Created security group: {sg_id}{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}[OK] Created security group: {sg_id}{Colors.ENDC}")
     
     # Add ingress rules for Kafka (9092, 9094, 9096)
     print(f"{Colors.OKBLUE}Adding ingress rules for Kafka ports...{Colors.ENDC}")
@@ -183,7 +183,7 @@ def get_or_create_security_group(vpc_id: str, region: str, project: str, environ
             '--cidr', '0.0.0.0/0'
         ])
     
-    print(f"{Colors.OKGREEN}✓ Security group configured{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}[OK] Security group configured{Colors.ENDC}")
     return sg_id
 
 
@@ -220,7 +220,7 @@ def clean_terraform_state(current_account_id: str):
     if previous_account == current_account_id:
         terraform_dir = tf_dir / '.terraform'
         if terraform_dir.exists():
-            print(f"{Colors.OKGREEN}✓ Same AWS account, preserving Terraform state{Colors.ENDC}")
+            print(f"{Colors.OKGREEN}[OK] Same AWS account, preserving Terraform state{Colors.ENDC}")
             return
     
     # Account changed or no previous state - clean everything
@@ -248,7 +248,7 @@ def clean_terraform_state(current_account_id: str):
                 file_path.unlink()
                 print(f"  - Removed file: {file_name}")
     
-    print(f"{Colors.OKGREEN}✓ Cleanup complete{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}[OK] Cleanup complete{Colors.ENDC}")
 
 
 def generate_tfvars(
@@ -370,7 +370,7 @@ def main():
         print(f"{Colors.WARNING}Backed up existing terraform.tfvars to {backup_path.name}{Colors.ENDC}")
     
     tfvars_path.write_text(tfvars_content)
-    print(f"{Colors.OKGREEN}✓ Generated: {tfvars_path}{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}[OK] Generated: {tfvars_path}{Colors.ENDC}")
     
     print(f"\n{Colors.HEADER}{Colors.BOLD}")
     print("=" * 60)

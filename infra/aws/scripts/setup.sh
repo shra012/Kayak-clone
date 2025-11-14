@@ -14,13 +14,13 @@ if ! command -v uv &> /dev/null; then
     exit 1
 fi
 
-echo "✓ uv is installed"
+echo "[OK] uv is installed"
 
 # Initialize the virtual environment
 cd "$(dirname "$0")"
 echo "Initializing Python environment..."
 uv venv .venv
-echo "✓ Virtual environment created at .venv"
+echo "[OK] Virtual environment created at .venv"
 
 echo ""
 echo "Setup complete! You can now run:"

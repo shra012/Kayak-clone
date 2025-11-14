@@ -16,10 +16,10 @@ def check_command(command, description):
             text=True,
             check=True
         )
-        print(f"✓ {description}")
+        print(f"[OK] {description}")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"✗ {description}")
+        print(f"[FAIL] {description}")
         print(f"  Error: {e}")
         return False
 
@@ -45,12 +45,12 @@ def main():
     
     if all_passed:
         print("=" * 60)
-        print("✓ All checks passed! Ready to run make precheck")
+        print("[OK] All checks passed! Ready to run make precheck")
         print("=" * 60)
         return 0
     else:
         print("=" * 60)
-        print("✗ Some checks failed. Please install missing dependencies.")
+        print("[FAIL] Some checks failed. Please install missing dependencies.")
         print("=" * 60)
         return 1
 
