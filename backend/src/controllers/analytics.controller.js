@@ -5,7 +5,7 @@ import Hotel from "../models/Hotel.js";
 import Car from "../models/Car.js";
 
 /**
- * TOP PROVIDERS (Views + Revenue)
+ * TOP PROVIDERS (Revenue + Bookings)
  */
 export const topProviders = async (req, res) => {
   try {
@@ -52,11 +52,24 @@ export const topListingsByClicks = async (req, res) => {
 };
 
 /**
- * PROVIDER CLICK-THROUGH-RATE (Clicks / Impressions)
+ * PROVIDER CTR (Clicks vs Views)
  */
 export const providerCTR = async (req, res) => {
   try {
+    // 1. Get provider→listing mapping
+    const allListings = [
+      ...await Flight.find({}, "_id providerId"),
+      ...await Hotel.find({}, "_id providerId"),
+      ...await Car.find({}, "_id providerId")
+    ];
+
+    const listingIds = allListings.map(l => l._id.toString());
+
+    // 2. Aggregate clicks
     const clicks = await ClickLog.aggregate([
+      {
+        $match: { listingId: { $in: listingIds } }
+      },
       {
         $group: {
           _id: "$listingId",
@@ -65,23 +78,41 @@ export const providerCTR = async (req, res) => {
       }
     ]);
 
-    const totalListings = [
-      ...await Flight.find({}, "_id providerId"),
-      ...await Hotel.find({}, "_id providerId"),
-      ...await Car.find({}, "_id providerId")
-    ];
+    // 3. Aggregate views
+    const views = await ClickLog.aggregate([
+      {
+        $match: {
+          action: "view",
+          listingId: { $in: listingIds }
+        }
+      },
+      {
+        $group: {
+          _id: "$listingId",
+          views: { $sum: 1 }
+        }
+      }
+    ]);
 
-    const data = totalListings.map(listing => {
-      const click = clicks.find(c => c._id == listing._id.toString());
-      const totalClicks = click ? click.clicks : 0;
+    // 4. Merge CTR results
+    const result = allListings.map(listing => {
+      const clicked = clicks.find(c => c._id == listing._id.toString());
+      const viewed = views.find(v => v._id == listing._id.toString());
+
+      const clicksCount = clicked?.clicks ?? 0;
+      const viewsCount = viewed?.views ?? 0;
+
       return {
         listingId: listing._id.toString(),
         providerId: listing.providerId,
-        CTR: totalClicks
+        clicks: clicksCount,
+        views: viewsCount,
+        CTR: viewsCount > 0 ? ((clicksCount / viewsCount) * 100).toFixed(2) + "%" : "0%"
       };
     });
 
-    res.json(data);
+    res.json(result);
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -104,17 +135,21 @@ export const cityWiseAnalytics = async (req, res) => {
     ]);
 
     res.json(hotels);
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
 /**
- * LISTINGS WITH LEAST CLICKS (to identify poor performers)
+ * LEAST VIEWED LISTINGS
  */
 export const leastViewedListings = async (req, res) => {
   try {
     const result = await ClickLog.aggregate([
+      {
+        $match: { listingId: { $ne: null } }
+      },
       {
         $group: {
           _id: "$listingId",
@@ -126,22 +161,27 @@ export const leastViewedListings = async (req, res) => {
     ]);
 
     res.json(result);
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
 /**
- * DAILY PROVIDER PERFORMANCE TREND
+ * PROVIDER DAILY PERFORMANCE TREND
  */
 export const providerDailyTrend = async (req, res) => {
   try {
+    const { providerId } = req.params;
+
     const result = await ClickLog.aggregate([
+      {
+        $match: { providerId }
+      },
       {
         $group: {
           _id: {
-            date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-            providerId: "$providerId"
+            date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }
           },
           clicks: { $sum: 1 }
         }
@@ -150,6 +190,7 @@ export const providerDailyTrend = async (req, res) => {
     ]);
 
     res.json(result);
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
