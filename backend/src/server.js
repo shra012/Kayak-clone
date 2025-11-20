@@ -12,6 +12,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { initializeFirebase } from './config/firebase.js';
 import apiRoutes from './routes/index.js';
+import providerAnalyticsRoutes from './routes/analytics.routes.js';
 
 dotenv.config();
 
@@ -142,5 +143,7 @@ process.on('SIGINT', () => {
   logger.info('SIGINT signal received: closing HTTP server');
   process.exit(0);
 });
+
+app.use("/api/analytics", providerAnalyticsRoutes);
 
 export default app;
