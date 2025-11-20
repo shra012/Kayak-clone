@@ -3,21 +3,31 @@ import { logger } from '../config/logger.js';
 
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
 
-  if (!token) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({
       code: 'UNAUTHORIZED',
-      message: 'Authentication token required'
+      message: 'Authentication token missing'
     });
   }
 
+  const token = authHeader.split(' ')[1];
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
+
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role,
+      permissions: decoded.permissions || []
+    };
+
+    return next();
+
   } catch (error) {
-    logger.warn('Invalid token:', error.message);
+    logger.warn(`JWT verification failed: ${error.message}`);
+
     return res.status(403).json({
       code: 'FORBIDDEN',
       message: 'Invalid or expired token'
@@ -40,7 +50,7 @@ export const requireAdmin = (req, res, next) => {
     });
   }
 
-  next();
+  return next();
 };
 
 export const requireModerator = (req, res, next) => {
