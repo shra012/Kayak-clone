@@ -46,6 +46,11 @@ export const useAuth = () => {
   const login = async (email, password) => {
     try {
       dispatch(setLoading(true));
+      
+      // Clear any old tokens before login to prevent stale token issues
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      
       const response = await authApi.login(email, password);
       if (response.code === 'SUCCESS') {
         dispatch(setAuth({
@@ -53,7 +58,10 @@ export const useAuth = () => {
           token: response.data.token,
         }));
         dispatch(clearError());
-        navigate('/');
+        
+        // Redirect based on user type
+        const isOwner = response.data.user?.profileType === 'owner';
+        navigate(isOwner ? '/owner' : '/');
       }
     } catch (err) {
       const errorMessage = buildAuthErrorMessage(err, 'Login failed');
