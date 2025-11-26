@@ -11,23 +11,24 @@ export const getPostgresPool = () => {
   if (!postgresPool) {
     const connectionString = process.env.DATABASE_URL;
     
-    if (connectionString) {
-      postgresPool = new Pool({
-        connectionString,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-        max: 10,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
-      });
-
-      postgresPool.on('error', (err) => {
-        logger.error('PostgreSQL pool error:', err);
-      });
-
-      logger.info('PostgreSQL connection pool created');
-    } else {
-      logger.warn('DATABASE_URL not set');
+    if (!connectionString) {
+      throw new Error('DATABASE_URL must be set for cloud PostgreSQL (Supabase)');
     }
+    
+    // Cloud PostgreSQL (Supabase) configuration
+    postgresPool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false }, // Required for Supabase cloud connection
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
+    });
+
+    postgresPool.on('error', (err) => {
+      logger.error('PostgreSQL pool error:', err);
+    });
+
+    logger.info('PostgreSQL (Supabase Cloud) connection pool created');
   }
   return postgresPool;
 };
@@ -36,7 +37,7 @@ let mongoClient = null;
 let mongoDb = null;
 
 export const getMongoDB = async () => {
-  if (!mongoClient) {
+  if (!mongoDb) {
     const uri = process.env.MONGODB_URI;
     
     if (!uri) {
@@ -52,6 +53,9 @@ export const getMongoDB = async () => {
       logger.info('MongoDB connected successfully');
     } catch (error) {
       logger.error('MongoDB connection error:', error);
+      // Reset client on error so it can retry
+      mongoClient = null;
+      mongoDb = null;
       throw error;
     }
   }
@@ -64,25 +68,21 @@ export const getRedisClient = async () => {
   if (!redisClient) {
     const redisUrl = process.env.REDIS_URL;
     
-    if (redisUrl) {
-      redisClient = createRedisClient({
-        url: redisUrl,
-      });
-    } else {
-      redisClient = createRedisClient({
-        socket: {
-          host: process.env.REDIS_HOST || 'localhost',
-          port: parseInt(process.env.REDIS_PORT) || 6379
-        }
-      });
+    if (!redisUrl) {
+      throw new Error('REDIS_URL must be set for cloud Redis connection');
     }
+    
+    // Cloud Redis configuration
+    redisClient = createRedisClient({
+      url: redisUrl,
+    });
 
     redisClient.on('error', (err) => {
       logger.error('Redis Client Error:', err);
     });
 
     redisClient.on('connect', () => {
-      logger.info('Redis client connected');
+      logger.info('Redis Cloud connected');
     });
 
     await redisClient.connect();

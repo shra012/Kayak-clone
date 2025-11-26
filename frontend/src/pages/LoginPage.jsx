@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import { useAuth } from '../hooks/useAuth';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 const LoginPage = () => {
+  useDocumentTitle('Login');
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const { login, loading, error } = useAuth();
 
   const handleSubmit = async (e) => {
@@ -17,15 +22,69 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="hero min-h-screen bg-base-200">
-      <div className="hero-content flex-col lg:flex-row-reverse">
-        <div className="text-center lg:text-left">
-          <h1 className="text-5xl font-bold">Login now!</h1>
-          <p className="py-6">
-            Access your bookings, manage your profile, and more.
-          </p>
+    <div className="hero min-h-screen bg-sky-50">
+      <div className="hero-content flex-col lg:flex-row-reverse w-full max-w-7xl">
+        {/* Right side - Image Grid */}
+        <div className="hidden lg:flex lg:w-1/2 gap-3">
+          {/* Column 1 */}
+          <div className="flex-1 grid grid-cols-1 gap-3">
+            <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
+              <img
+                src="/flight1.jpg"
+                alt="Travel 1"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
+              <img
+                src="/flight2.avif"
+                alt="Travel 2"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
+              <img
+                src="/flight3.jpg"
+                alt="Travel 3"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </div>
+          {/* Column 2 */}
+          <div className="flex-1 grid grid-cols-1 gap-3">
+            <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
+              <img
+                src="/flight4.webp"
+                alt="Travel 4"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
+              <img
+                src="/flight5.jpg"
+                alt="Travel 5"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
+              <img
+                src="/flight6.jpg"
+                alt="Travel 6"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </div>
         </div>
-        <div className="card bg-base-100 w-full max-w-sm shadow-2xl">
+
+        {/* Left side - Login Form */}
+        <div className="lg:w-1/2">
+          <div className="text-center lg:text-left mb-8">
+            <h1 className="text-5xl font-bold">Login now!</h1>
+            <p className="py-6">
+              Access your bookings, manage your profile, and more.
+            </p>
+          </div>
+          <div className="card bg-white w-full max-w-sm mx-auto shadow-2xl border border-gray-200">
           <form className="card-body" onSubmit={handleSubmit}>
             {error && (
               <div className="alert alert-error">
@@ -50,15 +109,29 @@ const LoginPage = () => {
               <label className="label">
                 <span className="label-text">Password</span>
               </label>
-              <input
-                type="password"
-                placeholder="password"
-                className="input input-bordered"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="password"
+                  className="input input-bordered w-full pr-10"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  disabled={loading}
+                >
+                  {showPassword ? (
+                    <FaEyeSlash className="h-5 w-5" />
+                  ) : (
+                    <FaEye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
               <label className="label">
                 <Link to="/forgot-password" className="label-text-alt link link-hover">
                   Forgot password?
@@ -83,6 +156,7 @@ const LoginPage = () => {
               </span>
             </div>
           </form>
+          </div>
         </div>
       </div>
     </div>
