@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import { useAuth } from '../hooks/useAuth';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 const US_STATES = [
   { value: 'AL', label: 'Alabama' },
@@ -56,7 +58,9 @@ const US_STATES = [
 ];
 
 const formatPhoneInput = (value) => {
+  // Only allow digits, don't accept letters or special characters
   const digits = value.replace(/\D/g, '');
+  
   if (!digits) {
     return '';
   }
@@ -82,7 +86,15 @@ const formatPhoneInput = (value) => {
   return formatted;
 };
 
+// Validate phone number has only digits
+const isValidPhoneInput = (value) => {
+  // Allow empty, digits, and formatting characters
+  return /^[\d\s\-+()]*$/.test(value);
+};
+
 const RegisterPage = () => {
+  useDocumentTitle('Create Account');
+  
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: '',
@@ -108,17 +120,19 @@ const RegisterPage = () => {
     },
   });
   const [errors, setErrors] = useState({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { register, loading, error } = useAuth();
   const roleOptions = [
     {
       id: 'traveler',
-      title: 'Traveler',
-      description: 'Search and book trips.',
+      title: 'User/Traveler',
+      description: 'Search and book flights, hotels, and cars.',
     },
     {
-      id: 'property_owner',
-      title: 'Property Partner',
-      description: 'List rentals and approve bookings.',
+      id: 'owner',
+      title: 'Owner/Partner',
+      description: 'List and manage properties, hotels, or car rentals.',
     },
   ];
 
@@ -136,10 +150,18 @@ const RegisterPage = () => {
         partnerPortfolioSize: undefined,
       }));
     } else if (name === 'phoneNumber') {
-      setFormData({
-        ...formData,
-        phoneNumber: formatPhoneInput(value),
-      });
+      // Only allow numeric input for phone number
+      if (isValidPhoneInput(value)) {
+        setFormData({
+          ...formData,
+          phoneNumber: formatPhoneInput(value),
+        });
+        // Clear phone error if user is typing valid input
+        if (errors.phoneNumber) {
+          setErrors((prev) => ({ ...prev, phoneNumber: undefined }));
+        }
+      }
+      // If invalid characters, don't update the field (silently reject)
     } else if (name.startsWith('address.')) {
       const field = name.split('.')[1];
       setFormData({
@@ -181,12 +203,12 @@ const RegisterPage = () => {
       newErrors.phoneNumber = 'Phone must be in format +1-XXX-XXX-XXXX';
     }
 
-    if (formData.profileType === 'property_owner') {
+    if (formData.profileType === 'owner') {
       if (!formData.partnerProfile.companyName.trim()) {
-        newErrors.partnerCompanyName = 'Company name is required for partners';
+        newErrors.partnerCompanyName = 'Company name is required for owners';
       }
       if (!formData.partnerProfile.contactEmail.trim()) {
-        newErrors.partnerContactEmail = 'Contact email is required for partners';
+        newErrors.partnerContactEmail = 'Contact email is required for owners';
       } else if (!/^\S+@\S+\.\S+$/.test(formData.partnerProfile.contactEmail)) {
         newErrors.partnerContactEmail = 'Contact email is invalid';
       }
@@ -214,7 +236,7 @@ const RegisterPage = () => {
       const payload = {
         ...userData,
         partnerProfile:
-          formData.profileType === 'property_owner'
+          formData.profileType === 'owner'
             ? {
                 companyName: partnerProfile.companyName.trim(),
                 contactName: partnerProfile.contactName.trim(),
@@ -231,9 +253,9 @@ const RegisterPage = () => {
   };
 
   return (
-    <div className="hero min-h-screen bg-base-200">
+    <div className="hero min-h-screen bg-sky-50">
       <div className="hero-content w-full max-w-4xl">
-        <div className="card bg-base-100 w-full shadow-2xl">
+        <div className="card bg-white w-full shadow-2xl border border-gray-200">
           <div className="card-body">
             <h1 className="text-3xl font-bold text-center mb-4">Create Account</h1>
             {error && (
@@ -317,12 +339,14 @@ const RegisterPage = () => {
                     <span className="label-text">Phone Number</span>
                   </label>
                   <input
-                    type="text"
+                    type="tel"
                     name="phoneNumber"
                     placeholder="+1-XXX-XXX-XXXX"
                     className={`input input-bordered ${errors.phoneNumber ? 'input-error' : ''}`}
                     value={formData.phoneNumber}
                     onChange={handleChange}
+                    inputMode="numeric"
+                    pattern="[0-9\-+]*"
                     required
                     disabled={loading}
                   />
@@ -332,7 +356,7 @@ const RegisterPage = () => {
                     </label>
                   )}
                 </div>
-                {formData.profileType === 'property_owner' && (
+                {formData.profileType === 'owner' && (
                   <div className="md:col-span-2 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="form-control">
@@ -423,15 +447,29 @@ const RegisterPage = () => {
                   <label className="label">
                     <span className="label-text">Password</span>
                   </label>
-                  <input
-                    type="password"
-                    name="password"
-                    className={`input input-bordered ${errors.password ? 'input-error' : ''}`}
-                    value={formData.password}
-                    onChange={handleChange}
-                    required
-                    disabled={loading}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      className={`input input-bordered w-full pr-10 ${errors.password ? 'input-error' : ''}`}
+                      value={formData.password}
+                      onChange={handleChange}
+                      required
+                      disabled={loading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      disabled={loading}
+                    >
+                      {showPassword ? (
+                        <FaEyeSlash className="h-5 w-5" />
+                      ) : (
+                        <FaEye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
                   {errors.password && (
                     <label className="label">
                       <span className="label-text-alt text-error">{errors.password}</span>
@@ -442,15 +480,29 @@ const RegisterPage = () => {
                   <label className="label">
                     <span className="label-text">Confirm Password</span>
                   </label>
-                  <input
-                    type="password"
-                    name="confirmPassword"
-                    className={`input input-bordered ${errors.confirmPassword ? 'input-error' : ''}`}
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                    required
-                    disabled={loading}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      name="confirmPassword"
+                      className={`input input-bordered w-full pr-10 ${errors.confirmPassword ? 'input-error' : ''}`}
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      required
+                      disabled={loading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      disabled={loading}
+                    >
+                      {showConfirmPassword ? (
+                        <FaEyeSlash className="h-5 w-5" />
+                      ) : (
+                        <FaEye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
                   {errors.confirmPassword && (
                     <label className="label">
                       <span className="label-text-alt text-error">{errors.confirmPassword}</span>
@@ -535,12 +587,12 @@ const RegisterPage = () => {
                   />
                 </div>
               </div>
-              {formData.profileType === 'property_owner' && (
+              {formData.profileType === 'owner' && (
                 <p
                   className="text-xs font-semibold text-rose-500 mt-3"
                   style={{ fontFamily: '"Comic Sans MS", "Trebuchet MS", cursive' }}
                 >
-                  Property partners can finish SSN verification later, but we need business details to set up your partner workspace.
+                  Owners can finish SSN verification later, but we need business details to set up your owner workspace.
                 </p>
               )}
               <div className="form-control mt-6">

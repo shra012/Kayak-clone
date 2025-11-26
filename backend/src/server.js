@@ -1,3 +1,14 @@
+// CRITICAL: Load environment variables FIRST before any other imports
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load .env from backend root (one level up from src)
+dotenv.config({ path: join(__dirname, '..', '.env') });
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -5,22 +16,20 @@ import morgan from 'morgan';
 import compression from 'compression';
 import session from 'express-session';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 
 import { logger } from './config/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { initializeFirebase } from './config/firebase.js';
 import apiRoutes from './routes/index.js';
-import providerAnalyticsRoutes from './routes/analytics.routes.js';
-
-dotenv.config();
 
 try {
   initializeFirebase();
 } catch (error) {
+  console.error('❌ Failed to initialize Firebase:', error.message);
   logger.error('Failed to initialize Firebase:', error);
-  process.exit(1);
+  // Firebase is optional, don't exit
+  console.log('⚠️  Server starting without Firebase (image uploads will not work)');
 }
 
 const app = express();
@@ -76,8 +85,8 @@ app.use(session({
 }));
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: NODE_ENV === 'production' ? 100 : 500, // 500 requests per 15 min in dev, 100 in production
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -143,7 +152,5 @@ process.on('SIGINT', () => {
   logger.info('SIGINT signal received: closing HTTP server');
   process.exit(0);
 });
-
-app.use("/api/analytics", providerAnalyticsRoutes);
 
 export default app;
