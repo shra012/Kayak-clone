@@ -4,6 +4,7 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  publicDir: path.resolve(__dirname, '../Background_images'),
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

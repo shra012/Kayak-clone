@@ -1,8 +1,13 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
-const ProtectedRoute = ({ children, requireAdmin = false, requireModerator = false }) => {
-  const { isAuthenticated, isAdmin, isModerator } = useAuth();
+const ProtectedRoute = ({ 
+  children, 
+  requireAdmin = false, 
+  requireModerator = false,
+  requireOwner = false 
+}) => {
+  const { isAuthenticated, isAdmin, isModerator, user } = useAuth();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -13,6 +18,10 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireModerator = fal
   }
 
   if (requireModerator && !isModerator()) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (requireOwner && user?.profileType !== 'owner') {
     return <Navigate to="/" replace />;
   }
 

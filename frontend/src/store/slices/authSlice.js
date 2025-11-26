@@ -1,7 +1,17 @@
 import { createSlice } from '@reduxjs/toolkit';
 
+// Try to restore user from localStorage
+const getUserFromStorage = () => {
+  try {
+    const userStr = localStorage.getItem('user');
+    return userStr ? JSON.parse(userStr) : null;
+  } catch {
+    return null;
+  }
+};
+
 const initialState = {
-  user: null,
+  user: getUserFromStorage(),
   token: localStorage.getItem('authToken') || null,
   isAuthenticated: !!localStorage.getItem('authToken'),
   loading: false,
@@ -23,10 +33,14 @@ const authSlice = createSlice({
       if (action.payload.token) {
         localStorage.setItem('authToken', action.payload.token);
       }
+      if (action.payload.user) {
+        localStorage.setItem('user', JSON.stringify(action.payload.user));
+      }
     },
     updateUser: (state, action) => {
       if (state.user) {
         state.user = { ...state.user, ...action.payload };
+        localStorage.setItem('user', JSON.stringify(state.user));
       }
     },
     clearAuth: (state) => {
@@ -35,6 +49,7 @@ const authSlice = createSlice({
       state.isAuthenticated = false;
       state.error = null;
       localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
     },
     setError: (state, action) => {
       state.error = action.payload;

@@ -13,22 +13,19 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-export const uploadSingle = multer({
-  storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024,
-  },
-  fileFilter,
-}).single('image');
-
-export const uploadMultiple = multer({
+// Export the multer instance for flexible use
+export const upload = multer({
   storage,
   limits: {
     fileSize: 5 * 1024 * 1024,
     files: 10,
   },
   fileFilter,
-}).array('images', 10);
+});
+
+export const uploadSingle = upload.single('image');
+
+export const uploadMultiple = upload.array('images', 10);
 
 export const uploadMiddleware = (req, res, next) => {
   uploadSingle(req, res, (err) => {

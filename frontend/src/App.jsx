@@ -16,7 +16,15 @@ import PaymentsPage from './pages/payments/PaymentsPage';
 import AdminPage from './pages/admin/AdminPage';
 import ConciergePage from './pages/concierge/ConciergePage';
 import AnalyticsPage from './pages/analytics/AnalyticsPage';
+import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
+
+// Owner Portal Pages
+import OwnerDashboard from './pages/owner/OwnerDashboard';
+import OwnerHotelsPage from './pages/owner/OwnerHotelsPage';
+import OwnerCarsPage from './pages/owner/OwnerCarsPage';
+import AddHotelPage from './pages/owner/AddHotelPage';
+import AddCarPage from './pages/owner/AddCarPage';
 
 function App() {
   return (
@@ -94,6 +102,57 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        
+        {/* Owner Portal Routes */}
+        <Route
+          path="/owner"
+          element={
+            <ProtectedRoute requireOwner>
+              <OwnerDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/hotels"
+          element={
+            <ProtectedRoute requireOwner>
+              <OwnerHotelsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/hotels/new"
+          element={
+            <ProtectedRoute requireOwner>
+              <AddHotelPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/cars"
+          element={
+            <ProtectedRoute requireOwner>
+              <OwnerCarsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/cars/new"
+          element={
+            <ProtectedRoute requireOwner>
+              <AddCarPage />
+            </ProtectedRoute>
+          }
+        />
+        
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Layout>

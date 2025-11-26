@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { toggleSidebar, setTheme } from "../../store/slices/uiSlice";
-import { FaBars } from "react-icons/fa";
+import { FaBars, FaHotel, FaCar, FaHome } from "react-icons/fa";
 import AnimatedIcon from "../common/AnimatedIcon";
 
 const Layout = ({ children }) => {
@@ -11,6 +11,8 @@ const Layout = ({ children }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { theme, sidebarOpen } = useSelector((state) => state.ui);
+  
+  const isOwner = user?.profileType === 'owner';
 
   const handleLogout = () => {
     logout();
@@ -43,50 +45,170 @@ const Layout = ({ children }) => {
                 <FaBars className="h-5 w-5" />
               </AnimatedIcon>
             </div>
-            <ul
+            <div
               tabIndex={0}
-              className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
+              className="dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
             >
-              <li>
-                <Link to="/flights">Flights</Link>
-              </li>
-              <li>
-                <Link to="/hotels">Hotels</Link>
-              </li>
-              <li>
-                <Link to="/cars">Cars</Link>
-              </li>
-            </ul>
+              {isAuthenticated && (
+                <div className="flex flex-col gap-1">
+                  {isOwner ? (
+                    <>
+                      <NavLink 
+                        to="/owner"
+                        end
+                        className={({ isActive }) => 
+                          `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                            isActive 
+                              ? 'bg-primary text-primary-content font-semibold' 
+                              : 'hover:bg-base-200'
+                          }`
+                        }
+                      >
+                        <FaHome className="w-4 h-4" />
+                        Owner Dashboard
+                      </NavLink>
+                      <NavLink 
+                        to="/owner/hotels"
+                        className={({ isActive }) => 
+                          `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                            isActive 
+                              ? 'bg-primary text-primary-content font-semibold' 
+                              : 'hover:bg-base-200'
+                          }`
+                        }
+                      >
+                        <FaHotel className="w-4 h-4" />
+                        My Hotels
+                      </NavLink>
+                      <NavLink 
+                        to="/owner/cars"
+                        className={({ isActive }) => 
+                          `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                            isActive 
+                              ? 'bg-primary text-primary-content font-semibold' 
+                              : 'hover:bg-base-200'
+                          }`
+                        }
+                      >
+                        <FaCar className="w-4 h-4" />
+                        My Cars
+                      </NavLink>
+                    </>
+                  ) : (
+                    <>
+                      <NavLink 
+                        to="/bookings"
+                        className={({ isActive }) => 
+                          `px-4 py-2 rounded-lg transition-colors ${
+                            isActive 
+                              ? 'bg-primary text-primary-content font-semibold' 
+                              : 'hover:bg-base-200'
+                          }`
+                        }
+                      >
+                        Bookings
+                      </NavLink>
+                      <NavLink 
+                        to="/concierge"
+                        className={({ isActive }) => 
+                          `px-4 py-2 rounded-lg transition-colors ${
+                            isActive 
+                              ? 'bg-primary text-primary-content font-semibold' 
+                              : 'hover:bg-base-200'
+                          }`
+                        }
+                      >
+                        Concierge
+                      </NavLink>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <Link
-            to="/"
+            to={isOwner ? "/owner" : "/"}
             className="btn btn-ghost text-xl font-bold text-primary logo-shine"
           >
             Kayak
           </Link>
         </div>
         <div className="navbar-center hidden lg:flex">
-          <ul className="menu menu-horizontal px-1">
-            <li>
-              <Link to="/flights">Flights</Link>
-            </li>
-            <li>
-              <Link to="/hotels">Hotels</Link>
-            </li>
-            <li>
-              <Link to="/cars">Cars</Link>
-            </li>
-            {isAuthenticated && (
-              <>
-                <li>
-                  <Link to="/bookings">Bookings</Link>
-                </li>
-                <li>
-                  <Link to="/concierge">Concierge</Link>
-                </li>
-              </>
-            )}
-          </ul>
+          {isAuthenticated && (
+            <div className="flex items-center gap-1">
+              {isOwner ? (
+                <>
+                  <NavLink 
+                    to="/owner" 
+                    end
+                    className={({ isActive }) => 
+                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        isActive 
+                          ? 'bg-primary text-primary-content font-semibold' 
+                          : 'hover:bg-base-200'
+                      }`
+                    }
+                  >
+                    <FaHome className="w-4 h-4" />
+                    Dashboard
+                  </NavLink>
+                  <NavLink 
+                    to="/owner/hotels"
+                    className={({ isActive }) => 
+                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        isActive 
+                          ? 'bg-primary text-primary-content font-semibold' 
+                          : 'hover:bg-base-200'
+                      }`
+                    }
+                  >
+                    <FaHotel className="w-4 h-4" />
+                    Hotels
+                  </NavLink>
+                  <NavLink 
+                    to="/owner/cars"
+                    className={({ isActive }) => 
+                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        isActive 
+                          ? 'bg-primary text-primary-content font-semibold' 
+                          : 'hover:bg-base-200'
+                      }`
+                    }
+                  >
+                    <FaCar className="w-4 h-4" />
+                    Cars
+                  </NavLink>
+                </>
+              ) : (
+                <>
+                  <NavLink 
+                    to="/bookings"
+                    className={({ isActive }) => 
+                      `px-4 py-2 rounded-lg transition-colors ${
+                        isActive 
+                          ? 'bg-primary text-primary-content font-semibold' 
+                          : 'hover:bg-base-200'
+                      }`
+                    }
+                  >
+                    Bookings
+                  </NavLink>
+                  <NavLink 
+                    to="/concierge"
+                    className={({ isActive }) => 
+                      `px-4 py-2 rounded-lg transition-colors ${
+                        isActive 
+                          ? 'bg-primary text-primary-content font-semibold' 
+                          : 'hover:bg-base-200'
+                      }`
+                    }
+                  >
+                    Concierge
+                  </NavLink>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <div className="navbar-end">
           <select
@@ -103,19 +225,48 @@ const Layout = ({ children }) => {
               <button
                 type="button"
                 tabIndex={0}
-                className="btn btn-ghost btn-circle"
+                className="btn btn-ghost btn-circle avatar"
               >
-                <span className="w-12 h-12 rounded-full bg-primary text-primary-content flex items-center justify-center font-semibold text-lg uppercase leading-none">
-                  {initials}
-                </span>
+                <div className="w-10 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
+                  {user?.profileImageUrl ? (
+                    <img src={user.profileImageUrl} alt="Profile" className="object-cover" />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-primary text-primary-content flex items-center justify-center font-semibold text-lg uppercase">
+                      {initials}
+                    </div>
+                  )}
+                </div>
               </button>
               <ul
                 tabIndex={0}
                 className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
               >
-                <li>
-                  <Link to="/users">Profile</Link>
+                <li className="menu-title">
+                  <span className="text-xs font-normal text-base-content/60">
+                    {user?.email}
+                  </span>
                 </li>
+                {isOwner && (
+                  <li className="menu-title">
+                    <span className="badge badge-primary badge-sm">Owner Account</span>
+                  </li>
+                )}
+                <li>
+                  <Link to="/profile">Profile</Link>
+                </li>
+                {isOwner && (
+                  <>
+                    <li>
+                      <Link to="/owner">Owner Dashboard</Link>
+                    </li>
+                    <li>
+                      <Link to="/owner/hotels">My Hotels</Link>
+                    </li>
+                    <li>
+                      <Link to="/owner/cars">My Cars</Link>
+                    </li>
+                  </>
+                )}
                 {isAdmin() && (
                   <li>
                     <Link to="/admin">Admin</Link>

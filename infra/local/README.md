@@ -1,5 +1,21 @@
 # Local infra/local — services & quick setup
 
+> **⚠️ NOTICE FOR GROUP PROJECT**: This local infrastructure is **NOT USED** in the current project setup.  
+> We are using **cloud services only** (MongoDB Atlas, Supabase PostgreSQL, Redis Cloud, Firebase).  
+> This directory is kept for reference/testing purposes only.
+
+## Obsolete - Cloud Services Used Instead
+
+**Current Production Setup (Cloud):**
+- **MongoDB**: MongoDB Atlas (cloud)
+- **PostgreSQL**: Supabase (cloud)
+- **Redis**: Redis Cloud
+- **Firebase**: Google Cloud
+
+---
+
+## Local Services (For Testing Only)
+
 Services available:
 
 - `kafka` — Kafka broker (port 9092)

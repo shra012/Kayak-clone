@@ -27,10 +27,31 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('authToken');
-      window.location.href = '/login';
+    const currentPath = window.location.pathname;
+    
+    // Handle 401 Unauthorized or 403 Forbidden (token issues)
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      const message = error.response?.data?.message || '';
+      
+      // Check if it's a token-related error
+      if (
+        message.includes('Invalid or expired token') ||
+        message.includes('Authentication token required') ||
+        error.response?.status === 401
+      ) {
+        console.warn('⚠️ Token expired or invalid - clearing session');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        
+        // Only redirect if not already on login/register page
+        if (currentPath !== '/login' && currentPath !== '/register') {
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 100);
+        }
+      }
     }
+    
     return Promise.reject(error);
   }
 );

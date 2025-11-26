@@ -1,21 +1,21 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { getPostgresPool } from '../config/database.js';
+import { getMongoDB } from '../config/database.js';
 import { logger } from '../config/logger.js';
-import { v4 as uuidv4 } from 'uuid';
+import { ObjectId } from 'mongodb';
 import { doesProfileRequireSsn } from '../constants/profileTypes.js';
 import { isValidSsn } from '../utils/validators.js';
 import {
   normalizeProfileType,
   normalizePartnerDetails,
 } from '../utils/profile.js';
+import { getJWTSecret, getJWTExpiresIn } from '../config/jwt.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 const SALT_ROUNDS = 12;
 
 const parsePartnerDetails = (value) => {
   if (!value) return null;
+  if (typeof value === 'object') return value;
   if (typeof value === 'string') {
     try {
       return JSON.parse(value);
@@ -35,18 +35,20 @@ export const comparePassword = async (password, hash) => {
 };
 
 const mapUserForResponse = (user) => {
-  const profileType = normalizeProfileType(user.profile_type);
+  const profileType = normalizeProfileType(user.profileType);
   const requiresSsn = doesProfileRequireSsn(profileType);
   const hasSsnOnFile = Boolean(user.ssn);
-  const partnerDetails = parsePartnerDetails(user.partner_details);
+  const partnerDetails = user.partnerProfile || parsePartnerDetails(user.partnerDetails); // Support both fields
 
   return {
-    id: user.id,
+    id: user._id.toString(),
     email: user.email,
-    firstName: user.first_name,
-    lastName: user.last_name,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phoneNumber: user.phoneNumber,
     role: user.role,
-    loyaltyTier: user.loyalty_tier,
+    loyaltyTier: user.loyaltyTier || 'none',
+    profileImageUrl: user.profileImageUrl || null, // ✅ Added profile image URL
     profileType,
     requiresSsn,
     hasSsnOnFile,
@@ -54,7 +56,7 @@ const mapUserForResponse = (user) => {
       profileType,
       requiresSsn,
       isSsnOnFile: hasSsnOnFile,
-      verifiedAt: user.ssn_verified_at || null,
+      verifiedAt: user.ssnVerifiedAt || null,
     },
     partnerDetails,
   };
@@ -62,28 +64,29 @@ const mapUserForResponse = (user) => {
 
 export const generateToken = (user) => {
   const payload = {
-    id: user.id,
+    id: user._id ? user._id.toString() : user.id,  // Changed from userId to id for consistency
+    userId: user._id ? user._id.toString() : user.id, // Keep userId for backward compatibility
     email: user.email,
     role: user.role || 'user',
-    profileType: normalizeProfileType(user.profile_type),
+    profileType: normalizeProfileType(user.profileType),
   };
 
-  return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: JWT_EXPIRES_IN,
+  return jwt.sign(payload, getJWTSecret(), {
+    expiresIn: getJWTExpiresIn(),
   });
 };
 
 export const verifyToken = (token) => {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, getJWTSecret());
   } catch (error) {
     return null;
   }
 };
 
 export const register = async (userData) => {
-  const pool = getPostgresPool();
-  const userId = uuidv4();
+  const db = await getMongoDB();
+  const usersCollection = db.collection('users');
 
   const {
     email,
@@ -99,7 +102,6 @@ export const register = async (userData) => {
 
   const normalizedProfileType = normalizeProfileType(profileType);
   const partnerDetails = normalizePartnerDetails(normalizedProfileType, partnerProfile);
-  const partnerDetailsValue = partnerDetails ? JSON.stringify(partnerDetails) : null;
 
   if (ssn && !isValidSsn(ssn)) {
     throw new Error('SSN must match XXX-XX-XXXX');
@@ -112,45 +114,35 @@ export const register = async (userData) => {
 
   const hashedPassword = await hashPassword(password);
 
-  const query = `
-    INSERT INTO users (
-      id, email, password_hash, ssn, first_name, last_name, phone_number,
-      address_line1, address_line2, address_city, address_state, address_zip_code,
-      role, loyalty_tier, profile_type, ssn_verified_at, partner_details,
-      created_at, updated_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7,
-      $8, $9, $10, $11, $12,
-      $13, $14, $15, $16, $17, NOW(), NOW()
-    )
-    RETURNING id, email, first_name, last_name, role, loyalty_tier,
-      profile_type, ssn, ssn_verified_at, partner_details
-  `;
-
-  const params = [
-    userId,
+  const newUser = {
     email,
-    hashedPassword,
-    ssn || null,
+    passwordHash: hashedPassword,
+    ssn: ssn || null,
     firstName,
     lastName,
     phoneNumber,
-    address.line1,
-    address.line2 || null,
-    address.city,
-    address.state,
-    address.zipCode,
-    'user',
-    'none',
-    normalizedProfileType,
-    ssn ? new Date() : null,
-    partnerDetailsValue,
-  ];
+    address: {
+      line1: address.line1,
+      line2: address.line2 || null,
+      city: address.city,
+      state: address.state,
+      zipCode: address.zipCode,
+    },
+    role: 'user',
+    loyaltyTier: 'none',
+    profileType: normalizedProfileType,
+    ssnVerifiedAt: ssn ? new Date() : null,
+    partnerProfile: partnerDetails || null, // Changed to partnerProfile for consistency
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 
-  const result = await pool.query(query, params);
-  const user = result.rows[0];
+  const result = await usersCollection.insertOne(newUser);
+  const user = { ...newUser, _id: result.insertedId };
 
   const token = generateToken(user);
+
+  logger.info(`User registered successfully: ${email}`);
 
   return {
     user: mapUserForResponse(user),
@@ -168,16 +160,18 @@ export const login = async (email, password) => {
     throw new Error('Account is suspended');
   }
 
-  if (!user.password_hash) {
+  if (!user.passwordHash) {
     throw new Error('Invalid email or password');
   }
 
-  const isValidPassword = await comparePassword(password, user.password_hash);
+  const isValidPassword = await comparePassword(password, user.passwordHash);
   if (!isValidPassword) {
     throw new Error('Invalid email or password');
   }
 
   const token = generateToken(user);
+
+  logger.info(`User logged in: ${email}`);
 
   return {
     user: mapUserForResponse(user),
@@ -186,28 +180,52 @@ export const login = async (email, password) => {
 };
 
 export const getUserByEmail = async (email) => {
-  const pool = getPostgresPool();
-  const result = await pool.query(
-    'SELECT * FROM users WHERE email = $1',
-    [email]
-  );
-  return result.rows[0] || null;
+  const db = await getMongoDB();
+  const usersCollection = db.collection('users');
+  
+  const user = await usersCollection.findOne({ email });
+  return user;
 };
 
-export const refreshToken = async (userId) => {
-  const pool = getPostgresPool();
-  const result = await pool.query(
-    `SELECT id, email, first_name, last_name, role, loyalty_tier,
-      profile_type, ssn, ssn_verified_at, partner_details
-     FROM users WHERE id = $1`,
-    [userId]
+export const getUserById = async (userId) => {
+  const db = await getMongoDB();
+  const usersCollection = db.collection('users');
+
+  const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+  return user;
+};
+
+export const updateUserProfile = async (userId, updates) => {
+  const db = await getMongoDB();
+  const usersCollection = db.collection('users');
+
+  // Remove sensitive fields that shouldn't be updated through this endpoint
+  const { passwordHash, _id, email, role, createdAt, ...allowedUpdates } = updates;
+
+  // Add updatedAt timestamp
+  allowedUpdates.updatedAt = new Date();
+
+  const result = await usersCollection.updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: allowedUpdates }
   );
 
-  if (result.rows.length === 0) {
+  if (result.matchedCount === 0) {
     throw new Error('User not found');
   }
 
-  const user = result.rows[0];
+  const updatedUser = await getUserById(userId);
+  logger.info(`User profile updated: ${userId}`);
+
+  return mapUserForResponse(updatedUser);
+};
+
+export const refreshToken = async (userId) => {
+  const user = await getUserById(userId);
+
+  if (!user) {
+    throw new Error('User not found');
+  }
 
   if (user.role === 'suspended') {
     throw new Error('Account is suspended');
@@ -220,3 +238,16 @@ export const refreshToken = async (userId) => {
     token,
   };
 };
+
+export default {
+  register,
+  login,
+  getUserByEmail,
+  getUserById,
+  refreshToken,
+  generateToken,
+  verifyToken,
+  hashPassword,
+  comparePassword,
+};
+

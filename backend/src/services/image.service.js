@@ -1,239 +1,131 @@
 import { getBucket } from '../config/firebase.js';
 import { logger } from '../config/logger.js';
 
-const BUCKET_NAME = process.env.FIREBASE_STORAGE_BUCKET || 'kayak';
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-const MAX_VERSIONS_TO_KEEP = 2;
-
-const getEntityPath = (entityType, entityId) => {
-  return `kayak/${entityType}/${entityId}`;
-};
-
-const getImagePath = (entityType, entityId, version, extension) => {
-  return `${getEntityPath(entityType, entityId)}/${version}.${extension}`;
-};
-
-const getCurrentVersion = async (entityType, entityId) => {
-  const bucket = getBucket();
-  if (!bucket) {
-    return 0;
-  }
-
-  const prefix = getEntityPath(entityType, entityId);
-  const [files] = await bucket.getFiles({ prefix });
-
-  if (files.length === 0) {
-    return 0;
-  }
-
-  const versions = files
-    .map((file) => {
-      const match = file.name.match(/\/(\d+)\.\w+$/);
-      return match ? parseInt(match[1], 10) : 0;
-    })
-    .filter((v) => !isNaN(v));
-
-  return versions.length > 0 ? Math.max(...versions) : 0;
-};
-
-const cleanupOldVersions = async (entityType, entityId, currentVersion) => {
-  const bucket = getBucket();
-  if (!bucket) {
-    return;
-  }
-
-  const prefix = getEntityPath(entityType, entityId);
-  const [files] = await bucket.getFiles({ prefix });
-
-  let versionsToDelete;
-  
-  if (entityType === 'profiles') {
-    versionsToDelete = files
-      .map((file) => {
-        const match = file.name.match(/\/(\d+)\.\w+$/);
-        return match && parseInt(match[1], 10) < currentVersion
-          ? { version: parseInt(match[1], 10), file }
-          : null;
-      })
-      .filter((v) => v !== null);
-  } else {
-    versionsToDelete = files
-      .map((file) => {
-        const match = file.name.match(/\/(\d+)\.\w+$/);
-        return match && parseInt(match[1], 10) < currentVersion - 1
-          ? { version: parseInt(match[1], 10), file }
-          : null;
-      })
-      .filter((v) => v && v.version < currentVersion - 1);
-  }
-
-  if (versionsToDelete.length > 0) {
-    const deletePromises = versionsToDelete.map(({ file }) => file.delete());
-    await Promise.all(deletePromises);
-    logger.info(`Cleaned up ${versionsToDelete.length} old image versions for ${entityType}/${entityId}`);
-  }
-};
-
-export const uploadEntityImage = async (file, entityType, entityId) => {
-  if (!file) {
-    throw new Error('No file provided');
-  }
-
-  if (file.size > MAX_FILE_SIZE) {
-    throw new Error('File size exceeds 5MB limit');
-  }
-
-  if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-    throw new Error('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed');
-  }
-
-  const bucket = getBucket();
-  if (!bucket) {
-    throw new Error('Firebase Storage not initialized');
-  }
-
-  const currentVersion = await getCurrentVersion(entityType, entityId);
-  const newVersion = currentVersion + 1;
-  const fileExtension = file.originalname.split('.').pop();
-  const fileName = getImagePath(entityType, entityId, newVersion, fileExtension);
-  const fileUpload = bucket.file(fileName);
-
-  const stream = fileUpload.createWriteStream({
-    metadata: {
-      contentType: file.mimetype,
-      metadata: {
-        originalName: file.originalname,
-        uploadedAt: new Date().toISOString(),
-        entityType,
-        entityId,
-        version: newVersion.toString(),
-      },
-    },
-    public: true,
-  });
-
-  return new Promise((resolve, reject) => {
-    stream.on('error', (error) => {
-      logger.error('Image upload error:', error);
-      reject(error);
-    });
-
-    stream.on('finish', async () => {
-      try {
-        await fileUpload.makePublic();
-        const publicUrl = `https://storage.googleapis.com/${BUCKET_NAME}/${fileName}`;
-        logger.info(`Image uploaded: ${publicUrl} (version ${newVersion})`);
-
-        await cleanupOldVersions(entityType, entityId, newVersion);
-
-        resolve({
-          url: publicUrl,
-          fileName,
-          version: newVersion,
-          size: file.size,
-          contentType: file.mimetype,
-          entityType,
-          entityId,
-        });
-      } catch (error) {
-        logger.error('Error making file public:', error);
-        reject(error);
-      }
-    });
-
-    stream.end(file.buffer);
-  });
-};
-
-export const uploadProfileImage = async (file, profileId) => {
-  return uploadEntityImage(file, 'profiles', profileId);
-};
-
-export const uploadFlightImage = async (file, flightId) => {
-  return uploadEntityImage(file, 'flights', flightId);
-};
-
-export const uploadHotelImage = async (file, hotelId) => {
-  return uploadEntityImage(file, 'hotels', hotelId);
-};
-
-export const uploadCarImage = async (file, carId) => {
-  return uploadEntityImage(file, 'cars', carId);
-};
-
-export const deleteImage = async (imageUrl) => {
-  if (!imageUrl) {
-    return;
-  }
-
+/**
+ * Generate a signed URL for a Firebase Storage file
+ * @param {string} filePath - Path to file in Firebase Storage (e.g., 'kayak/cars/Porsche.jpeg')
+ * @returns {Promise<string>} - Signed URL valid for 1 hour
+ */
+export const getSignedUrl = async (filePath) => {
   try {
     const bucket = getBucket();
-    if (!bucket) {
-      logger.warn('Firebase Storage not initialized, skipping image deletion');
-      return;
+    const file = bucket.file(filePath);
+    
+    // Check if file exists
+    const [exists] = await file.exists();
+    if (!exists) {
+      logger.warn(`File not found in Firebase Storage: ${filePath}`);
+      return null;
     }
 
-    const fileName = imageUrl.split(`${BUCKET_NAME}/`)[1];
-    if (!fileName) {
-      logger.warn(`Could not extract filename from URL: ${imageUrl}`);
-      return;
-    }
+    // Generate signed URL valid for 1 hour
+    const [url] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 60 * 60 * 1000, // 1 hour from now
+    });
 
-    await bucket.file(fileName).delete();
-    logger.info(`Image deleted: ${fileName}`);
+    return url;
   } catch (error) {
-    logger.error('Error deleting image:', error);
+    logger.error(`Error generating signed URL for ${filePath}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Generate signed URLs for multiple files
+ * @param {string[]} filePaths - Array of file paths
+ * @returns {Promise<Object>} - Map of filePath to signed URL
+ */
+export const getSignedUrls = async (filePaths) => {
+  const urlMap = {};
+  
+  await Promise.all(
+    filePaths.map(async (filePath) => {
+      const url = await getSignedUrl(filePath);
+      if (url) {
+        urlMap[filePath] = url;
+      }
+    })
+  );
+  
+  return urlMap;
+};
+
+/**
+ * Make a file publicly accessible (set public ACL)
+ * @param {string} filePath - Path to file in Firebase Storage
+ * @returns {Promise<string>} - Public URL
+ */
+export const makeFilePublic = async (filePath) => {
+  try {
+    const bucket = getBucket();
+    const file = bucket.file(filePath);
+    
+    // Make file public
+    await file.makePublic();
+    
+    // Return public URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+    logger.info(`File made public: ${publicUrl}`);
+    
+    return publicUrl;
+  } catch (error) {
+    logger.error(`Error making file public ${filePath}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Get public URL for a file (without making it public)
+ * Assumes file is already public
+ */
+export const getPublicUrl = (filePath) => {
+  const bucket = getBucket();
+  return `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+};
+
+/**
+ * Upload an entity image to Firebase Storage
+ * @param {Buffer} file - File buffer to upload
+ * @param {string} entityType - Type of entity (hotel, car, etc.)
+ * @param {string} entityId - ID of the entity
+ * @param {string} filename - Original filename
+ * @returns {Promise<string>} - Firebase Storage path
+ */
+export const uploadEntityImage = async (file, entityType, entityId, filename) => {
+  try {
+    const bucket = getBucket();
+    
+    // Generate unique filename
+    const timestamp = Date.now();
+    const extension = filename.split('.').pop();
+    const uniqueFilename = `${entityId}_${timestamp}.${extension}`;
+    
+    // Define storage path
+    const filePath = `kayak/${entityType}s/${uniqueFilename}`;
+    const fileRef = bucket.file(filePath);
+    
+    // Upload file
+    await fileRef.save(file, {
+      metadata: {
+        contentType: `image/${extension}`,
+      },
+    });
+    
+    logger.info(`Uploaded image: ${filePath}`);
+    
+    // Return the path (not full URL - backend will convert it)
+    return filePath;
+  } catch (error) {
+    logger.error(`Error uploading image for ${entityType} ${entityId}:`, error);
     throw error;
   }
 };
 
-export const deleteEntityImages = async (entityType, entityId) => {
-  const bucket = getBucket();
-  if (!bucket) {
-    logger.warn('Firebase Storage not initialized, skipping image deletion');
-    return;
-  }
-
-  const prefix = getEntityPath(entityType, entityId);
-  const [files] = await bucket.getFiles({ prefix });
-
-  if (files.length > 0) {
-    const deletePromises = files.map((file) => file.delete());
-    await Promise.all(deletePromises);
-    logger.info(`Deleted ${files.length} images for ${entityType}/${entityId}`);
-  }
-};
-
-export const getImageUrl = (fileName) => {
-  if (!fileName) {
-    return null;
-  }
-
-  if (fileName.startsWith('http')) {
-    return fileName;
-  }
-
-  let path = fileName;
-  if (!path.startsWith('kayak/')) {
-    path = `kayak/${path}`;
-  }
-
-  return `https://storage.googleapis.com/${BUCKET_NAME}/${path}`;
-};
-
-export const getEntityImageUrl = (entityType, entityId, version = null) => {
-  if (!entityId) {
-    return null;
-  }
-
-  if (version) {
-    const match = version.toString().match(/^(\d+)\.(\w+)$/);
-    if (match) {
-      const [, ver, ext] = match;
-      return getImageUrl(getImagePath(entityType, entityId, parseInt(ver, 10), ext));
-    }
-  }
-
-  return null;
+export default {
+  getSignedUrl,
+  getSignedUrls,
+  makeFilePublic,
+  getPublicUrl,
+  uploadEntityImage,
 };

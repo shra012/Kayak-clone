@@ -7,6 +7,7 @@ import { Toaster } from 'react-hot-toast';
 import { store } from './store/store.js';
 import App from './App.jsx';
 import './index.css';
+import 'leaflet/dist/leaflet.css';
 
 const theme = localStorage.getItem('theme') || 'light';
 document.documentElement.setAttribute('data-theme', theme);

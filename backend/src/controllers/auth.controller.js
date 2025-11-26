@@ -1,5 +1,4 @@
 import * as authService from '../services/auth.service.js';
-import { getPostgresPool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { doesProfileRequireSsn } from '../constants/profileTypes.js';
 import { normalizeProfileType } from '../utils/profile.js';
@@ -104,52 +103,74 @@ export const getMe = async (req, res, next) => {
       });
     }
 
-    const pool = getPostgresPool();
-    const result = await pool.query(
-      `SELECT id, email, first_name, last_name, role, loyalty_tier,
-        profile_image_url, created_at, updated_at,
-        profile_type, ssn, ssn_verified_at, partner_details
-       FROM users WHERE id = $1`,
-      [userId]
-    );
-
-    if (result.rows.length === 0) {
+    const user = await authService.getUserById(userId);
+    
+    if (!user) {
       return res.status(404).json({
         code: 'NOT_FOUND',
         message: 'User not found',
       });
     }
 
-    const user = result.rows[0];
-    const profileType = normalizeProfileType(user.profile_type);
+    const profileType = normalizeProfileType(user.profileType);
     const requiresSsn = doesProfileRequireSsn(profileType);
     const hasSsn = Boolean(user.ssn);
 
     res.json({
       code: 'SUCCESS',
       data: {
-        id: user.id,
+        id: user._id.toString(),
         email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
+        firstName: user.firstName,
+        lastName: user.lastName,
         role: user.role,
-        loyaltyTier: user.loyalty_tier,
-        profileImageUrl: user.profile_image_url,
+        loyaltyTier: user.loyaltyTier,
+        profileImageUrl: user.profileImageUrl,
         profileType,
         requiresSsn,
         hasSsnOnFile: hasSsn,
-        partnerDetails: user.partner_details || null,
+        partnerDetails: user.partnerProfile || user.partnerDetails || null,
         compliance: {
           requiresSsn,
           ssnOnFile: hasSsn,
-          verifiedAt: user.ssn_verified_at || null,
+          verifiedAt: user.ssnVerifiedAt || null,
         },
-        createdAt: user.created_at,
-        updatedAt: user.updated_at,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
       },
     });
   } catch (error) {
     logger.error('Get me error:', error);
+    next(error);
+  }
+};
+
+export const updateProfile = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required',
+      });
+    }
+
+    const updates = req.body;
+    const updatedUser = await authService.updateUserProfile(userId, updates);
+
+    res.json({
+      code: 'SUCCESS',
+      message: 'Profile updated successfully',
+      data: updatedUser,
+    });
+  } catch (error) {
+    logger.error('Update profile error:', error);
+    if (error.message === 'User not found') {
+      return res.status(404).json({
+        code: 'NOT_FOUND',
+        message: error.message,
+      });
+    }
     next(error);
   }
 };
