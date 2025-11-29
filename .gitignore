@@ -1,1 +1,11 @@
 *.pdf
+
+# Environment files with secrets
+.env
+.env.local
+scripts/.env
+
+# Credentials and sensitive data
+**/credentials.json
+**/*password*
+**/*secret*
