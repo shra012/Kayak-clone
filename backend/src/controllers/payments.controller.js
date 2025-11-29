@@ -68,6 +68,25 @@ export const getPayment = async (req, res, next) => {
   }
 };
 
+export const processPayment = async (req, res, next) => {
+  try {
+    const { paymentId } = req.params;
+    const paymentMethodData = req.body || {};
+
+    const payment = await paymentsService.processPayment(paymentId, paymentMethodData);
+    res.status(200).json(payment);
+  } catch (error) {
+    logger.error('Error processing payment:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: error.message });
+    }
+    if (error.message.includes('Cannot process') || error.message.includes('failed')) {
+      return res.status(400).json({ code: 'BAD_REQUEST', message: error.message });
+    }
+    next(error);
+  }
+};
+
 export const refundPayment = async (req, res, next) => {
   try {
     const { paymentId } = req.params;

@@ -13,6 +13,58 @@ const PAYMENT_STATUSES = {
 };
 
 /**
+ * Mock payment gateway simulation (Stripe-like)
+ * Simulates payment processing with success/failure scenarios
+ */
+const simulatePaymentGateway = async (paymentData) => {
+  const { amount, currency, metadata = {} } = paymentData;
+  
+  // Simulate network delay (50-200ms)
+  await new Promise(resolve => setTimeout(resolve, Math.random() * 150 + 50));
+  
+  // Simulate failure scenarios (for testing)
+  // Fail if amount is exactly 0.01 (test failure case)
+  if (amount === 0.01) {
+    return {
+      success: false,
+      transactionReference: `txn_fail_${Date.now()}`,
+      error: 'Insufficient funds',
+      errorCode: 'card_declined',
+    };
+  }
+  
+  // Fail if metadata contains forceFailure flag
+  if (metadata.forceFailure === true) {
+    return {
+      success: false,
+      transactionReference: `txn_fail_${Date.now()}`,
+      error: 'Payment gateway error',
+      errorCode: 'gateway_error',
+    };
+  }
+  
+  // Simulate random failures (5% failure rate for testing)
+  if (Math.random() < 0.05 && process.env.NODE_ENV === 'development') {
+    return {
+      success: false,
+      transactionReference: `txn_fail_${Date.now()}`,
+      error: 'Network timeout',
+      errorCode: 'timeout',
+    };
+  }
+  
+  // Success case - generate transaction reference
+  const transactionReference = `txn_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  
+  return {
+    success: true,
+    transactionReference,
+    authorizationCode: `auth_${Math.random().toString(36).slice(2, 14).toUpperCase()}`,
+    processedAt: new Date().toISOString(),
+  };
+};
+
+/**
  * Create a payment with transaction support
  */
 export const createPayment = async (userId, paymentData) => {
@@ -290,23 +342,87 @@ export const updatePaymentStatus = async (paymentId, newStatus, transactionRefer
 };
 
 /**
- * Process payment (authorize and capture)
+ * Process payment (authorize and capture) with payment gateway simulation
  */
-export const processPayment = async (paymentId, transactionReference) => {
-  const payment = await getPaymentById(paymentId);
+export const processPayment = async (paymentId, paymentMethodData = {}) => {
+  const pool = getPostgresPool();
+  const client = await pool.connect();
 
-  if (!payment) {
-    throw new Error('Payment not found');
+  try {
+    await client.query('BEGIN');
+
+    const payment = await getPaymentById(paymentId);
+    if (!payment) {
+      throw new Error('Payment not found');
+    }
+
+    if (payment.status !== PAYMENT_STATUSES.PENDING) {
+      throw new Error(`Cannot process payment with status: ${payment.status}`);
+    }
+
+    // Simulate payment gateway processing
+    const gatewayResponse = await simulatePaymentGateway({
+      amount: payment.amount,
+      currency: payment.currency,
+      metadata: payment.metadata,
+      ...paymentMethodData,
+    });
+
+    if (!gatewayResponse.success) {
+      // Payment failed - update status to FAILED
+      const failedPayment = await updatePaymentStatus(
+        paymentId,
+        PAYMENT_STATUSES.FAILED,
+        gatewayResponse.transactionReference
+      );
+
+      await client.query('COMMIT');
+
+      logger.warn(`Payment ${paymentId} failed: ${gatewayResponse.error}`);
+
+      await sendKafkaMessage('payments.failed', {
+        eventId: uuidv4(),
+        occurredAt: new Date().toISOString(),
+        paymentId: failedPayment.id,
+        bookingId: failedPayment.booking_id,
+        userId: failedPayment.user_id,
+        amount: parseFloat(failedPayment.amount),
+        currency: failedPayment.currency,
+        error: gatewayResponse.error,
+        errorCode: gatewayResponse.errorCode,
+      });
+
+      throw new Error(`Payment processing failed: ${gatewayResponse.error}`);
+    }
+
+    // Payment succeeded - authorize first, then capture
+    const authorized = await updatePaymentStatus(
+      paymentId,
+      PAYMENT_STATUSES.AUTHORIZED,
+      gatewayResponse.transactionReference
+    );
+
+    // Small delay to simulate capture
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const succeeded = await updatePaymentStatus(
+      paymentId,
+      PAYMENT_STATUSES.SUCCEEDED,
+      gatewayResponse.transactionReference
+    );
+
+    await client.query('COMMIT');
+
+    logger.info(`Payment ${paymentId} processed successfully: ${gatewayResponse.transactionReference}`);
+
+    return succeeded;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    logger.error('Error processing payment:', error);
+    throw error;
+  } finally {
+    client.release();
   }
-
-  if (payment.status !== PAYMENT_STATUSES.PENDING) {
-    throw new Error(`Cannot process payment with status: ${payment.status}`);
-  }
-
-  const authorized = await updatePaymentStatus(paymentId, PAYMENT_STATUSES.AUTHORIZED, transactionReference);
-  const succeeded = await updatePaymentStatus(paymentId, PAYMENT_STATUSES.SUCCEEDED, transactionReference);
-
-  return succeeded;
 };
 
 /**
