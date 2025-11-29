@@ -369,6 +369,12 @@ const FlightsPage = () => {
     loadFlights(1, defaultFilters);
   };
 
+  const swapLocations = () => {
+    const newFilters = { ...filters, from: filters.to, to: filters.from };
+    setFilters(newFilters);
+    loadFlights(1, newFilters);
+  };
+
   const goToPage = (newPage) => {
     if (!pagination) return;
     if (newPage < 1 || newPage > pagination.totalPages) return;
@@ -376,15 +382,15 @@ const FlightsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-base-200">
+    <div className="min-h-screen bg-base-100">
       {/* Compact Sticky Header */}
-      <div className="bg-primary text-primary-content shadow-xl sticky top-0 z-50">
+      <div className="bg-base-100 text-base-content border-b border-base-300 shadow-sm sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <button
               type="button"
               onClick={() => navigate('/')}
-              className="btn btn-sm btn-ghost text-primary-content hover:bg-primary-focus gap-2"
+              className="btn btn-sm btn-outline gap-2"
             >
               <span className="text-xl">✈️</span>
               <span className="font-semibold">New Search</span>
@@ -393,7 +399,7 @@ const FlightsPage = () => {
             <div className="flex gap-2">
               <button
                 type="button"
-                className="btn btn-sm btn-ghost text-primary-content"
+                className="btn btn-sm btn-ghost"
                 onClick={() => {
                   // Navigate to hotels with destination city pre-filled
                   const today = new Date();
@@ -417,7 +423,7 @@ const FlightsPage = () => {
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-ghost text-primary-content"
+                className="btn btn-sm btn-ghost"
                 onClick={() => {
                   // Navigate to cars with destination location pre-filled
                   navigate('/cars', {
@@ -451,7 +457,7 @@ const FlightsPage = () => {
                     console.log('Opening departure calendar with filters:', { from: filters.from, to: filters.to, date: filters.date });
                     setShowDepartCalendar(true);
                   }}
-                  className="inline-flex items-center gap-1 px-3 py-1 bg-primary-focus hover:bg-primary rounded-md transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 px-3 py-1 bg-primary/10 text-primary hover:bg-primary/20 rounded-md transition-colors cursor-pointer"
                   title="Click to change departure date"
                 >
                   <FaCalendar className="w-3 h-3" />
@@ -463,7 +469,7 @@ const FlightsPage = () => {
                     <button
                       type="button"
                       onClick={() => setShowReturnCalendar(true)}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-primary-focus hover:bg-primary rounded-md transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 px-3 py-1 bg-primary/10 text-primary hover:bg-primary/20 rounded-md transition-colors cursor-pointer"
                       title="Click to change return date"
                     >
                       <FaCalendar className="w-3 h-3" />
@@ -473,6 +479,43 @@ const FlightsPage = () => {
                 )}
               </>
             )}
+          </div>
+
+          {/* Editable From/To inputs */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="From (e.g., MAA)"
+              className="input input-sm input-bordered w-32"
+              value={filters.from}
+              onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))}
+              onBlur={() => loadFlights(1, { ...filters, from: filters.from })}
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={swapLocations}
+              title="Swap From/To"
+            >
+              ⇆
+            </button>
+            <input
+              type="text"
+              placeholder="To (e.g., LAX)"
+              className="input input-sm input-bordered w-32"
+              value={filters.to}
+              onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))}
+              onBlur={() => loadFlights(1, { ...filters, to: filters.to })}
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => loadFlights(1)}
+            >
+              Update
+            </button>
           </div>
         </div>
       </div>
@@ -656,7 +699,7 @@ const FlightsPage = () => {
                   <h3 className="text-lg font-semibold mb-3">
                     ✈️ Other available dates:
                   </h3>
-                  <div className="overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                  <div className="overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-base-300 scrollbar-track-base-200">
                     <div className="flex gap-3 pb-2 w-max">
                       {suggestedFlights.map((flight) => (
                         <button
@@ -669,10 +712,10 @@ const FlightsPage = () => {
                             setFilters(newFilters);
                             loadFlights(1, newFilters);
                           }}
-                          className="card bg-gradient-to-br from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 border-2 border-blue-200 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer flex-shrink-0 w-56"
+                          className="card bg-base-100 border border-base-300 hover:border-primary/70 hover:shadow-lg transition-all cursor-pointer flex-shrink-0 w-56"
                         >
                           <div className="card-body p-3">
-                            <div className="text-sm font-medium text-blue-600 mb-1">
+                            <div className="text-sm font-medium text-primary mb-1">
                               {parseLocalDate(flight.departDate).toLocaleDateString('en-US', {
                                 weekday: 'short',
                                 month: 'short',
@@ -680,16 +723,16 @@ const FlightsPage = () => {
                               })}
                             </div>
                             <div className="flex items-center justify-between gap-2 mb-2">
-                              <span className="font-semibold text-gray-900 truncate">{flight.airline}</span>
+                              <span className="font-semibold text-base-content truncate">{flight.airline}</span>
                               {flight.nonstop && (
                                 <span className="badge badge-success badge-xs">Direct</span>
                               )}
                             </div>
                             <div className="flex items-center justify-between">
-                              <div className="text-xs text-gray-600">
+                              <div className="text-xs text-base-content/70">
                                 {flight.departureTime} - {flight.arrivalTime}
                               </div>
-                              <div className="text-lg font-bold text-blue-600">
+                              <div className="text-lg font-bold text-primary">
                                 ${flight.price}
                               </div>
                             </div>
@@ -737,10 +780,10 @@ const FlightsPage = () => {
                                 setFilters(newFilters);
                                 loadFlights(1, newFilters);
                               }}
-                              className="card bg-gradient-to-br from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 border-2 border-blue-200 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer flex-shrink-0 w-56"
+                              className="card bg-base-100 border border-base-300 hover:border-primary/70 hover:shadow-lg transition-all cursor-pointer flex-shrink-0 w-56"
                             >
                               <div className="card-body p-3">
-                                <div className="text-sm font-medium text-blue-600 mb-1">
+                                <div className="text-sm font-medium text-primary mb-1">
                                   {parseLocalDate(flight.departDate).toLocaleDateString('en-US', {
                                     weekday: 'short',
                                     month: 'short',
@@ -748,16 +791,16 @@ const FlightsPage = () => {
                                   })}
                                 </div>
                                 <div className="flex items-center justify-between gap-2 mb-2">
-                                  <span className="font-semibold text-gray-900 truncate">{flight.airline}</span>
+                                  <span className="font-semibold text-base-content truncate">{flight.airline}</span>
                                   {flight.nonstop && (
                                     <span className="badge badge-success badge-xs">Direct</span>
                                   )}
                                 </div>
                                 <div className="flex items-center justify-between">
-                                  <div className="text-xs text-gray-600">
+                                  <div className="text-xs text-base-content/70">
                                     {flight.departureTime} - {flight.arrivalTime}
                                   </div>
-                                  <div className="text-lg font-bold text-blue-600">
+                                  <div className="text-lg font-bold text-primary">
                                     ${flight.price}
                                   </div>
                                 </div>
@@ -1049,7 +1092,7 @@ const FlightsPage = () => {
           <div className="relative">
             <button
               onClick={() => setShowDepartCalendar(false)}
-              className="absolute -top-3 -right-3 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
+              className="absolute -top-3 -right-3 z-10 bg-base-100 border border-base-300 rounded-full p-2 shadow-lg hover:bg-base-200"
             >
               <FaTimes className="w-5 h-5" />
             </button>
@@ -1082,7 +1125,7 @@ const FlightsPage = () => {
           <div className="relative">
             <button
               onClick={() => setShowReturnCalendar(false)}
-              className="absolute -top-3 -right-3 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
+              className="absolute -top-3 -right-3 z-10 bg-base-100 border border-base-300 rounded-full p-2 shadow-lg hover:bg-base-200"
             >
               <FaTimes className="w-5 h-5" />
             </button>

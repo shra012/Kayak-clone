@@ -1,109 +1,168 @@
 import { logger } from '../config/logger.js';
+import * as adminService from '../services/admin.service.js';
+import { updateUserProfile } from '../services/auth.service.js';
 
 export const createFlight = async (req, res, next) => {
   try {
-    // TODO: Implement flight creation
-    res.status(201).json({});
+    const flight = await adminService.createFlight(req.body);
+    res.status(201).json(flight);
   } catch (error) {
+    logger.error('Error creating flight:', error);
     next(error);
   }
 };
 
 export const updateFlight = async (req, res, next) => {
   try {
-    // TODO: Implement flight update
-    res.json({});
+    const { flightId } = req.params;
+    await adminService.updateFlight(flightId, req.body);
+    res.json({ id: flightId, ...req.body });
   } catch (error) {
+    logger.error('Error updating flight:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: error.message });
+    }
     next(error);
   }
 };
 
 export const deleteFlight = async (req, res, next) => {
   try {
-    // TODO: Implement flight deletion
+    const { flightId } = req.params;
+    await adminService.deleteFlight(flightId);
     res.status(204).send();
   } catch (error) {
+    logger.error('Error deleting flight:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: error.message });
+    }
     next(error);
   }
 };
 
 export const createHotel = async (req, res, next) => {
   try {
-    // TODO: Implement hotel creation
-    res.status(201).json({});
+    const hotel = await adminService.createHotel(req.body);
+    res.status(201).json(hotel);
   } catch (error) {
+    logger.error('Error creating hotel:', error);
     next(error);
   }
 };
 
 export const updateHotel = async (req, res, next) => {
   try {
-    // TODO: Implement hotel update
-    res.json({});
+    const { hotelId } = req.params;
+    await adminService.updateHotel(hotelId, req.body);
+    res.json({ id: hotelId, ...req.body });
   } catch (error) {
+    logger.error('Error updating hotel:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: error.message });
+    }
     next(error);
   }
 };
 
 export const deleteHotel = async (req, res, next) => {
   try {
-    // TODO: Implement hotel deletion
+    const { hotelId } = req.params;
+    await adminService.deleteHotel(hotelId);
     res.status(204).send();
   } catch (error) {
+    logger.error('Error deleting hotel:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: error.message });
+    }
     next(error);
   }
 };
 
 export const createCar = async (req, res, next) => {
   try {
-    // TODO: Implement car creation
-    res.status(201).json({});
+    const car = await adminService.createCar(req.body);
+    res.status(201).json(car);
   } catch (error) {
+    logger.error('Error creating car:', error);
     next(error);
   }
 };
 
 export const updateCar = async (req, res, next) => {
   try {
-    // TODO: Implement car update
-    res.json({});
+    const { carId } = req.params;
+    await adminService.updateCar(carId, req.body);
+    res.json({ id: carId, ...req.body });
   } catch (error) {
+    logger.error('Error updating car:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: error.message });
+    }
     next(error);
   }
 };
 
 export const deleteCar = async (req, res, next) => {
   try {
-    // TODO: Implement car deletion
+    const { carId } = req.params;
+    await adminService.deleteCar(carId);
     res.status(204).send();
   } catch (error) {
+    logger.error('Error deleting car:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: error.message });
+    }
     next(error);
   }
 };
 
 export const modifyUser = async (req, res, next) => {
   try {
-    // TODO: Implement user modification
-    res.json({});
+    const { userId } = req.params;
+    const updates = req.body;
+
+    const updatedUser = await updateUserProfile(userId, updates);
+    res.json(updatedUser);
   } catch (error) {
+    logger.error('Error modifying user:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: error.message });
+    }
     next(error);
   }
 };
 
 export const getRevenueReport = async (req, res, next) => {
   try {
-    // TODO: Implement revenue report
-    res.json({ generatedAt: new Date().toISOString(), items: [] });
+    const filters = {
+      startDate: req.query.startDate,
+      endDate: req.query.endDate,
+      city: req.query.city,
+      state: req.query.state,
+      provider: req.query.provider,
+      groupBy: req.query.groupBy || 'month',
+    };
+
+    const report = await adminService.getRevenueReport(filters);
+    res.json(report);
   } catch (error) {
+    logger.error('Error getting revenue report:', error);
     next(error);
   }
 };
 
 export const getTopProviders = async (req, res, next) => {
   try {
-    // TODO: Implement top providers report
-    res.json({ generatedAt: new Date().toISOString(), providers: [] });
+    const filters = {
+      limit: parseInt(req.query.limit, 10) || 10,
+      startDate: req.query.startDate,
+      endDate: req.query.endDate,
+    };
+
+    const report = await adminService.getTopProviders(filters);
+    res.json(report);
   } catch (error) {
+    logger.error('Error getting top providers:', error);
     next(error);
   }
 };

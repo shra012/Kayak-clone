@@ -38,3 +38,6 @@ build/
 tmp/
 temp/
 
+kafka/ca.pem
+kafka/service.cert
+kafka/service.key

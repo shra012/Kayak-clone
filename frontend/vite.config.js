@@ -4,7 +4,8 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  publicDir: path.resolve(__dirname, '../Background_images'),
+  // Images are now stored in Firebase Storage, not in local public directory
+  publicDir: 'public',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

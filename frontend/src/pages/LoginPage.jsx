@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import { useAuth } from '../hooks/useAuth';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { getHomePageFlightImages } from '../services/backgroundImages.service.js';
 
 const LoginPage = () => {
   useDocumentTitle('Login');
   
+  const flightImages = getHomePageFlightImages();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -22,7 +24,7 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="hero min-h-screen bg-sky-50">
+    <div className="hero min-h-screen bg-base-100">
       <div className="hero-content flex-col lg:flex-row-reverse w-full max-w-7xl">
         {/* Right side - Image Grid */}
         <div className="hidden lg:flex lg:w-1/2 gap-3">
@@ -30,21 +32,21 @@ const LoginPage = () => {
           <div className="flex-1 grid grid-cols-1 gap-3">
             <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
               <img
-                src="/flight1.jpg"
+                src={flightImages.flight1}
                 alt="Travel 1"
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
               <img
-                src="/flight2.avif"
+                src={flightImages.flight2}
                 alt="Travel 2"
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
               <img
-                src="/flight3.jpg"
+                src={flightImages.flight3}
                 alt="Travel 3"
                 className="w-full h-full object-cover"
               />
@@ -54,21 +56,21 @@ const LoginPage = () => {
           <div className="flex-1 grid grid-cols-1 gap-3">
             <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
               <img
-                src="/flight4.webp"
+                src={flightImages.flight4}
                 alt="Travel 4"
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
               <img
-                src="/flight5.jpg"
+                src={flightImages.flight5}
                 alt="Travel 5"
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
               <img
-                src="/flight6.jpg"
+                src={flightImages.flight6}
                 alt="Travel 6"
                 className="w-full h-full object-cover"
               />
@@ -84,7 +86,7 @@ const LoginPage = () => {
               Access your bookings, manage your profile, and more.
             </p>
           </div>
-          <div className="card bg-white w-full max-w-sm mx-auto shadow-2xl border border-gray-200">
+          <div className="card bg-base-100 w-full max-w-sm mx-auto shadow-2xl border border-base-300">
           <form className="card-body" onSubmit={handleSubmit}>
             {error && (
               <div className="alert alert-error">
@@ -122,7 +124,7 @@ const LoginPage = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/60 hover:text-base-content"
                   disabled={loading}
                 >
                   {showPassword ? (

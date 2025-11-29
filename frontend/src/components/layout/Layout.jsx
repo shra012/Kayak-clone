@@ -24,8 +24,11 @@ const Layout = ({ children }) => {
   };
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme") || "light";
-    document.documentElement.setAttribute("data-theme", savedTheme);
+    const savedTheme = localStorage.getItem("theme");
+    const nextTheme = savedTheme && ["light", "cupcake"].includes(savedTheme)
+      ? savedTheme
+      : "light";
+    document.documentElement.setAttribute("data-theme", nextTheme);
   }, [theme]);
 
   const initials = (() => {
@@ -217,7 +220,6 @@ const Layout = ({ children }) => {
             onChange={handleThemeChange}
           >
             <option value="light">Light</option>
-            <option value="dark">Dark</option>
             <option value="cupcake">Cupcake</option>
           </select>
           {isAuthenticated ? (

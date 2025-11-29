@@ -1,3 +1,4 @@
+import dns from 'node:dns';
 import pg from 'pg';
 import { MongoClient } from 'mongodb';
 import { createClient as createRedisClient } from 'redis';
@@ -5,30 +6,53 @@ import { logger } from './logger.js';
 
 const { Pool } = pg;
 
+// Prefer IPv4 for cloud databases (Supabase) to avoid IPv6 ENETUNREACH in Docker
+dns.setDefaultResultOrder('ipv4first');
+
 let postgresPool = null;
 
 export const getPostgresPool = () => {
   if (!postgresPool) {
-    const connectionString = process.env.DATABASE_URL;
+    let connectionString = process.env.DATABASE_URL;
     
     if (!connectionString) {
-      throw new Error('DATABASE_URL must be set for cloud PostgreSQL (Supabase)');
+      const error = new Error('DATABASE_URL must be set for cloud PostgreSQL (Supabase)');
+      logger.error(error.message);
+      throw error;
     }
-    
-    // Cloud PostgreSQL (Supabase) configuration
-    postgresPool = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false }, // Required for Supabase cloud connection
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
-    });
 
-    postgresPool.on('error', (err) => {
-      logger.error('PostgreSQL pool error:', err);
-    });
+    // Allow overriding the hostname to an IPv4-capable endpoint when Docker lacks IPv6
+    // e.g. set POSTGRES_HOST_OVERRIDE to a pooling endpoint or IPv4 address
+    if (process.env.POSTGRES_HOST_OVERRIDE) {
+      try {
+        const url = new URL(connectionString);
+        url.hostname = process.env.POSTGRES_HOST_OVERRIDE;
+        connectionString = url.toString();
+        logger.warn(`Using POSTGRES_HOST_OVERRIDE=${process.env.POSTGRES_HOST_OVERRIDE}`);
+      } catch (err) {
+        logger.error('Failed to apply POSTGRES_HOST_OVERRIDE:', err);
+      }
+    }
 
-    logger.info('PostgreSQL (Supabase Cloud) connection pool created');
+    try {
+      // Cloud PostgreSQL (Supabase) configuration
+      postgresPool = new Pool({
+        connectionString,
+        ssl: { rejectUnauthorized: false }, // Required for Supabase cloud connection
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000, // Increased timeout for cloud connections
+      });
+
+      postgresPool.on('error', (err) => {
+        logger.error('PostgreSQL pool error:', err);
+      });
+
+      logger.info('PostgreSQL (Supabase Cloud) connection pool created');
+    } catch (error) {
+      logger.error('Failed to create PostgreSQL pool:', error);
+      throw error;
+    }
   }
   return postgresPool;
 };
@@ -41,10 +65,15 @@ export const getMongoDB = async () => {
     const uri = process.env.MONGODB_URI;
     
     if (!uri) {
-      throw new Error('MONGODB_URI must be set');
+      const error = new Error('MONGODB_URI must be set');
+      logger.error(error.message);
+      throw error;
     }
 
-    mongoClient = new MongoClient(uri);
+    mongoClient = new MongoClient(uri, {
+      serverSelectionTimeoutMS: 10000, // 10 second timeout for cloud connections
+      connectTimeoutMS: 10000,
+    });
 
     try {
       await mongoClient.connect();
@@ -69,23 +98,41 @@ export const getRedisClient = async () => {
     const redisUrl = process.env.REDIS_URL;
     
     if (!redisUrl) {
-      throw new Error('REDIS_URL must be set for cloud Redis connection');
+      const error = new Error('REDIS_URL must be set for cloud Redis connection');
+      logger.error(error.message);
+      throw error;
     }
     
-    // Cloud Redis configuration
-    redisClient = createRedisClient({
-      url: redisUrl,
-    });
+    try {
+      // Cloud Redis configuration
+      redisClient = createRedisClient({
+        url: redisUrl,
+        socket: {
+          connectTimeout: 10000, // 10 second timeout for cloud connections
+          reconnectStrategy: (retries) => {
+            if (retries > 10) {
+              logger.error('Redis connection failed after 10 retries');
+              return new Error('Redis connection failed');
+            }
+            return Math.min(retries * 100, 3000);
+          },
+        },
+      });
 
-    redisClient.on('error', (err) => {
-      logger.error('Redis Client Error:', err);
-    });
+      redisClient.on('error', (err) => {
+        logger.error('Redis Client Error:', err);
+      });
 
-    redisClient.on('connect', () => {
-      logger.info('Redis Cloud connected');
-    });
+      redisClient.on('connect', () => {
+        logger.info('Redis Cloud connected');
+      });
 
-    await redisClient.connect();
+      await redisClient.connect();
+    } catch (error) {
+      logger.error('Redis connection error:', error);
+      redisClient = null;
+      throw error;
+    }
   }
   return redisClient;
 };
@@ -106,8 +153,11 @@ export const closeConnections = async () => {
       await redisClient.quit();
       logger.info('Redis connection closed');
     }
+
+    // Close Kafka connections
+    const { closeKafkaConnections } = await import('./kafka.js');
+    await closeKafkaConnections();
   } catch (error) {
     logger.error('Error closing database connections:', error);
   }
 };
-

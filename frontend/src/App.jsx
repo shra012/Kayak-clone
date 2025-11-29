@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AuthInitializer from './components/common/AuthInitializer';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -28,7 +29,7 @@ import AddCarPage from './pages/owner/AddCarPage';
 
 function App() {
   return (
-    <>
+    <ErrorBoundary>
       <AuthInitializer />
       <Layout>
       <Routes>
@@ -155,8 +156,8 @@ function App() {
         
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
-    </Layout>
-    </>
+      </Layout>
+    </ErrorBoundary>
   );
 }
 

@@ -111,6 +111,60 @@ services:
     ports:
       - "6379:6379"
 
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: kayak-backend
+    restart: unless-stopped
+    depends_on:
+      - mysql
+      - mongo
+      - redis
+      # Note: Using Aiven Kafka (cloud), not local kafka service
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://kayak:password@mysql:3306/kayak
+      MONGODB_URI: mongodb://root:password@mongo:27017/kayak?authSource=admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Aiven Kafka Configuration (from .env file)
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka-23b69111-shravan-3151.h.aivencloud.com:12310}
+      KAFKA_HOST: ${KAFKA_HOST:-kafka-23b69111-shravan-3151.h.aivencloud.com}
+      KAFKA_PORT: ${KAFKA_PORT:-12310}
+      KAFKA_SSL_CA_PATH: ${KAFKA_SSL_CA_PATH:-./kafka/ca.pem}
+      KAFKA_SSL_CERT_PATH: ${KAFKA_SSL_CERT_PATH:-./kafka/service.cert}
+      KAFKA_SSL_KEY_PATH: ${KAFKA_SSL_KEY_PATH:-./kafka/service.key}
+      KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-kayak-backend}
+      CORS_ORIGIN: http://localhost:5173,http://frontend:5173
+    volumes:
+      - ../../backend:/app
+      - /app/node_modules
+    working_dir: /app
+    command: npm run dev
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    container_name: kayak-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    environment:
+      NODE_ENV: development
+      VITE_API_URL: http://localhost:3000
+    volumes:
+      - ../../frontend:/app
+      - /app/node_modules
+    working_dir: /app
+    command: npm run dev -- --host
+
 volumes:
   kafka_data:
   mysql_data:

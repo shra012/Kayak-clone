@@ -52,6 +52,32 @@ const CarsPage = () => {
   const [showPickUpCalendar, setShowPickUpCalendar] = useState(false);
   const [showDropOffCalendar, setShowDropOffCalendar] = useState(false);
 
+  const storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'firegram-1r.appspot.com';
+  const placeholderImage = 'https://via.placeholder.com/400x300/4A5568/FFFFFF?text=Car+Image';
+
+  const resolveCarImageUrl = (rawUrl) => {
+    if (!rawUrl) return placeholderImage;
+
+    // If it's a full URL, still rewrite the path segment if needed
+    if (rawUrl.startsWith('http')) {
+      return rawUrl.replace('/kayak/cars/', '/kayak/product/cars/');
+    }
+
+    let path = rawUrl;
+    if (path.startsWith('kayak/cars/')) {
+      path = path.replace('kayak/cars/', 'kayak/product/cars/');
+    } else if (path.startsWith('kayak/product/cars/')) {
+      // already correct
+    } else if (path.startsWith('kayak/')) {
+      // keep other kayak paths as-is
+    } else {
+      path = `kayak/product/cars/${path}`;
+    }
+
+    const encodedPath = encodeURIComponent(path);
+    return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodedPath}?alt=media`;
+  };
+
   // Calculate rental duration in days
   const calculateDuration = () => {
     if (!pickUpDate || !dropOffDate) return 1;
@@ -211,9 +237,9 @@ const CarsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-sky-50">
+    <div className="min-h-screen bg-base-100">
       {/* Search Summary Header */}
-      <div className="bg-white/80 backdrop-blur-sm text-base-content py-4 shadow-lg border-b border-sky-200">
+      <div className="bg-base-100/90 backdrop-blur-sm text-base-content py-4 shadow-sm border-b border-base-300">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <div className="flex items-center gap-2">
@@ -468,23 +494,23 @@ const CarsPage = () => {
                         <div className="card-body p-0">
                           <div className="flex flex-col md:flex-row">
                             {/* Car Image */}
-                            <figure className="md:w-64 h-48 md:h-auto overflow-hidden bg-base-200 relative">
-                              {!imageLoaded[car.id] && (
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                  <FaCar className="w-12 h-12 text-base-300 animate-pulse" />
-                                </div>
-                              )}
-                              <img
-                                src={car.imageUrl || 'https://via.placeholder.com/400x300/4A5568/FFFFFF?text=Car+Image'}
+                          <figure className="md:w-64 h-48 md:h-auto overflow-hidden bg-base-200 relative">
+                            {!imageLoaded[car.id] && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <FaCar className="w-12 h-12 text-base-300 animate-pulse" />
+                              </div>
+                            )}
+                            <img
+                                src={resolveCarImageUrl(car.imageUrl)}
                                 alt={`${car.type} - ${car.vendor}`}
                                 className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded[car.id] ? 'opacity-100' : 'opacity-0'}`}
                                 onLoad={() => setImageLoaded(prev => ({ ...prev, [car.id]: true }))}
                                 onError={(e) => {
-                                  e.target.src = 'https://via.placeholder.com/400x300/4A5568/FFFFFF?text=Car+Image';
+                                  e.target.src = placeholderImage;
                                   setImageLoaded(prev => ({ ...prev, [car.id]: true }));
                                 }}
                               />
-                            </figure>
+                          </figure>
 
                             {/* Car Details */}
                             <div className="flex-1 p-6">

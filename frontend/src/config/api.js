@@ -24,10 +24,40 @@ apiClient.interceptors.request.use(
   }
 );
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const shouldRetry = (error, retryCount) => {
+  if (retryCount >= MAX_RETRIES) {
+    return false;
+  }
+
+  // Retry on network errors or 5xx errors
+  if (!error.response) {
+    return true; // Network error
+  }
+
+  const status = error.response.status;
+  return status >= 500 || status === 429; // Server error or rate limit
+};
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const currentPath = window.location.pathname;
+    const config = error.config;
+    
+    // Retry logic
+    if (config && shouldRetry(error, config.__retryCount || 0)) {
+      config.__retryCount = (config.__retryCount || 0) + 1;
+      const delay = RETRY_DELAY * Math.pow(2, config.__retryCount - 1); // Exponential backoff
+      
+      await sleep(delay);
+      return apiClient(config);
+    }
     
     // Handle 401 Unauthorized or 403 Forbidden (token issues)
     if (error.response?.status === 401 || error.response?.status === 403) {
@@ -39,7 +69,7 @@ apiClient.interceptors.response.use(
         message.includes('Authentication token required') ||
         error.response?.status === 401
       ) {
-        console.warn('⚠️ Token expired or invalid - clearing session');
+        console.warn('Token expired or invalid - clearing session');
         localStorage.removeItem('authToken');
         localStorage.removeItem('user');
         
@@ -49,6 +79,26 @@ apiClient.interceptors.response.use(
             window.location.href = '/login';
           }, 100);
         }
+      }
+    }
+    
+    // Handle rate limiting
+    if (error.response?.status === 429) {
+      const retryAfter = error.response.headers['retry-after'];
+      const message = error.response?.data?.message || 'Too many requests. Please try again later.';
+      error.userMessage = retryAfter 
+        ? `${message} Retry after ${retryAfter} seconds.`
+        : message;
+    }
+    
+    // Add user-friendly error messages
+    if (!error.userMessage) {
+      if (error.response?.data?.message) {
+        error.userMessage = error.response.data.message;
+      } else if (error.message) {
+        error.userMessage = error.message;
+      } else {
+        error.userMessage = 'An unexpected error occurred. Please try again.';
       }
     }
     

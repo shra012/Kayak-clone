@@ -1,7 +1,15 @@
 import { createSlice } from '@reduxjs/toolkit';
 
+const allowedThemes = ['light', 'cupcake'];
+
+const getInitialTheme = () => {
+  if (typeof localStorage === 'undefined') return 'light';
+  const saved = localStorage.getItem('theme');
+  return allowedThemes.includes(saved) ? saved : 'light';
+};
+
 const initialState = {
-  theme: localStorage.getItem('theme') || 'light',
+  theme: getInitialTheme(),
   sidebarOpen: false,
   notifications: [],
 };
@@ -11,9 +19,12 @@ const uiSlice = createSlice({
   initialState,
   reducers: {
     setTheme: (state, action) => {
-      state.theme = action.payload;
-      localStorage.setItem('theme', action.payload);
-      document.documentElement.setAttribute('data-theme', action.payload);
+      const nextTheme = allowedThemes.includes(action.payload)
+        ? action.payload
+        : 'light';
+      state.theme = nextTheme;
+      localStorage.setItem('theme', nextTheme);
+      document.documentElement.setAttribute('data-theme', nextTheme);
     },
     toggleSidebar: (state) => {
       state.sidebarOpen = !state.sidebarOpen;
@@ -47,4 +58,3 @@ export const {
   clearNotifications,
 } = uiSlice.actions;
 export default uiSlice.reducer;
-

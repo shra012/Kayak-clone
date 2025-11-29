@@ -1,19 +1,19 @@
 const ConciergePage = () => {
   return (
-    <div className="min-h-screen bg-sky-50">
+    <div className="min-h-screen bg-base-100">
       {/* Header Section with Background */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-sky-200">
+      <div className="bg-base-100/90 backdrop-blur-sm border-b border-base-300">
         <div className="max-w-7xl mx-auto px-4 py-8">
-          <h1 className="text-3xl font-bold">AI Concierge</h1>
-          <p className="text-base-content/60">Get personalized travel assistance and recommendations</p>
+          <h1 className="text-3xl font-bold text-base-content">AI Concierge</h1>
+          <p className="text-base-content/70">Get personalized travel assistance and recommendations</p>
         </div>
       </div>
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="card bg-white shadow-xl border border-gray-200">
+        <div className="card bg-base-100 shadow-md border border-base-300">
           <div className="card-body">
-            <p className="text-gray-600">AI Concierge functionality coming soon...</p>
+            <p className="text-base-content/70">AI Concierge functionality coming soon...</p>
           </div>
         </div>
       </div>
@@ -22,4 +22,3 @@ const ConciergePage = () => {
 };
 
 export default ConciergePage;
-
