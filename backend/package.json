@@ -7,8 +7,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "jest",
-    "test:watch": "jest --watch",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --testPathPattern=tests/.*\\.test\\.cjs",
     "test:connection": "node test-connection.js",
     "lint": "eslint src/**/*.js",
     "lint:fix": "eslint src/**/*.js --fix",
@@ -45,7 +46,8 @@
     "redis": "^4.6.12",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",
-    "winston-daily-rotate-file": "^4.7.1"
+    "winston-daily-rotate-file": "^4.7.1",
+    "prom-client": "^15.1.2"
   },
   "devDependencies": {
     "eslint": "^8.55.0",

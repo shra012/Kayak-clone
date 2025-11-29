@@ -1,6 +1,12 @@
 import { getMongoDB } from '../config/database.js';
 import { logger } from '../config/logger.js';
-import { getOrSetCached } from '../utils/cache.js';
+import {
+  getOrSetCached,
+  getCachedSearchResults,
+  cacheSearchResults,
+  getCachedListing,
+  cacheListing,
+} from '../utils/cache.js';
 
 /**
  * Search flights with filters and pagination
@@ -21,6 +27,13 @@ export const searchFlights = async (query) => {
       sort = 'price',
       order = 'asc',
     } = query;
+
+    // Try to get cached results
+    const cached = await getCachedSearchResults('flight', query);
+    if (cached) {
+      logger.debug('Returning cached flight search results');
+      return cached;
+    }
 
     const db = await getMongoDB();
     const collection = db.collection('flights');
@@ -45,7 +58,7 @@ export const searchFlights = async (query) => {
       collection.countDocuments(filter),
     ]);
 
-    return {
+    const results = {
       items,
       pagination: {
         page: parseInt(page),
@@ -54,6 +67,11 @@ export const searchFlights = async (query) => {
         totalPages: Math.ceil(totalItems / parseInt(limit)),
       },
     };
+
+    // Cache the results
+    await cacheSearchResults('flight', query, results);
+
+    return results;
   } catch (error) {
     logger.error('Error in searchFlights service:', error);
     throw error;
@@ -136,10 +154,24 @@ export const getFlightPricesByDate = async ({ from, to, startDate, endDate }) =>
  */
 export const getFlightById = async (flightId) => {
   try {
+    // Try to get cached flight
+    const cached = await getCachedListing('flight', flightId);
+    if (cached) {
+      logger.debug(`Returning cached flight: ${flightId}`);
+      return cached;
+    }
+
     const db = await getMongoDB();
     const collection = db.collection('flights');
     
-    return await collection.findOne({ id: flightId });
+    const flight = await collection.findOne({ id: flightId });
+
+    if (flight) {
+      // Cache the flight
+      await cacheListing('flight', flightId, flight);
+    }
+
+    return flight;
   } catch (error) {
     logger.error('Error in getFlightById service:', error);
     throw error;
@@ -166,6 +198,13 @@ export const searchHotels = async (query) => {
       order = 'asc',
     } = query;
 
+    // Try to get cached results
+    const cached = await getCachedSearchResults('hotel', query);
+    if (cached) {
+      logger.debug('Returning cached hotel search results');
+      return cached;
+    }
+
     const db = await getMongoDB();
     const collection = db.collection('hotels');
 
@@ -191,7 +230,7 @@ export const searchHotels = async (query) => {
       collection.countDocuments(filter),
     ]);
 
-    return {
+    const results = {
       items,
       pagination: {
         page: parseInt(page),
@@ -200,6 +239,11 @@ export const searchHotels = async (query) => {
         totalPages: Math.ceil(totalItems / parseInt(limit)),
       },
     };
+
+    // Cache the results
+    await cacheSearchResults('hotel', query, results);
+
+    return results;
   } catch (error) {
     logger.error('Error in searchHotels service:', error);
     throw error;
@@ -229,10 +273,24 @@ export const getHotelCities = async (query, limit = 10) => {
  */
 export const getHotelById = async (hotelId) => {
   try {
+    // Try to get cached hotel
+    const cached = await getCachedListing('hotel', hotelId);
+    if (cached) {
+      logger.debug(`Returning cached hotel: ${hotelId}`);
+      return cached;
+    }
+
     const db = await getMongoDB();
     const collection = db.collection('hotels');
     
-    return await collection.findOne({ id: hotelId });
+    const hotel = await collection.findOne({ id: hotelId });
+
+    if (hotel) {
+      // Cache the hotel
+      await cacheListing('hotel', hotelId, hotel);
+    }
+
+    return hotel;
   } catch (error) {
     logger.error('Error in getHotelById service:', error);
     throw error;
@@ -258,6 +316,13 @@ export const searchCars = async (query) => {
       order = 'asc',
     } = query;
 
+    // Try to get cached results
+    const cached = await getCachedSearchResults('car', query);
+    if (cached) {
+      logger.debug('Returning cached car search results');
+      return cached;
+    }
+
     const db = await getMongoDB();
     const collection = db.collection('cars');
 
@@ -280,7 +345,7 @@ export const searchCars = async (query) => {
       collection.countDocuments(filter),
     ]);
 
-    return {
+    const results = {
       items,
       pagination: {
         page: parseInt(page),
@@ -289,6 +354,11 @@ export const searchCars = async (query) => {
         totalPages: Math.ceil(totalItems / parseInt(limit)),
       },
     };
+
+    // Cache the results
+    await cacheSearchResults('car', query, results);
+
+    return results;
   } catch (error) {
     logger.error('Error in searchCars service:', error);
     throw error;
@@ -300,10 +370,24 @@ export const searchCars = async (query) => {
  */
 export const getCarById = async (carId) => {
   try {
+    // Try to get cached car
+    const cached = await getCachedListing('car', carId);
+    if (cached) {
+      logger.debug(`Returning cached car: ${carId}`);
+      return cached;
+    }
+
     const db = await getMongoDB();
     const collection = db.collection('cars');
     
-    return await collection.findOne({ id: carId });
+    const car = await collection.findOne({ id: carId });
+
+    if (car) {
+      // Cache the car
+      await cacheListing('car', carId, car);
+    }
+
+    return car;
   } catch (error) {
     logger.error('Error in getCarById service:', error);
     throw error;
