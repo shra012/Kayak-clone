@@ -1,0 +1,84 @@
+# Kafka Topics Configuration for Kayak Platform
+# This file defines all Kafka topics used in the application
+
+topics:
+  # Booking Events
+  - name: bookings.created
+    partitions: 3
+    replication: 2
+    retention_ms: 604800000  # 7 days
+    description: "Published when a new booking is created"
+    
+  - name: bookings.updated
+    partitions: 3
+    replication: 2
+    retention_ms: 604800000  # 7 days
+    description: "Published when a booking is updated"
+    
+  - name: bookings.confirmed
+    partitions: 3
+    replication: 2
+    retention_ms: 604800000  # 7 days
+    description: "Published when a booking is confirmed"
+    
+  - name: bookings.cancelled
+    partitions: 3
+    replication: 2
+    retention_ms: 604800000  # 7 days
+    description: "Published when a booking is cancelled"
+
+  # Payment Events
+  - name: payments.created
+    partitions: 3
+    replication: 2
+    retention_ms: 2592000000  # 30 days
+    description: "Published when a payment is initiated"
+    
+  - name: payments.succeeded
+    partitions: 3
+    replication: 2
+    retention_ms: 2592000000  # 30 days
+    description: "Published when a payment succeeds"
+    
+  - name: payments.failed
+    partitions: 3
+    replication: 2
+    retention_ms: 2592000000  # 30 days
+    description: "Published when a payment fails"
+    
+  - name: payments.refunded
+    partitions: 3
+    replication: 2
+    retention_ms: 2592000000  # 30 days
+    description: "Published when a payment is refunded"
+
+  # Inventory Events
+  - name: inventory.updated
+    partitions: 3
+    replication: 2
+    retention_ms: 604800000  # 7 days
+    description: "Published when inventory (flights/hotels/cars) is updated"
+
+  # Deal Events
+  - name: deals.tagged
+    partitions: 2
+    replication: 2
+    retention_ms: 604800000  # 7 days
+    description: "Published when a deal is tagged or identified"
+
+  # Watch Events
+  - name: watches.triggered
+    partitions: 2
+    replication: 2
+    retention_ms: 604800000  # 7 days
+    description: "Published when a price/inventory watch is triggered"
+
+# Configuration Notes:
+# - partitions: Number of partitions for parallel processing (default: 3)
+# - replication: Replication factor for fault tolerance (default: 2 for Aiven)
+# - retention_ms: How long to keep messages in milliseconds
+#   - 604800000 = 7 days
+#   - 2592000000 = 30 days
+#   - 7776000000 = 90 days
+#   - -1 = infinite retention
+

@@ -2,12 +2,23 @@ import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { existsSync, mkdirSync } from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const logDir = process.env.LOG_DIR || path.join(__dirname, '../../logs');
 const logLevel = process.env.LOG_LEVEL || 'info';
+
+// Create log directory if it doesn't exist (for Docker)
+try {
+  if (!existsSync(logDir)) {
+    mkdirSync(logDir, { recursive: true });
+  }
+} catch (error) {
+  // If we can't create log directory, continue with console logging only
+  console.warn('Could not create log directory, using console logging only:', error.message);
+}
 
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),

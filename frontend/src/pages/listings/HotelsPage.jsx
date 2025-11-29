@@ -323,9 +323,9 @@ const HotelsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-sky-50">
+    <div className="min-h-screen bg-base-100">
       {/* Top search bar - Kayak style */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-sky-200 sticky top-0 z-10 shadow-sm">
+      <div className="bg-base-100/90 backdrop-blur-sm border-b border-base-300 sticky top-0 z-20 shadow-sm">
         <div className="max-w-full mx-auto px-4 py-3">
           <form className="flex items-center gap-2" onSubmit={handleSubmit}>
             <div className="relative flex-1 max-w-md" ref={cityDropdownRef}>
@@ -636,7 +636,7 @@ const HotelsPage = () => {
 
           {!loading && results.length === 0 && !error && (
             <div className="text-center py-8">
-              <p className="text-gray-500 mb-4">No hotels found. Try adjusting your filters.</p>
+              <p className="text-base-content/70 mb-4">No hotels found. Try adjusting your filters.</p>
               <div className="text-sm text-base-content/60">
                 <p className="font-semibold mb-2">Available cities:</p>
                 <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
@@ -771,7 +771,7 @@ const HotelsPage = () => {
                     <Popup>
                       <div className="p-2">
                         <h3 className="font-bold text-sm">{hotel.name}</h3>
-                        <p className="text-xs text-gray-600">{hotel.city}</p>
+                        <p className="text-xs text-base-content/70">{hotel.city}</p>
                         <p className="text-sm font-semibold text-primary mt-1">
                           {hotel.currency} {hotel.pricePerNight.toFixed(0)}/night
                         </p>

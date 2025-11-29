@@ -8,12 +8,11 @@ import AnimatedCard from '../components/common/AnimatedCard';
 import AnimatedIcon from '../components/common/AnimatedIcon';
 import { listingsApi } from '../services/api/listings';
 import FlightPriceCalendar from '../components/common/FlightPriceCalendar';
-import cars1 from '../assets/Background_images/cars1.jpg';
-import cars2 from '../assets/Background_images/cars2.jpg';
-import cars3 from '../assets/Background_images/cars3.jpg';
-import cars4 from '../assets/Background_images/cars4.webp';
-import cars5 from '../assets/Background_images/cars5.jpg';
-import cars6 from '../assets/Background_images/cars6.webp';
+import {
+  getHomePageCarImages,
+  getHomePageFlightImages,
+  getHomePageStayImages,
+} from '../services/backgroundImages.service.js';
 
 // Helper function to parse date string as local time (not UTC)
 const parseLocalDate = (dateStr) => {
@@ -69,10 +68,63 @@ const generateTimeOptions = () => {
   return times;
 };
 
+const AIRPORTS = [
+  // India
+  { code: 'MAA', city: 'Chennai', name: 'Chennai International' },
+  { code: 'DEL', city: 'New Delhi', name: 'Indira Gandhi International' },
+  { code: 'BOM', city: 'Mumbai', name: 'Chhatrapati Shivaji International' },
+  { code: 'BLR', city: 'Bengaluru', name: 'Kempegowda International' },
+  { code: 'HYD', city: 'Hyderabad', name: 'Rajiv Gandhi International' },
+  { code: 'CCU', city: 'Kolkata', name: 'Netaji Subhas Chandra Bose' },
+  { code: 'GOI', city: 'Goa', name: 'Dabolim Airport' },
+  { code: 'PNQ', city: 'Pune', name: 'Pune Airport' },
+  { code: 'COK', city: 'Kochi', name: 'Cochin International' },
+  { code: 'AMD', city: 'Ahmedabad', name: 'Sardar Vallabhbhai Patel' },
+  // USA
+  { code: 'SFO', city: 'San Francisco', name: 'San Francisco International' },
+  { code: 'LAX', city: 'Los Angeles', name: 'Los Angeles International' },
+  { code: 'JFK', city: 'New York', name: 'John F. Kennedy International' },
+  { code: 'EWR', city: 'Newark', name: 'Newark Liberty International' },
+  { code: 'SEA', city: 'Seattle', name: 'Seattle-Tacoma International' },
+  { code: 'ORD', city: 'Chicago', name: 'O\'Hare International' },
+  { code: 'DFW', city: 'Dallas', name: 'Dallas/Fort Worth International' },
+  { code: 'IAD', city: 'Washington DC', name: 'Dulles International' },
+  { code: 'BOS', city: 'Boston', name: 'Logan International' },
+  { code: 'DEN', city: 'Denver', name: 'Denver International' },
+];
+
+const formatAirportLabel = (airport) => {
+  const cityPart = airport.city ? ` - ${airport.city}` : '';
+  const namePart = airport.name ? ` (${airport.name})` : '';
+  return `${airport.code}${cityPart}${namePart}`;
+};
+
+const searchAirports = (query, limit = 10) => {
+  if (!query) return [];
+  const q = query.toLowerCase();
+  return AIRPORTS
+    .filter(
+      (a) =>
+        a.code.toLowerCase().includes(q) ||
+        (a.city && a.city.toLowerCase().includes(q)) ||
+        (a.name && a.name.toLowerCase().includes(q))
+    )
+    .slice(0, limit)
+    .map((a) => ({
+      ...a,
+      label: formatAirportLabel(a),
+    }));
+};
+
 const HomePage = () => {
   useDocumentTitle('Search Flights, Hotels & Cars');
   
   const { user } = useAuth();
+  
+  // Load background images from Firebase
+  const carImages = getHomePageCarImages();
+  const flightImages = getHomePageFlightImages();
+  const stayImages = getHomePageStayImages();
   
   const [activeTab, setActiveTab] = useState('flights');
   const [tripType, setTripType] = useState('round-trip');
@@ -600,8 +652,11 @@ const HomePage = () => {
     }
   };
 
-  // Legacy alias for backward compatibility
-  const loadFlightLocations = loadLocations;
+  // Airport typeahead (local list for fast suggestions)
+  const loadFlightLocations = (query, setter) => {
+    const options = searchAirports(query, 12);
+    setter(options);
+  };
 
   // Unified date validation helper - get minimum allowed date (today)
   const getMinDate = () => {
@@ -625,28 +680,18 @@ const HomePage = () => {
       clearTimeout(fromSearchTimeoutRef.current);
     }
     
-    fromSearchTimeoutRef.current = setTimeout(async () => {
+    fromSearchTimeoutRef.current = setTimeout(() => {
       if (value.trim()) {
-        try {
-          const response = await listingsApi.searchFlightLocations(value);
-          const options = response.items || response || [];
-          setFromOptions(options);
-          
-          // If no results found, show error
-          if (options.length === 0) {
-            setFromError('No matching location found. Please enter a valid city or country.');
-            setFromSelected(false);
-          }
-        } catch (err) {
-          console.error('Failed to load flight locations', err);
-          setFromOptions([]);
-          setFromError('Unable to find location. Please try again.');
+        const options = searchAirports(value);
+        setFromOptions(options);
+        if (options.length === 0) {
+          setFromError('No matching airport found. Try code or city (e.g., MAA, Chennai, SFO).');
           setFromSelected(false);
         }
       } else {
         setFromOptions([]);
       }
-    }, 500);
+    }, 200);
     
     setShowFromDropdown(true);
   };
@@ -680,28 +725,18 @@ const HomePage = () => {
       clearTimeout(toSearchTimeoutRef.current);
     }
     
-    toSearchTimeoutRef.current = setTimeout(async () => {
+    toSearchTimeoutRef.current = setTimeout(() => {
       if (value.trim()) {
-        try {
-          const response = await listingsApi.searchFlightLocations(value);
-          const options = response.items || response || [];
-          setToOptions(options);
-          
-          // If no results found, show error
-          if (options.length === 0) {
-            setToError('No matching location found. Please enter a valid city or country.');
-            setToSelected(false);
-          }
-        } catch (err) {
-          console.error('Failed to load flight locations', err);
-          setToOptions([]);
-          setToError('Unable to find location. Please try again.');
+        const options = searchAirports(value);
+        setToOptions(options);
+        if (options.length === 0) {
+          setToError('No matching airport found. Try code or city (e.g., SFO, MAA).');
           setToSelected(false);
         }
       } else {
         setToOptions([]);
       }
-    }, 500);
+    }, 200);
     
     setShowToDropdown(true);
   };
@@ -722,7 +757,7 @@ const HomePage = () => {
   const handleFromSelect = (location) => {
     setSearchData({
       ...searchData,
-      flights: { ...searchData.flights, from: location.name }
+      flights: { ...searchData.flights, from: location.label }
     });
     setShowFromDropdown(false);
     setFromError(''); // Clear error on valid selection
@@ -732,7 +767,7 @@ const HomePage = () => {
   const handleToSelect = (location) => {
     setSearchData({
       ...searchData,
-      flights: { ...searchData.flights, to: location.name }
+      flights: { ...searchData.flights, to: location.label }
     });
     setShowToDropdown(false);
     setToError(''); // Clear error on valid selection
@@ -782,32 +817,21 @@ const HomePage = () => {
       }
       
       // Debounced search
-      multiCitySearchTimeoutRefs.current[timeoutKey] = setTimeout(async () => {
+      multiCitySearchTimeoutRefs.current[timeoutKey] = setTimeout(() => {
         if (value.trim()) {
-          try {
-            const response = await listingsApi.searchFlightLocations(value);
-            const options = response.items || response || [];
-            setMultiCityFromOptions(prev => ({ ...prev, [index]: options }));
-            
-            // If no results, show error
-            if (options.length === 0) {
-              setMultiCityErrors(prev => ({
-                ...prev,
-                [`${index}_from`]: 'No matching location found. Please enter a valid city or country.'
-              }));
-            }
-          } catch (err) {
-            console.error('Failed to load flight locations', err);
-            setMultiCityFromOptions(prev => ({ ...prev, [index]: [] }));
+          const options = searchAirports(value);
+          setMultiCityFromOptions(prev => ({ ...prev, [index]: options }));
+          
+          if (options.length === 0) {
             setMultiCityErrors(prev => ({
               ...prev,
-              [`${index}_from`]: 'Unable to find location. Please try again.'
+              [`${index}_from`]: 'No matching airport found. Try code or city.'
             }));
           }
         } else {
           setMultiCityFromOptions(prev => ({ ...prev, [index]: [] }));
         }
-      }, 500);
+      }, 200);
       
     } else if (field === 'to') {
       setMultiCityErrors(prev => {
@@ -830,38 +854,27 @@ const HomePage = () => {
       }
       
       // Debounced search
-      multiCitySearchTimeoutRefs.current[timeoutKey] = setTimeout(async () => {
+      multiCitySearchTimeoutRefs.current[timeoutKey] = setTimeout(() => {
         if (value.trim()) {
-          try {
-            const response = await listingsApi.searchFlightLocations(value);
-            const options = response.items || response || [];
-            setMultiCityToOptions(prev => ({ ...prev, [index]: options }));
-            
-            // If no results, show error
-            if (options.length === 0) {
-              setMultiCityErrors(prev => ({
-                ...prev,
-                [`${index}_to`]: 'No matching location found. Please enter a valid city or country.'
-              }));
-            }
-          } catch (err) {
-            console.error('Failed to load flight locations', err);
-            setMultiCityToOptions(prev => ({ ...prev, [index]: [] }));
+          const options = searchAirports(value);
+          setMultiCityToOptions(prev => ({ ...prev, [index]: options }));
+          
+          if (options.length === 0) {
             setMultiCityErrors(prev => ({
               ...prev,
-              [`${index}_to`]: 'Unable to find location. Please try again.'
+              [`${index}_to`]: 'No matching airport found. Try code or city.'
             }));
           }
         } else {
           setMultiCityToOptions(prev => ({ ...prev, [index]: [] }));
         }
-      }, 500);
+      }, 200);
     }
   };
 
   const handleMultiCityFromSelect = (index, location) => {
     const updated = [...multiCityFlights];
-    updated[index]['from'] = location.name;
+    updated[index]['from'] = location.label;
     setMultiCityFlights(updated);
     setMultiCityFromDropdowns(prev => ({ ...prev, [index]: false }));
     // Clear error on valid selection and mark as selected
@@ -878,7 +891,7 @@ const HomePage = () => {
 
   const handleMultiCityToSelect = (index, location) => {
     const updated = [...multiCityFlights];
-    updated[index]['to'] = location.name;
+    updated[index]['to'] = location.label;
     setMultiCityFlights(updated);
     setMultiCityToDropdowns(prev => ({ ...prev, [index]: false }));
     // Clear error on valid selection and mark as selected
@@ -905,7 +918,7 @@ const HomePage = () => {
       price: 224,
       originalPrice: 324,
       amenities: ['wifi', 'breakfast', 'parking'],
-      image: '/stays1.webp'
+      image: stayImages.stays1
     },
     {
       id: 2,
@@ -917,7 +930,7 @@ const HomePage = () => {
       price: 363,
       originalPrice: 463,
       amenities: ['wifi', 'pool', 'spa'],
-      image: '/stays2.jpg'
+      image: stayImages.stays2
     },
     {
       id: 3,
@@ -929,7 +942,7 @@ const HomePage = () => {
       price: 289,
       originalPrice: 389,
       amenities: ['wifi', 'gym', 'restaurant'],
-      image: '/stays3.webp'
+      image: stayImages.stays3
     },
   ];
 
@@ -1094,18 +1107,19 @@ const HomePage = () => {
                         <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-80 max-h-72 overflow-y-auto z-50">
                           {fromOptions.map((loc, index) => (
                             <button
-                              key={`${loc.name}-${index}`}
+                              key={`${loc.label}-${index}`}
                               type="button"
-                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-start justify-between border-b border-base-200 last:border-b-0"
                               onMouseDown={(e) => {
                                 e.preventDefault(); // Prevent blur from firing
                                 handleFromSelect(loc);
                               }}
                             >
-                              <span className="font-medium text-base">{loc.name}</span>
-                              <span className="text-sm text-base-content/60 ml-4 whitespace-nowrap">
-                                {loc.totalFlights} flight{loc.totalFlights !== 1 ? 's' : ''}
-                              </span>
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-base">{loc.label}</span>
+                                <span className="text-xs text-base-content/60">{loc.name || ''}</span>
+                              </div>
+                              <span className="badge badge-ghost badge-sm">{loc.code}</span>
                             </button>
                           ))}
                         </div>
@@ -1142,18 +1156,19 @@ const HomePage = () => {
                         <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-80 max-h-72 overflow-y-auto z-50">
                           {toOptions.map((loc, index) => (
                             <button
-                              key={`${loc.name}-${index}`}
+                              key={`${loc.label}-${index}`}
                               type="button"
-                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-start justify-between border-b border-base-200 last:border-b-0"
                               onMouseDown={(e) => {
                                 e.preventDefault(); // Prevent blur from firing
                                 handleToSelect(loc);
                               }}
                             >
-                              <span className="font-medium text-base">{loc.name}</span>
-                              <span className="text-sm text-base-content/60 ml-4 whitespace-nowrap">
-                                {loc.totalFlights} flight{loc.totalFlights !== 1 ? 's' : ''}
-                              </span>
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-base">{loc.label}</span>
+                                <span className="text-xs text-base-content/60">{loc.name || ''}</span>
+                              </div>
+                              <span className="badge badge-ghost badge-sm">{loc.code}</span>
                             </button>
                           ))}
                         </div>
@@ -1488,11 +1503,11 @@ const HomePage = () => {
                                       handleMultiCityFromSelect(index, loc);
                                     }}
                                   >
-                                    <div className="font-semibold">{loc.name}</div>
-                                    {loc.code && <div className="text-xs text-base-content/60">{loc.code}</div>}
-                                  </button>
-                                ))}
-                              </div>
+                                <div className="font-semibold">{loc.label}</div>
+                                {loc.code && <div className="text-xs text-base-content/60">{loc.code}</div>}
+                              </button>
+                            ))}
+                          </div>
                             )}
                           </div>
 
@@ -1531,11 +1546,11 @@ const HomePage = () => {
                                       handleMultiCityToSelect(index, loc);
                                     }}
                                   >
-                                    <div className="font-semibold">{loc.name}</div>
-                                    {loc.code && <div className="text-xs text-base-content/60">{loc.code}</div>}
-                                  </button>
-                                ))}
-                              </div>
+                                <div className="font-semibold">{loc.label}</div>
+                                {loc.code && <div className="text-xs text-base-content/60">{loc.code}</div>}
+                              </button>
+                            ))}
+                          </div>
                             )}
                           </div>
 
@@ -1921,10 +1936,10 @@ const HomePage = () => {
                 <img
                   src={
                     activeTab === 'flights'
-                      ? '/flight1.jpg'
+                      ? flightImages.flight1
                       : activeTab === 'hotels'
-                      ? '/stays1.webp'
-                      : cars1
+                      ? stayImages.stays1
+                      : carImages.cars1
                   }
                   alt={`${activeTab} 1`}
                   className="w-full h-full object-cover"
@@ -1934,10 +1949,10 @@ const HomePage = () => {
                 <img
                   src={
                     activeTab === 'flights'
-                      ? '/flight2.avif'
+                      ? flightImages.flight2
                       : activeTab === 'hotels'
-                      ? '/stays2.jpg'
-                      : cars2
+                      ? stayImages.stays2
+                      : carImages.cars2
                   }
                   alt={`${activeTab} 2`}
                   className="w-full h-full object-cover"
@@ -1947,10 +1962,10 @@ const HomePage = () => {
                 <img
                   src={
                     activeTab === 'flights'
-                      ? '/flight3.jpg'
+                      ? flightImages.flight3
                       : activeTab === 'hotels'
-                      ? '/stays3.webp'
-                      : cars3
+                      ? stayImages.stays3
+                      : carImages.cars3
                   }
                   alt={`${activeTab} 3`}
                   className="w-full h-full object-cover"
@@ -1966,10 +1981,10 @@ const HomePage = () => {
                 <img
                   src={
                     activeTab === 'flights'
-                      ? '/flight4.webp'
+                      ? flightImages.flight4
                       : activeTab === 'hotels'
-                      ? '/stays4.jpg'
-                      : cars4
+                      ? stayImages.stays4
+                      : carImages.cars4
                   }
                   alt={`${activeTab} 4`}
                   className="w-full h-full object-cover"
@@ -1979,10 +1994,10 @@ const HomePage = () => {
                 <img
                   src={
                     activeTab === 'flights'
-                      ? '/flight5.jpg'
+                      ? flightImages.flight5
                       : activeTab === 'hotels'
-                      ? '/stays5.jpg'
-                      : cars5
+                      ? stayImages.stays5
+                      : carImages.cars5
                   }
                   alt={`${activeTab} 5`}
                   className="w-full h-full object-cover"
@@ -1992,10 +2007,10 @@ const HomePage = () => {
                 <img
                   src={
                     activeTab === 'flights'
-                      ? '/flight6.jpg'
+                      ? flightImages.flight6
                       : activeTab === 'hotels'
-                      ? '/stays6.jpeg'
-                      : cars6
+                      ? stayImages.stays6
+                      : carImages.cars6
                   }
                   alt={`${activeTab} 6`}
                   className="w-full h-full object-cover"
@@ -2224,4 +2239,3 @@ const HomePage = () => {
 };
 
 export default HomePage;
-

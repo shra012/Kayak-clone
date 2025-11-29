@@ -48,7 +48,7 @@ const mapUserForResponse = (user) => {
     phoneNumber: user.phoneNumber,
     role: user.role,
     loyaltyTier: user.loyaltyTier || 'none',
-    profileImageUrl: user.profileImageUrl || null, // ✅ Added profile image URL
+    profileImageUrl: user.profileImageUrl || null, // Added profile image URL
     profileType,
     requiresSsn,
     hasSsnOnFile,

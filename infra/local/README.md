@@ -1,6 +1,6 @@
 # Local infra/local — services & quick setup
 
-> **⚠️ NOTICE FOR GROUP PROJECT**: This local infrastructure is **NOT USED** in the current project setup.  
+> **NOTICE FOR GROUP PROJECT**: This local infrastructure is **NOT USED** in the current project setup.  
 > We are using **cloud services only** (MongoDB Atlas, Supabase PostgreSQL, Redis Cloud, Firebase).  
 > This directory is kept for reference/testing purposes only.
 
