@@ -2,11 +2,22 @@ import { getRedisClient } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import crypto from 'crypto';
 
+// Cache configuration from environment
+const CACHE_ENABLED = process.env.CACHE_ENABLED === 'true'; // Default: disabled (set to 'true' to enable)
+const CACHE_TTL_LISTING = parseInt(process.env.CACHE_TTL_LISTING || '300', 10); // 5 minutes
+const CACHE_TTL_SEARCH = parseInt(process.env.CACHE_TTL_SEARCH || '60', 10); // 1 minute
+const CACHE_TTL_USER = parseInt(process.env.CACHE_TTL_USER || '600', 10); // 10 minutes
+
 const DEFAULT_TTL = {
-  LISTING: 300,
-  SEARCH_RESULT: 60,
-  USER_PROFILE: 600,
+  LISTING: CACHE_TTL_LISTING,
+  SEARCH_RESULT: CACHE_TTL_SEARCH,
+  USER_PROFILE: CACHE_TTL_USER,
 };
+
+/**
+ * Check if caching is enabled
+ */
+export const isCacheEnabled = () => CACHE_ENABLED;
 
 /**
  * Generate cache key
@@ -28,8 +39,18 @@ export const hashSearchCriteria = (criteria) => {
  * Get cached value
  */
 export const getCached = async (key) => {
+  if (!CACHE_ENABLED) {
+    logger.debug('Cache disabled, skipping get');
+    return null;
+  }
+
   try {
     const redis = await getRedisClient();
+    if (!redis) {
+      logger.debug('Redis client not available');
+      return null;
+    }
+
     const cached = await redis.get(key);
 
     if (cached) {
@@ -49,8 +70,18 @@ export const getCached = async (key) => {
  * Set cached value with TTL
  */
 export const setCached = async (key, value, ttlSeconds = DEFAULT_TTL.LISTING) => {
+  if (!CACHE_ENABLED) {
+    logger.debug('Cache disabled, skipping set');
+    return;
+  }
+
   try {
     const redis = await getRedisClient();
+    if (!redis) {
+      logger.debug('Redis client not available');
+      return;
+    }
+
     await redis.setEx(key, ttlSeconds, JSON.stringify(value));
     logger.debug(`Cache set: ${key} (TTL: ${ttlSeconds}s)`);
   } catch (error) {
@@ -62,8 +93,18 @@ export const setCached = async (key, value, ttlSeconds = DEFAULT_TTL.LISTING) =>
  * Delete cached value
  */
 export const deleteCached = async (key) => {
+  if (!CACHE_ENABLED) {
+    logger.debug('Cache disabled, skipping delete');
+    return;
+  }
+
   try {
     const redis = await getRedisClient();
+    if (!redis) {
+      logger.debug('Redis client not available');
+      return;
+    }
+
     await redis.del(key);
     logger.debug(`Cache deleted: ${key}`);
   } catch (error) {
@@ -75,8 +116,18 @@ export const deleteCached = async (key) => {
  * Delete cached values by pattern
  */
 export const deleteCachedByPattern = async (pattern) => {
+  if (!CACHE_ENABLED) {
+    logger.debug('Cache disabled, skipping pattern delete');
+    return;
+  }
+
   try {
     const redis = await getRedisClient();
+    if (!redis) {
+      logger.debug('Redis client not available');
+      return;
+    }
+
     const keys = await redis.keys(pattern);
 
     if (keys.length > 0) {

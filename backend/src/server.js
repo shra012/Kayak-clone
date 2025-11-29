@@ -35,6 +35,7 @@ import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { initializeFirebase } from './config/firebase.js';
 import { getKafkaClient } from './config/kafka.js';
 import apiRoutes from './routes/index.js';
+import { metricsMiddleware, metricsHandler } from './monitoring/metrics.js';
 
 try {
   initializeFirebase();
@@ -112,6 +113,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(compression());
 
+// Metrics middleware (placed after basic middleware, before routes)
+app.use(metricsMiddleware);
+
 // Redis session store - initialize asynchronously without blocking
 let sessionStore = null;
 (async () => {
@@ -162,6 +166,9 @@ app.get('/health/live', (req, res) => {
 app.get('/health/ready', async (req, res) => {
   res.status(200).json({ status: 'ready', timestamp: new Date().toISOString() });
 });
+
+// Prometheus metrics endpoint
+app.get('/metrics', metricsHandler);
 
 app.use('/api', apiRoutes);
 

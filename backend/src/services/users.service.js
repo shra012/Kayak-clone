@@ -7,6 +7,11 @@ import {
   normalizeProfileType,
   normalizePartnerDetails,
 } from '../utils/profile.js';
+import {
+  getCachedUserProfile,
+  cacheUserProfile,
+  invalidateUserProfileCache,
+} from '../utils/cache.js';
 
 export const listUsers = async (filters) => {
   const pool = getPostgresPool();
@@ -121,6 +126,13 @@ export const createUser = async (userData) => {
 };
 
 export const getUserById = async (userId) => {
+  // Try to get cached user profile
+  const cached = await getCachedUserProfile(userId);
+  if (cached) {
+    logger.debug(`Returning cached user profile: ${userId}`);
+    return cached;
+  }
+
   const pool = getPostgresPool();
   const result = await pool.query(
     `SELECT id, ssn, first_name, last_name, email, phone_number,
@@ -130,7 +142,15 @@ export const getUserById = async (userId) => {
      FROM users WHERE id = $1`,
     [userId]
   );
-  return result.rows[0] || null;
+
+  const user = result.rows[0] || null;
+
+  if (user) {
+    // Cache the user profile
+    await cacheUserProfile(userId, user);
+  }
+
+  return user;
 };
 
 export const updateUserSsn = async (userId, ssn) => {
@@ -164,18 +184,29 @@ export const updateUserSsn = async (userId, ssn) => {
     throw error;
   }
 
+  // Invalidate user profile cache
+  await invalidateUserProfileCache(userId);
+
   return result.rows[0];
 };
 
 export const updateUser = async (userId, userData) => {
   const pool = getPostgresPool();
   logger.info(`Updating user ${userId}`);
+  
+  // Invalidate user profile cache
+  await invalidateUserProfileCache(userId);
+  
   return getUserById(userId);
 };
 
 export const deleteUser = async (userId) => {
   const pool = getPostgresPool();
   await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+  
+  // Invalidate user profile cache
+  await invalidateUserProfileCache(userId);
+  
   logger.info(`Deleted user ${userId}`);
 };
 

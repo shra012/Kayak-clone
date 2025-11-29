@@ -1,73 +1,175 @@
 /**
- * Error handling utilities
+ * Error Handler Utility
+ * Centralized error handling for API calls and user feedback
  */
 
 /**
- * Extract user-friendly error message from error object
+ * Extract error message from error object
  */
 export const getErrorMessage = (error) => {
-  if (!error) {
-    return 'An unexpected error occurred. Please try again.';
-  }
-
-  // Check for user-friendly message from API
-  if (error.userMessage) {
-    return error.userMessage;
-  }
-
-  // Check for API response message
-  if (error.response?.data?.message) {
-    return error.response.data.message;
-  }
-
-  // Check for error message
-  if (error.message) {
-    // Filter out technical error messages
-    if (error.message.includes('Network Error')) {
-      return 'Network error. Please check your internet connection and try again.';
+  // If error has a response from API
+  if (error.response?.data) {
+    const { data } = error.response;
+    
+    // Handle validation errors
+    if (data.errors && Array.isArray(data.errors)) {
+      return data.errors.map(err => err.message || err.msg).join(', ');
     }
-    if (error.message.includes('timeout')) {
-      return 'Request timed out. Please try again.';
+    
+    // Handle standard error message
+    if (data.message) {
+      return data.message;
     }
-    return error.message;
   }
 
-  // Default message
-  return 'An unexpected error occurred. Please try again.';
-};
-
-/**
- * Check if error is retryable
- */
-export const isRetryableError = (error) => {
-  if (!error.response) {
-    return true; // Network error
+  // Handle network errors
+  if (error.message === 'Network Error') {
+    return 'Network error. Please check your internet connection.';
   }
 
-  const status = error.response.status;
-  return status >= 500 || status === 429; // Server error or rate limit
+  // Handle timeout errors
+  if (error.code === 'ECONNABORTED') {
+    return 'Request timeout. Please try again.';
+  }
+
+  // Handle 404 errors
+  if (error.response?.status === 404) {
+    return 'Resource not found.';
+  }
+
+  // Handle 401 errors
+  if (error.response?.status === 401) {
+    return 'Authentication required. Please log in.';
+  }
+
+  // Handle 403 errors
+  if (error.response?.status === 403) {
+    return 'You do not have permission to access this resource.';
+  }
+
+  // Handle 500 errors
+  if (error.response?.status >= 500) {
+    return 'Server error. Please try again later.';
+  }
+
+  // Default error message
+  return error.message || 'An unexpected error occurred. Please try again.';
 };
 
 /**
- * Get retry delay based on attempt number
+ * Handle API errors with toast notification
+ * @param {Error} error - The error object
+ * @param {Function} showToast - Toast function from useToast hook
+ * @param {string} defaultMessage - Optional default message
  */
-export const getRetryDelay = (attemptNumber, baseDelay = 1000) => {
-  return baseDelay * Math.pow(2, attemptNumber - 1); // Exponential backoff
-};
+export const handleApiError = (error, showToast, defaultMessage = null) => {
+  const message = defaultMessage || getErrorMessage(error);
+  
+  if (showToast) {
+    showToast(message, 'error');
+  }
 
-/**
- * Format error for display
- */
-export const formatError = (error) => {
-  const message = getErrorMessage(error);
-  const status = error.response?.status;
-  const code = error.response?.data?.code;
-
-  return {
+  // Log error for debugging
+  console.error('API Error:', {
     message,
-    status,
-    code,
-    isRetryable: isRetryableError(error),
-  };
+    error,
+    response: error.response?.data,
+    status: error.response?.status,
+  });
+
+  return message;
 };
 
+/**
+ * Show success message
+ */
+export const handleApiSuccess = (message, showToast) => {
+  if (showToast) {
+    showToast(message, 'success');
+  }
+};
+
+/**
+ * Format validation errors for display
+ */
+export const formatValidationErrors = (errors) => {
+  if (!errors || !Array.isArray(errors)) return null;
+
+  return errors.map(err => {
+    if (err.field && err.message) {
+      return `${err.field}: ${err.message}`;
+    }
+    return err.message || err.msg || 'Validation error';
+  }).join('\n');
+};
+
+/**
+ * Retry function with exponential backoff
+ */
+export const retryWithBackoff = async (
+  fn,
+  maxRetries = 3,
+  baseDelay = 1000,
+  showToast = null
+) => {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (i === maxRetries - 1) {
+        throw error;
+      }
+
+      const delay = baseDelay * Math.pow(2, i);
+      
+      if (showToast) {
+        showToast(`Request failed. Retrying in ${delay / 1000}s...`, 'warning', delay);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+};
+
+/**
+ * Check if error is a network error
+ */
+export const isNetworkError = (error) => {
+  return (
+    error.message === 'Network Error' ||
+    error.code === 'ECONNABORTED' ||
+    !error.response
+  );
+};
+
+/**
+ * Check if error should trigger a retry
+ */
+export const shouldRetry = (error) => {
+  // Retry on network errors
+  if (isNetworkError(error)) {
+    return true;
+  }
+
+  // Retry on 5xx errors
+  if (error.response?.status >= 500) {
+    return true;
+  }
+
+  // Retry on 429 (too many requests)
+  if (error.response?.status === 429) {
+    return true;
+  }
+
+  return false;
+};
+
+export default {
+  getErrorMessage,
+  handleApiError,
+  handleApiSuccess,
+  formatValidationErrors,
+  retryWithBackoff,
+  isNetworkError,
+  shouldRetry,
+};
