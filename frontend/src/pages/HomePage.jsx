@@ -270,7 +270,7 @@ const HomePage = () => {
       const imageMap = {};
       for (const city of cities) {
         try {
-          const url = await getDestinationImageUrl(city);
+          const url = getDestinationImageUrl(city);
           if (url) {
             imageMap[city] = url;
           }
@@ -472,9 +472,6 @@ const HomePage = () => {
     // Clear previous errors
     setCarTimeError('');
     
-    console.log('=== CAR VALIDATION DEBUG ===');
-    console.log('Pickup Date:', pickUp, 'Time:', pickUpTime);
-    console.log('Drop Date:', dropOff, 'Time:', dropOffTime);
     
     const today = new Date().toISOString().split('T')[0];
     const currentTime = new Date();
@@ -484,7 +481,6 @@ const HomePage = () => {
     
     // Check if pick-up date is today and time is in the past
     if (pickUp === today && pickUpTime < currentTimeString) {
-      console.log('ERROR: Pick-up time in the past');
       setCarTimeError('Pick-up time cannot be in the past');
       return false;
     }
@@ -493,18 +489,13 @@ const HomePage = () => {
     const pickUpDateTime = new Date(`${pickUp}T${pickUpTime}:00`);
     const dropOffDateTime = new Date(`${dropOff}T${dropOffTime}:00`);
     
-    console.log('Pickup DateTime:', pickUpDateTime);
-    console.log('Drop DateTime:', dropOffDateTime);
-    console.log('Drop <= Pickup?', dropOffDateTime <= pickUpDateTime);
     
     // Check if drop-off date-time is after pick-up date-time
     if (dropOffDateTime <= pickUpDateTime) {
-      console.log('ERROR: Drop-off is before or equal to pick-up');
       setCarTimeError('Drop-off date and time must be after pick-up date and time');
       return false;
     }
     
-    console.log('Validation PASSED');
     return true;
   };
 
@@ -1934,6 +1925,7 @@ const HomePage = () => {
             <div className="grid grid-cols-1 gap-3">
               <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
                 <img
+                  key={`${activeTab}-1`}
                   src={
                     activeTab === 'flights'
                       ? flightImages.flight1
@@ -1947,6 +1939,7 @@ const HomePage = () => {
               </div>
               <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
                 <img
+                  key={`${activeTab}-2`}
                   src={
                     activeTab === 'flights'
                       ? flightImages.flight2
@@ -1960,6 +1953,7 @@ const HomePage = () => {
               </div>
               <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
                 <img
+                  key={`${activeTab}-3`}
                   src={
                     activeTab === 'flights'
                       ? flightImages.flight3
@@ -1979,6 +1973,7 @@ const HomePage = () => {
             <div className="grid grid-cols-1 gap-3">
               <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
                 <img
+                  key={`${activeTab}-4`}
                   src={
                     activeTab === 'flights'
                       ? flightImages.flight4
@@ -1992,6 +1987,7 @@ const HomePage = () => {
               </div>
               <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
                 <img
+                  key={`${activeTab}-5`}
                   src={
                     activeTab === 'flights'
                       ? flightImages.flight5
@@ -2005,6 +2001,7 @@ const HomePage = () => {
               </div>
               <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
                 <img
+                  key={`${activeTab}-6`}
                   src={
                     activeTab === 'flights'
                       ? flightImages.flight6

@@ -551,7 +551,29 @@ const CarsPage = () => {
                                     </p>
                                   </div>
                                 </div>
-                                <button className="btn btn-primary">
+                                <button 
+                                  className="btn btn-primary"
+                                  onClick={() => {
+                                    // Calculate days between pickup and dropoff
+                                    const pickupDate = pickUpDate || searchData?.pickUp || new Date().toISOString().split('T')[0];
+                                    const dropoffDate = dropOffDate || searchData?.dropOff || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+                                    const pickupDateObj = new Date(pickupDate);
+                                    const dropoffDateObj = new Date(dropoffDate);
+                                    const days = Math.ceil((dropoffDateObj - pickupDateObj) / (1000 * 60 * 60 * 24)) || 1;
+
+                                    const bookingData = {
+                                      type: 'car',
+                                      car,
+                                      pickupDate,
+                                      pickupTime: pickUpTime || searchData?.pickUpTime || '12:00',
+                                      dropoffDate,
+                                      dropoffTime: dropOffTime || searchData?.dropOffTime || '12:00',
+                                      days,
+                                    };
+
+                                    navigate('/bookings', { state: { bookingData } });
+                                  }}
+                                >
                                   View Deal
                                 </button>
                               </div>

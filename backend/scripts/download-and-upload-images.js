@@ -159,12 +159,36 @@ async function downloadAndUploadImages() {
   // Image configurations
   const imageConfigs = {
     flights: [
-      { name: 'flight1.jpg', query: 'airplane sky travel', format: 'jpg' },
-      { name: 'flight2.avif', query: 'aircraft clouds', format: 'avif' },
-      { name: 'flight3.jpg', query: 'airplane window view', format: 'jpg' },
-      { name: 'flight4.webp', query: 'airport terminal', format: 'webp' },
-      { name: 'flight5.jpg', query: 'airplane sunset', format: 'jpg' },
-      { name: 'flight6.jpg', query: 'airplane takeoff', format: 'jpg' },
+      { 
+        name: 'flight1.jpg', 
+        sourceUrls: ['https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80'], // Airplane in sky
+        format: 'jpg' 
+      },
+      { 
+        name: 'flight2.jpg', 
+        sourceUrls: ['https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800&q=80'], // Aircraft
+        format: 'jpg' 
+      },
+      { 
+        name: 'flight3.jpg', 
+        sourceUrls: ['https://images.unsplash.com/photo-1556388158-158ea5ccacbd?w=800&q=80'], // Airplane window view
+        format: 'jpg' 
+      },
+      { 
+        name: 'flight4.webp', 
+        sourceUrls: ['https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&q=80'], // Airport terminal
+        format: 'webp' 
+      },
+      { 
+        name: 'flight5.jpg', 
+        sourceUrls: ['https://images.unsplash.com/photo-1464037866556-6812c9d1c72e?w=800&q=80'], // Airplane sunset
+        format: 'jpg' 
+      },
+      { 
+        name: 'flight6.jpg', 
+        sourceUrls: ['https://images.unsplash.com/photo-1540962351504-03099e0a754b?w=800&q=80'], // Airplane takeoff
+        format: 'jpg' 
+      },
     ],
     stays: [
       { name: 'stays1.webp', query: 'luxury hotel room', format: 'webp' },

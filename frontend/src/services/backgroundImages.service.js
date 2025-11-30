@@ -5,12 +5,15 @@ const STORAGE_BUCKET = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'firegram
 
 /**
  * Get Firebase Storage URL for a static background image
+ * Uses Firebase Storage public URL format: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedPath}?alt=media
  * @param {string} imagePath - Path relative to kayak/backgrounds/
  * @returns {string} Firebase Storage URL
  */
 export const getBackgroundImageUrl = (imagePath) => {
   const fullPath = imagePath.startsWith('kayak/') ? imagePath : `kayak/backgrounds/${imagePath}`;
-  return `https://storage.googleapis.com/${STORAGE_BUCKET}/${fullPath}`;
+  // Encode the path for Firebase Storage URL format
+  const encodedPath = encodeURIComponent(fullPath);
+  return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodedPath}?alt=media`;
 };
 
 /**
@@ -43,7 +46,7 @@ export const BACKGROUND_IMAGES = {
   // Flight images
   flights: {
     flight1: 'kayak/backgrounds/flights/flight1.jpg',
-    flight2: 'kayak/backgrounds/flights/flight2.avif',
+    flight2: 'kayak/backgrounds/flights/flight2.jpg',
     flight3: 'kayak/backgrounds/flights/flight3.jpg',
     flight4: 'kayak/backgrounds/flights/flight4.webp',
     flight5: 'kayak/backgrounds/flights/flight5.jpg',
