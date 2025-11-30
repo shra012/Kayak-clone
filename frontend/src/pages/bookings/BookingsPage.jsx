@@ -6,6 +6,24 @@ import { useToast } from '../../hooks/useToast';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { FaPlane, FaBed, FaCar, FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaCreditCard, FaArrowRight } from 'react-icons/fa';
 
+const US_STATES = [
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
+  'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
+  'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi',
+  'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',
+  'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania',
+  'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
+  'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
+];
+
+const US_CITIES = [
+  'New York City', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
+  'San Diego', 'Dallas', 'San Jose', 'Austin', 'Jacksonville', 'San Francisco', 'Columbus',
+  'Fort Worth', 'Indianapolis', 'Charlotte', 'Seattle', 'Denver', 'Washington, D.C.', 'Boston',
+  'El Paso', 'Nashville', 'Detroit', 'Portland', 'Las Vegas', 'Memphis', 'Louisville',
+  'Baltimore', 'Milwaukee',
+];
+
 const BookingsPage = () => {
   useDocumentTitle('Checkout & Booking');
   const navigate = useNavigate();
@@ -16,6 +34,7 @@ const BookingsPage = () => {
   const [step, setStep] = useState(1); // 1: Review, 2: Billing, 3: Payment
   const [loading, setLoading] = useState(false);
   const [bookingData, setBookingData] = useState(null);
+  const [existingBookings, setExistingBookings] = useState([]);
   const [billingInfo, setBillingInfo] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -32,14 +51,30 @@ const BookingsPage = () => {
   });
   const [errors, setErrors] = useState({});
 
-  // Load booking data from navigation state
+  // Load booking data from navigation state or sessionStorage
   useEffect(() => {
     if (location.state?.bookingData) {
       setBookingData(location.state.bookingData);
       setStep(1);
+      // Clear sessionStorage if we got data from state
+      sessionStorage.removeItem('pendingBooking');
     } else {
-      // If no booking data, show existing bookings
-      loadBookings();
+      // Check sessionStorage for pending booking (from login redirect)
+      const pendingBooking = sessionStorage.getItem('pendingBooking');
+      if (pendingBooking) {
+        try {
+          const bookingData = JSON.parse(pendingBooking);
+          setBookingData(bookingData);
+          setStep(1);
+          sessionStorage.removeItem('pendingBooking');
+        } catch (err) {
+          console.error('Failed to parse pending booking:', err);
+          loadBookings();
+        }
+      } else {
+        // If no booking data, show existing bookings
+        loadBookings();
+      }
     }
   }, [location.state]);
 
@@ -47,9 +82,12 @@ const BookingsPage = () => {
     try {
       setLoading(true);
       const response = await bookingsApi.searchBookings({});
-      // Handle response - this would show existing bookings
+      if (response.items) {
+        setExistingBookings(response.items);
+      }
     } catch (error) {
       console.error('Error loading bookings:', error);
+      toast.showError('Failed to load bookings');
     } finally {
       setLoading(false);
     }
@@ -344,17 +382,67 @@ const BookingsPage = () => {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="card bg-base-100 shadow-md border border-base-300">
-            <div className="card-body">
-              <p className="text-base-content/70">No active booking. Select a flight, hotel, or car to begin.</p>
-              <button
-                className="btn btn-primary mt-4"
-                onClick={() => navigate('/')}
-              >
-                Start New Search
-              </button>
+          {existingBookings.length === 0 ? (
+            <div className="card bg-base-100 shadow-md border border-base-300">
+              <div className="card-body">
+                <p className="text-base-content/70">No bookings found. Select a flight, hotel, or car to begin.</p>
+                <button
+                  className="btn btn-primary mt-4"
+                  onClick={() => navigate('/')}
+                >
+                  Start New Search
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-4">
+              {existingBookings.map((booking) => {
+                const Icon = booking.bookingType === 'flight' ? FaPlane : 
+                            booking.bookingType === 'hotel' ? FaBed : FaCar;
+                return (
+                  <div key={booking.id} className="card bg-base-100 shadow-md border border-base-300">
+                    <div className="card-body">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-4">
+                          <Icon className="w-8 h-8 text-primary mt-1" />
+                          <div>
+                            <h3 className="text-xl font-semibold capitalize">{booking.bookingType} Booking</h3>
+                            <p className="text-sm text-base-content/70">
+                              Status: <span className="badge badge-sm">{booking.status}</span>
+                            </p>
+                            {booking.itinerary && (
+                              <div className="mt-2 space-y-1 text-sm">
+                                {booking.bookingType === 'flight' && booking.itinerary.outbound && (
+                                  <p>{booking.itinerary.outbound.from} → {booking.itinerary.outbound.to}</p>
+                                )}
+                                {booking.bookingType === 'hotel' && booking.itinerary.hotelName && (
+                                  <p>{booking.itinerary.hotelName} - {booking.itinerary.city}</p>
+                                )}
+                                {booking.bookingType === 'car' && booking.itinerary.vendor && (
+                                  <p>{booking.itinerary.vendor} - {booking.itinerary.type}</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold text-primary">
+                            {booking.price?.currency || 'USD'} {booking.price?.amount?.toFixed(2) || '0.00'}
+                          </p>
+                          <button
+                            className="btn btn-sm btn-ghost mt-2"
+                            onClick={() => navigate(`/bookings/${booking.id}`)}
+                          >
+                            View Details
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -538,13 +626,16 @@ const BookingsPage = () => {
                         <label className="label">
                           <span className="label-text font-medium">City <span className="text-error">*</span></span>
                         </label>
-                        <input
-                          type="text"
-                          className={`input input-bordered ${errors['address.city'] ? 'input-error' : ''}`}
+                        <select
+                          className={`select select-bordered ${errors['address.city'] ? 'select-error' : ''}`}
                           value={billingInfo.address.city}
                           onChange={(e) => handleBillingChange('address.city', e.target.value)}
-                          placeholder="New York"
-                        />
+                        >
+                          <option value="">Select city</option>
+                          {US_CITIES.map((city) => (
+                            <option key={city} value={city}>{city}</option>
+                          ))}
+                        </select>
                         {errors['address.city'] && <label className="label"><span className="label-text-alt text-error">{errors['address.city']}</span></label>}
                       </div>
 
@@ -552,13 +643,16 @@ const BookingsPage = () => {
                         <label className="label">
                           <span className="label-text font-medium">State <span className="text-error">*</span></span>
                         </label>
-                        <input
-                          type="text"
-                          className={`input input-bordered ${errors['address.state'] ? 'input-error' : ''}`}
+                        <select
+                          className={`select select-bordered ${errors['address.state'] ? 'select-error' : ''}`}
                           value={billingInfo.address.state}
                           onChange={(e) => handleBillingChange('address.state', e.target.value)}
-                          placeholder="NY"
-                        />
+                        >
+                          <option value="">Select state</option>
+                          {US_STATES.map((state) => (
+                            <option key={state} value={state}>{state}</option>
+                          ))}
+                        </select>
                         {errors['address.state'] && <label className="label"><span className="label-text-alt text-error">{errors['address.state']}</span></label>}
                       </div>
 

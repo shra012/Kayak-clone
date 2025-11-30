@@ -1,249 +1,137 @@
 # Kayak Simulation Platform
 
-A distributed travel booking platform built with Express.js backend and React frontend.
-
-## Project Structure
-
-```
-Kayak-Project/
-├── backend/          # Express.js API server
-├── frontend/         # React frontend application
-├── infra/           # Infrastructure as code (AWS, Docker)
-├── api-docs/         # OpenAPI specification
-└── docs/            # Documentation
-```
+Travel booking platform with Express.js backend, React frontend, and AI-agent service.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - Docker & Docker Compose
-- Supabase account (free tier)
-- MongoDB Atlas account (free tier)
-- Redis Cloud account (free tier)
+- Python 3.12+ (for AI-agent)
+- Cloud accounts: Supabase, MongoDB Atlas, Redis Cloud, Firebase
 
-### 1. Setup Cloud Databases
+### 1. Environment Setup
 
-- **Supabase**: Create project and get connection string
-- **MongoDB Atlas**: Create free cluster and get connection string
-- **Redis Cloud**: Create free database and get connection string
-
-See `backend/docs/DATABASE_SETUP.md` for detailed setup instructions.
-
-### 2. Backend Setup
-
-```bash
-cd backend
-npm install
-
-# Copy environment template and configure
-cp .env.example .env
-# Edit .env with your database credentials
-
-# Important: Cache is disabled by default
-# Add to your .env:
-CACHE_ENABLED=false  # Default for development
+**Backend** (`backend/.env`):
+```env
+PORT=3000
+DATABASE_URL=postgresql://...  # Supabase
+MONGODB_URI=mongodb+srv://...  # MongoDB Atlas
+REDIS_URL=redis://...          # Redis Cloud
+JWT_SECRET=...                  # Generate with: node scripts/generate-secrets.js
+SESSION_SECRET=...              # Generate with: node scripts/generate-secrets.js
+FIREBASE_SERVICE_ACCOUNT={...} # Firebase JSON
+FIREBASE_STORAGE_BUCKET=...
+CACHE_ENABLED=false            # Set to 'true' to enable Redis caching
+KAFKA_ENABLED=false            # Set to 'true' if using Kafka
+AI_AGENT_URL=http://ai-agent:8000
 ```
 
-See `backend/docs/ENV_CACHE_SAMPLE.md` for cache configuration examples.
+**Frontend** (`frontend/.env`):
+```env
+VITE_API_URL=http://localhost:3000
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+```
+
+**AI-Agent** (`ai-agent/.env`):
+```env
+PORT=8000
+DATABASE_URL=sqlite:///./data/concierge.db
+OPENAI_API_KEY=...
+```
+
+### 2. Start with Docker
+
+```bash
+# Enable BuildKit for faster builds
+export COMPOSE_DOCKER_CLI_BUILD=1
+export DOCKER_BUILDKIT=1
+
+# Build and start all services
+docker-compose up --build -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+Services:
+- Backend: `http://localhost:3000`
+- Frontend: `http://localhost:5173`
+- AI-Agent: `http://localhost:8000`
 
 ### 3. Seed Database (Optional)
 
-Seed the MongoDB database with US travel data (flights, hotels, cars):
-
 ```bash
 cd backend
-npm run seed:us-data
+npm run seed:us-data  # Seeds flights, hotels, cars for US cities
+npm run seed:test-users  # Creates test users for E2E tests
 ```
 
-This will populate the database with:
-- **193 flights** between major US cities (LAX, JFK, SFO, ORD, etc.)
-- **93 hotels** in major US cities
-- **98 car rentals** in major US cities
+### 4. Local Development
 
-All data is limited to United States locations with realistic airport codes, states, and cities.
-
-See `backend/docs/US_AIRPORTS_REFERENCE.md` for a complete list of airport codes.
-
-### 4. Start Backend
-
+**Backend:**
 ```bash
 cd backend
-npm run dev
+npm install
+npm run dev  # http://localhost:3000
 ```
 
-Backend runs on `http://localhost:3000`
-
-### 5. Frontend Setup
-
+**Frontend:**
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev  # http://localhost:5173
 ```
 
-Frontend runs on `http://localhost:5173`
+**AI-Agent:**
+```bash
+cd ai-agent
+./update-requirements.sh  # Creates .venv and requirements.txt
+source .venv/bin/activate
+uvicorn main:app --reload  # http://localhost:8000
+```
 
 ## Tech Stack
 
-### Backend
-- **Express.js** - Web framework
-- **PostgreSQL (Supabase)** - Relational database (users, bookings, payments)
-- **MongoDB Atlas** - Document database (listings, analytics)
-- **Redis Cloud** - Caching and sessions (optional, disabled by default)
-- **Kafka (Aiven)** - Event streaming (optional)
-- **Winston** - Logging
-- **JWT** - Authentication
+**Backend:** Node.js 20, Express.js, PostgreSQL (Supabase), MongoDB Atlas, Redis Cloud, Kafka (Aiven), Firebase Storage  
+**Frontend:** React 18, Vite, Redux Toolkit, Tailwind CSS + DaisyUI  
+**AI-Agent:** Python 3.12, FastAPI, SQLite/Supabase
 
-### Frontend
-- **React 18** - UI library
-- **Vite** - Build tool
-- **Redux Toolkit** - Client state
-- **Tailwind CSS + DaisyUI** - Styling
-- **Axios** - HTTP client
+## Features
 
-## Features Implemented
+- User authentication (JWT + RBAC)
+- Flight, hotel, car search and booking
+- Payment processing
+- Admin inventory management
+- AI concierge service
+- Kafka event streaming
+- Redis caching (optional, disabled by default)
+- Firebase image storage
 
-### Core Features ✅
-- ✅ User authentication and authorization (JWT + RBAC)
-- ✅ Flight, hotel, and car listings search
-- ✅ Booking creation and management
-- ✅ Payment processing
-- ✅ Admin inventory management
-- ✅ Kafka event streaming (producers + consumers)
-- ✅ **Redis caching with configurable enable/disable** (NEW)
-- ✅ Session management
-- ✅ File uploads (Firebase Storage)
-- ✅ Docker containerization
+## API
 
-### Cache Configuration ✅
-Redis caching is **disabled by default** for easier development:
+All endpoints: `/api/v1/*`  
+See `api-docs/openapi.yaml` for full specification
 
-```env
-# Development (default)
-CACHE_ENABLED=false
-
-# Production (recommended)
-CACHE_ENABLED=true
-CACHE_TTL_LISTING=300
-CACHE_TTL_SEARCH=60
-CACHE_TTL_USER=600
-```
-
-See `backend/docs/CACHE_CONFIGURATION.md` for detailed cache documentation.
-
-## Environment Variables
-
-### Backend (.env)
-
-```env
-# Server
-PORT=3000
-NODE_ENV=development
-
-# Database
-DATABASE_URL=postgresql://user:password@host:port/database
-MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/kayak
-REDIS_URL=redis://host:port
-
-# Cache Configuration (NEW)
-CACHE_ENABLED=false  # Disabled by default
-CACHE_TTL_LISTING=300
-CACHE_TTL_SEARCH=60
-CACHE_TTL_USER=600
-
-# JWT
-JWT_SECRET=your-secret-key
-JWT_EXPIRES_IN=7d
-
-# Kafka (optional)
-KAFKA_ENABLED=false
-KAFKA_BROKERS=broker1:port,broker2:port
-```
-
-See `backend/.env.example` and `backend/docs/ENV_CACHE_SAMPLE.md` for complete examples.
-
-## API Endpoints
-
-All endpoints are prefixed with `/api/v1`
-
-See `api-docs/openapi.yaml` for complete API specification.
-
-## Development
-
-### Backend
-```bash
-cd backend
-npm run dev      # Development with auto-reload
-npm start        # Production
-npm run lint     # Linting
-```
-
-### Frontend
-```bash
-cd frontend
-npm run dev      # Development server
-npm run build    # Production build
-npm run lint     # Linting
-```
-
-## Docker Deployment
+## Testing
 
 ```bash
-# Build and run with Docker Compose
-docker compose up --build -d
-
-# View logs
-docker compose logs -f
-
-# Stop services
-docker compose down
+cd e2e
+npm install
+npm test  # Runs Playwright E2E tests
 ```
+
+Test users are auto-created via `globalSetup` in `playwright.config.js`
 
 ## Documentation
 
-### Project Documentation
-- [Implementation Plan](./docs/IMPLEMENTATION_PLAN.md)
-- [Project Overview](./docs/PROJECT_OVERVIEW.md)
-- [Quick Start Guide](./docs/QUICK_START.md)
-- [Firebase Setup](./docs/FIREBASE_SETUP.md)
-
-### Backend Documentation
-- [Database Setup](./backend/docs/DATABASE_SETUP.md)
-- [**Cache Configuration**](./backend/docs/CACHE_CONFIGURATION.md) ⭐ NEW
-- [**Environment Variables for Cache**](./backend/docs/ENV_CACHE_SAMPLE.md) ⭐ NEW
-- [Implementation Status](./backend/docs/IMPLEMENTATION_STATUS.md)
-- [Kafka Setup](./backend/kafka/README.md)
-
-### Frontend Documentation
-- [Frontend README](./frontend/README.md)
-
-## Recent Updates
-
-### Cache Configuration (Latest)
-- ✅ Redis caching is now **configurable via environment variables**
-- ✅ Cache is **disabled by default** for easier development
-- ✅ Can be enabled in production with `CACHE_ENABLED=true`
-- ✅ Configurable TTL values for listings, searches, and user profiles
-- ✅ Complete documentation and examples added
-
-### Performance
-- With caching enabled: 50-80% faster response times
-- With caching disabled: Standard database performance (default)
-- Cache reduces database load by 70-90% when enabled
-
-## Contributing
-
-1. Create a feature branch
-2. Make your changes
-3. Test locally with cache disabled
-4. Submit a pull request
-
-## License
-
-This project is for educational purposes.
-
-## Support
-
-For issues or questions, check the documentation or open an issue on GitHub.
+- [Database Setup](./backend/docs/DATABASE_SETUP.md) - Cloud database configuration
+- [Firebase Setup](./docs/FIREBASE_SETUP.md) - Image storage setup
+- [Kafka Setup](./backend/kafka/README.md) - Event streaming
+- [API Docs](./api-docs/README.md) - OpenAPI specification

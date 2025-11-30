@@ -3,6 +3,7 @@ import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AuthInitializer from './components/common/AuthInitializer';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import AIChatWidget from './components/common/AIChatWidget';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -31,6 +32,7 @@ function App() {
   return (
     <ErrorBoundary>
       <AuthInitializer />
+      <AIChatWidget />
       <Layout>
       <Routes>
         <Route path="/" element={<HomePage />} />

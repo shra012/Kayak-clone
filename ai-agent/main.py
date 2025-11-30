@@ -189,15 +189,12 @@ start_time = time.time()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    print("🚀 Concierge AI Service starting up...")
-    print("📊 Initializing deal cache...")
-    # Load deals from database
+    print("Concierge AI Service starting up...")
+    print("Initializing deal cache...")
     with Session(engine) as session:
         deals = session.exec(select(Deal).where(Deal.status == DealStatus.ACTIVE)).all()
         if not deals:
-            # Generate mock deals if database is empty
-            print("📦 Generating mock deals...")
+            print("Generating mock deals...")
             mock_deals = generate_mock_deals()
             for deal in mock_deals:
                 session.add(deal)
@@ -206,19 +203,15 @@ async def lifespan(app: FastAPI):
         else:
             for deal in deals:
                 deal_cache[deal.deal_id] = deal
-    print(f"✅ Loaded {len(deal_cache)} deals into cache")
+    print(f"Loaded {len(deal_cache)} deals into cache")
     
-    # Start background watch monitoring task
     asyncio.create_task(watch_monitor_task())
     
     yield
     
-    # Shutdown
-    print("🛑 Concierge AI Service shutting down...")
+    print("Concierge AI Service shutting down...")
 
 app.router.lifespan_context = lifespan
-
-# ==================== WEBSOCKET ENDPOINT ====================
 
 @app.websocket("/events")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
@@ -239,8 +232,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             })
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id)
-
-# ==================== CONCIERGE AI ENDPOINTS ====================
 
 @app.post("/api/v1/concierge/sessions", response_model=ChatSessionResponse, tags=["Concierge AI"])
 async def create_chat_session(request: ChatSessionRequest):
@@ -361,8 +352,6 @@ async def get_chat_session(session_id: str):
             context=session.context
         )
 
-# ==================== BUNDLES ENDPOINTS ====================
-
 @app.get("/api/v1/concierge/bundles", response_model=BundleResponse, tags=["Bundles"])
 async def get_bundles(
     user_id: Optional[str] = None,
@@ -408,8 +397,6 @@ async def get_bundle(bundle_id: str):
             hotel_deal = db_session.get(Deal, bundle.hotel_deal_id)
         
         return format_bundle_for_response(bundle, flight_deal, hotel_deal)
-
-# ==================== WATCHES ENDPOINTS ====================
 
 @app.post("/api/v1/concierge/watches", response_model=WatchResponse, tags=["Watches"])
 async def create_watch(request: WatchRequest):
@@ -457,8 +444,6 @@ async def list_watches(user_id: Optional[str] = None):
             watches = db_session.exec(select(Watch)).all()
         
         return {"watches": [w.dict() for w in watches]}
-
-# ==================== POLICY Q&A ENDPOINTS ====================
 
 @app.post("/api/v1/concierge/query", tags=["Database Queries"])
 async def execute_database_query(request: Dict[str, Any]):
@@ -523,8 +508,6 @@ async def get_policy_answer(request: PolicyQuestionRequest):
             source="listing_metadata"
         )
 
-# ==================== HEALTH MONITORING ENDPOINTS ====================
-
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
     """Basic health check endpoint"""
@@ -562,8 +545,6 @@ async def readiness_check():
 async def liveness_check():
     """Liveness probe"""
     return {"status": "alive", "timestamp": datetime.now().isoformat()}
-
-# ==================== HELPER FUNCTIONS ====================
 
 async def build_bundles_from_constraints(
     constraints: Dict[str, Any],
@@ -761,8 +742,6 @@ async def watch_monitor_task():
                                 "timestamp": datetime.now().isoformat()
                             }
                         )
-
-# ==================== MAIN ====================
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))

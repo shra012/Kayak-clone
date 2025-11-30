@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../hooks/useToast';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './HotelsMap.css';
@@ -246,6 +248,30 @@ const HotelsPage = () => {
   };
 
   const handleViewDeal = (hotel) => {
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      toast.showError('Please log in to continue with booking');
+      // Save booking data to sessionStorage to restore after login
+      const checkIn = searchData?.checkIn || new Date().toISOString().split('T')[0];
+      const checkOut = searchData?.checkOut || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const checkInDate = new Date(checkIn);
+      const checkOutDate = new Date(checkOut);
+      const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
+
+      const bookingData = {
+        type: 'hotel',
+        hotel,
+        checkIn,
+        checkOut,
+        nights,
+        guests: searchData?.guests || 1,
+      };
+      sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
+      sessionStorage.setItem('returnPath', '/bookings');
+      navigate('/login');
+      return;
+    }
+
     // Calculate nights between check-in and check-out
     // Use searchData first, then fallback to today/tomorrow
     const checkIn = searchData?.checkIn || new Date().toISOString().split('T')[0];

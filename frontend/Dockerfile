@@ -1,55 +1,27 @@
-FROM node:20-alpine AS builder
+# syntax=docker/dockerfile:1
 
+# Install dependencies
+FROM node:20-alpine AS deps
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline --no-audit
 
-# Install all dependencies (including dev dependencies for build)
-# Add retry logic for network issues
-RUN npm ci --prefer-offline --no-audit || \
-    (sleep 5 && npm ci --prefer-offline --no-audit) || \
-    (sleep 10 && npm ci --prefer-offline --no-audit) && \
-    npm cache clean --force
-
-# Copy source code (assets are stored in Firebase, not included here)
+# Build the app
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package*.json ./
 COPY . .
-
-# Build the application
 RUN npm run build
 
-FROM node:20-alpine
+# Minimal runtime image serving static assets via nginx
+FROM nginx:1.25-alpine AS runner
+WORKDIR /usr/share/nginx/html
+COPY --from=builder /app/dist .
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-WORKDIR /app
+EXPOSE 80
 
-# Copy package files
-COPY package*.json ./
-
-# Install all dependencies (Vite + plugins are dev deps but required for preview)
-# Add retry logic for network issues
-RUN npm ci --prefer-offline --no-audit || \
-    (sleep 5 && npm ci --prefer-offline --no-audit) || \
-    (sleep 10 && npm ci --prefer-offline --no-audit) && \
-    npm cache clean --force
-
-# Copy built application from builder
-COPY --from=builder /app/dist ./dist
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-# Change ownership
-RUN chown -R nodejs:nodejs /app
-
-USER nodejs
-
-# Expose port
-EXPOSE 5173
-
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:5173', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
-
-# Start preview server (serves built files)
-CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173"]
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:80 || exit 1
