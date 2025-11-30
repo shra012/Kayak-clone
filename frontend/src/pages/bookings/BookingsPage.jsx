@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { bookingsApi } from '../../services/api/bookings';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { FaPlane, FaBed, FaCar, FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaCreditCard, FaArrowRight } from 'react-icons/fa';
