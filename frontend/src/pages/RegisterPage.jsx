@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import { useAuth } from '../hooks/useAuth';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { getHomePageFlightImages } from '../services/backgroundImages.service.js';
 
 const US_STATES = [
   { value: 'AL', label: 'Alabama' },
@@ -95,6 +96,7 @@ const isValidPhoneInput = (value) => {
 const RegisterPage = () => {
   useDocumentTitle('Create Account');
   
+  const flightImages = getHomePageFlightImages();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: '',
@@ -253,8 +255,34 @@ const RegisterPage = () => {
   };
 
   return (
-    <div className="hero min-h-screen bg-base-100">
-      <div className="hero-content w-full max-w-4xl">
+    <div className="hero min-h-screen bg-base-100 relative overflow-hidden">
+      {/* Background images for all screen sizes */}
+      <div className="absolute inset-0 z-0">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-3 h-full p-2 lg:p-4 opacity-20 lg:opacity-100">
+          <div className="h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-lg">
+            <img
+              src={flightImages.flight1}
+              alt="Travel 1"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-lg">
+            <img
+              src={flightImages.flight2}
+              alt="Travel 2"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="hidden lg:block h-full rounded-3xl overflow-hidden shadow-lg">
+            <img
+              src={flightImages.flight3}
+              alt="Travel 3"
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </div>
+      </div>
+      <div className="hero-content w-full max-w-4xl relative z-10">
         <div className="card bg-base-100 w-full shadow-2xl border border-base-300">
           <div className="card-body">
             <h1 className="text-3xl font-bold text-center mb-4">Create Account</h1>
