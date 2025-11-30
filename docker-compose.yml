@@ -3,8 +3,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      cache_from:
+        - node:20-alpine
     container_name: kayak-backend
     restart: unless-stopped
+    depends_on:
+      ai-agent:
+        condition: service_healthy
     ports:
       - "3000:3000"
     env_file:
@@ -14,6 +19,7 @@ services:
       PORT: 3000
       JWT_SECRET: ${JWT_SECRET:-fallback-secret-change-me}
       SESSION_SECRET: ${SESSION_SECRET:-fallback-session-secret-change-me}
+      AI_AGENT_URL: ${AI_AGENT_URL:-http://ai-agent:8000}
     volumes:
       - ./backend/kafka:/app/kafka:ro
     healthcheck:
@@ -27,21 +33,52 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      cache_from:
+        - node:20-alpine
     container_name: kayak-frontend
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
     ports:
-      - "5173:5173"
+      - "5173:80"
     env_file:
       - ./frontend/.env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5173"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  ai-agent:
+    build:
+      context: ./ai-agent
+      dockerfile: Dockerfile
+      cache_from:
+        - python:3.12-slim
+    container_name: kayak-ai-agent
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./ai-agent/.env
+    environment:
+      PORT: 8000
+      DATABASE_URL: ${DATABASE_URL:-${SUPABASE_DATABASE_URL:-sqlite:///./data/concierge.db}}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL:-${DATABASE_URL:-}}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./ai-agent/data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

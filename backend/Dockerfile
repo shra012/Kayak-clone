@@ -1,21 +1,29 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS deps
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install all dependencies (needed for Prisma)
-RUN npm ci && npm cache clean --force
+# Install dependencies with cache mount for faster rebuilds
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline --no-audit
+
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy package files
+COPY package*.json ./
 
 # Copy source code
-COPY . .
-
-# Remove development files
-RUN rm -rf node_modules/.cache \
-    && rm -rf logs/* \
-    && rm -rf .git \
-    && rm -rf node_modules
+COPY src ./src
+COPY prisma ./prisma
+COPY kafka ./kafka
+COPY healthcheck.js ./
 
 FROM node:20-alpine
 
@@ -24,20 +32,14 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-# Use --omit=dev instead of deprecated --only=production
-# Add retry logic for network issues
-RUN npm ci --omit=dev --prefer-offline --no-audit || \
-    (sleep 5 && npm ci --omit=dev --prefer-offline --no-audit) || \
-    (sleep 10 && npm ci --omit=dev --prefer-offline --no-audit) && \
-    npm cache clean --force
+# Install production dependencies only with cache mount
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev --prefer-offline --no-audit
 
 # Copy application code from builder
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/kafka ./kafka
-
-# Copy healthcheck script (from builder stage where it was copied)
 COPY --from=builder /app/healthcheck.js ./healthcheck.js
 
 # Note: .env file is NOT copied - it's provided via env_file in docker-compose.yml

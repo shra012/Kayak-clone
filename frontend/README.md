@@ -1,13 +1,22 @@
-# Frontend Documentation
+# Frontend
 
-This directory contains frontend-specific documentation.
+React 18 application with Vite, Redux Toolkit, and Tailwind CSS.
 
-## Available Documentation
+## Setup
 
-Frontend-specific documentation will be added here as needed.
+```bash
+npm install
+npm run dev  # http://localhost:5173
+```
 
-## Additional Resources
+## Environment Variables
 
-- [Frontend README](../README.md) - Frontend overview
-- [Project Documentation](../../docs/) - Project-wide documentation
+See `README.md` in project root for required `.env` variables.
+
+## Build
+
+```bash
+npm run build  # Production build
+npm run preview  # Preview production build
+```
 

@@ -4,6 +4,8 @@ import { FaPlane, FaBed, FaCar, FaClock, FaCalendar, FaTimes } from 'react-icons
 import { listingsApi } from '../../services/api/listings';
 import FlightPriceCalendar from '../../components/common/FlightPriceCalendar';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../hooks/useToast';
 
 // Helper function to parse date string as local time (not UTC)
 const parseLocalDate = (dateStr) => {
@@ -70,6 +72,8 @@ const FlightsPage = () => {
   
   const navigate = useNavigate();
   const location = useLocation();
+  const { isAuthenticated } = useAuth();
+  const toast = useToast();
   const [filters, setFilters] = useState(defaultFilters);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
@@ -87,6 +91,28 @@ const FlightsPage = () => {
 
   // Handle View Deal button click
   const handleViewDeal = (flight, returnFlight = null) => {
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      toast.showError('Please log in to continue with booking');
+      // Save booking data to sessionStorage to restore after login
+      const bookingData = {
+        type: returnFlight ? 'round-trip' : 'one-way',
+        outbound: flight,
+        return: returnFlight || null,
+        searchParams: {
+          from: filters.from,
+          to: filters.to,
+          departDate: filters.date,
+          returnDate: filters.returnDate,
+          travelers: 1,
+        }
+      };
+      sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
+      sessionStorage.setItem('returnPath', '/bookings');
+      navigate('/login');
+      return;
+    }
+
     // Navigate to bookings page with flight data
     // If round trip, include both outbound and return flights
     const bookingData = {

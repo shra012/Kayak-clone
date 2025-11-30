@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import { useAuth } from '../hooks/useAuth';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -7,12 +7,46 @@ import { getHomePageFlightImages } from '../services/backgroundImages.service.js
 
 const LoginPage = () => {
   useDocumentTitle('Login');
+  const navigate = useNavigate();
   
   const flightImages = getHomePageFlightImages();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login, loading, error } = useAuth();
+  const { login, loading, error, isAuthenticated, user } = useAuth();
+
+  // Redirect after successful login
+  useEffect(() => {
+    if (isAuthenticated) {
+      const returnPath = sessionStorage.getItem('returnPath');
+      const pendingBooking = sessionStorage.getItem('pendingBooking');
+      
+      // Clear sessionStorage
+      sessionStorage.removeItem('returnPath');
+      sessionStorage.removeItem('pendingBooking');
+      
+      // Check if user is owner - redirect to owner page (but only if no return path)
+      if (user?.profileType === 'owner' && !returnPath) {
+        navigate('/owner');
+        return;
+      }
+      
+      // Navigate to return path or bookings with pending booking data
+      if (pendingBooking && returnPath === '/bookings') {
+        try {
+          const bookingData = JSON.parse(pendingBooking);
+          navigate(returnPath, { state: { bookingData } });
+        } catch (err) {
+          console.error('Failed to parse pending booking:', err);
+          navigate(returnPath || '/');
+        }
+      } else if (returnPath) {
+        navigate(returnPath);
+      } else {
+        navigate('/');
+      }
+    }
+  }, [isAuthenticated, user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listingsApi } from '../../services/api/listings';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../hooks/useToast';
 import { FaCar, FaUsers, FaMapMarkerAlt, FaCalendarAlt, FaClock, FaTimes } from 'react-icons/fa';
 
 const defaultFilters = {
@@ -554,6 +556,31 @@ const CarsPage = () => {
                                 <button 
                                   className="btn btn-primary"
                                   onClick={() => {
+                                    // Check if user is authenticated
+                                    if (!isAuthenticated) {
+                                      toast.showError('Please log in to continue with booking');
+                                      // Save booking data to sessionStorage to restore after login
+                                      const pickupDate = pickUpDate || searchData?.pickUp || new Date().toISOString().split('T')[0];
+                                      const dropoffDate = dropOffDate || searchData?.dropOff || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+                                      const pickupDateObj = new Date(pickupDate);
+                                      const dropoffDateObj = new Date(dropoffDate);
+                                      const days = Math.ceil((dropoffDateObj - pickupDateObj) / (1000 * 60 * 60 * 24)) || 1;
+
+                                      const bookingData = {
+                                        type: 'car',
+                                        car,
+                                        pickupDate,
+                                        pickupTime: pickUpTime || searchData?.pickUpTime || '12:00',
+                                        dropoffDate,
+                                        dropoffTime: dropOffTime || searchData?.dropOffTime || '12:00',
+                                        days,
+                                      };
+                                      sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
+                                      sessionStorage.setItem('returnPath', '/bookings');
+                                      navigate('/login');
+                                      return;
+                                    }
+
                                     // Calculate days between pickup and dropoff
                                     const pickupDate = pickUpDate || searchData?.pickUp || new Date().toISOString().split('T')[0];
                                     const dropoffDate = dropOffDate || searchData?.dropOff || new Date(Date.now() + 86400000).toISOString().split('T')[0];

@@ -1,4 +1,4 @@
-./# Security Secrets Guide
+# Security Secrets Guide
 
 ## Overview
 

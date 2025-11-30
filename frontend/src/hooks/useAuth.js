@@ -59,9 +59,8 @@ export const useAuth = () => {
         }));
         dispatch(clearError());
         
-        // Redirect based on user type
-        const isOwner = response.data.user?.profileType === 'owner';
-        navigate(isOwner ? '/owner' : '/');
+        // Don't redirect here - let LoginPage handle redirect based on sessionStorage
+        // This allows for redirecting back to booking flow after login
       }
     } catch (err) {
       const errorMessage = buildAuthErrorMessage(err, 'Login failed');

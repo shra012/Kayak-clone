@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getPostgresPool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { sendKafkaMessage } from '../config/kafka.js';
-import { getBookingById } from './bookings.service.js';
+import { getBookingById, confirmBooking } from './bookings.service.js';
 
 const PAYMENT_STATUSES = {
   PENDING: 'PENDING',
@@ -13,47 +13,15 @@ const PAYMENT_STATUSES = {
 };
 
 /**
- * Mock payment gateway simulation (Stripe-like)
- * Simulates payment processing with success/failure scenarios
+ * Dummy payment gateway - accepts any card and always succeeds
  */
 const simulatePaymentGateway = async (paymentData) => {
-  const { amount, currency, metadata = {} } = paymentData;
+  const { amount, currency } = paymentData;
   
-  // Simulate network delay (50-200ms)
-  await new Promise(resolve => setTimeout(resolve, Math.random() * 150 + 50));
+  // Simulate network delay (100-300ms)
+  await new Promise(resolve => setTimeout(resolve, Math.random() * 200 + 100));
   
-  // Simulate failure scenarios (for testing)
-  // Fail if amount is exactly 0.01 (test failure case)
-  if (amount === 0.01) {
-    return {
-      success: false,
-      transactionReference: `txn_fail_${Date.now()}`,
-      error: 'Insufficient funds',
-      errorCode: 'card_declined',
-    };
-  }
-  
-  // Fail if metadata contains forceFailure flag
-  if (metadata.forceFailure === true) {
-    return {
-      success: false,
-      transactionReference: `txn_fail_${Date.now()}`,
-      error: 'Payment gateway error',
-      errorCode: 'gateway_error',
-    };
-  }
-  
-  // Simulate random failures (5% failure rate for testing)
-  if (Math.random() < 0.05 && process.env.NODE_ENV === 'development') {
-    return {
-      success: false,
-      transactionReference: `txn_fail_${Date.now()}`,
-      error: 'Network timeout',
-      errorCode: 'timeout',
-    };
-  }
-  
-  // Success case - generate transaction reference
+  // Always succeed - accept any card
   const transactionReference = `txn_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   
   return {
@@ -342,7 +310,8 @@ export const updatePaymentStatus = async (paymentId, newStatus, transactionRefer
 };
 
 /**
- * Process payment (authorize and capture) with payment gateway simulation
+ * Process payment (authorize and capture) - dummy payment gateway always succeeds
+ * Auto-confirms booking when payment succeeds
  */
 export const processPayment = async (paymentId, paymentMethodData = {}) => {
   const pool = getPostgresPool();
@@ -360,56 +329,29 @@ export const processPayment = async (paymentId, paymentMethodData = {}) => {
       throw new Error(`Cannot process payment with status: ${payment.status}`);
     }
 
-    // Simulate payment gateway processing
+    // Dummy payment gateway - accepts any card, always succeeds
     const gatewayResponse = await simulatePaymentGateway({
       amount: payment.amount,
       currency: payment.currency,
       metadata: payment.metadata,
-      ...paymentMethodData,
+      ...paymentMethodData, // Accept any card data without validation
     });
 
-    if (!gatewayResponse.success) {
-      // Payment failed - update status to FAILED
-      const failedPayment = await updatePaymentStatus(
-        paymentId,
-        PAYMENT_STATUSES.FAILED,
-        gatewayResponse.transactionReference
-      );
-
-      await client.query('COMMIT');
-
-      logger.warn(`Payment ${paymentId} failed: ${gatewayResponse.error}`);
-
-      await sendKafkaMessage('payments.failed', {
-        eventId: uuidv4(),
-        occurredAt: new Date().toISOString(),
-        paymentId: failedPayment.id,
-        bookingId: failedPayment.booking_id,
-        userId: failedPayment.user_id,
-        amount: parseFloat(failedPayment.amount),
-        currency: failedPayment.currency,
-        error: gatewayResponse.error,
-        errorCode: gatewayResponse.errorCode,
-      });
-
-      throw new Error(`Payment processing failed: ${gatewayResponse.error}`);
-    }
-
-    // Payment succeeded - authorize first, then capture
-    const authorized = await updatePaymentStatus(
-      paymentId,
-      PAYMENT_STATUSES.AUTHORIZED,
-      gatewayResponse.transactionReference
-    );
-
-    // Small delay to simulate capture
-    await new Promise(resolve => setTimeout(resolve, 100));
-
+    // Payment always succeeds - update to SUCCEEDED
     const succeeded = await updatePaymentStatus(
       paymentId,
       PAYMENT_STATUSES.SUCCEEDED,
       gatewayResponse.transactionReference
     );
+
+    // Auto-confirm booking when payment succeeds
+    try {
+      await confirmBooking(payment.bookingId);
+      logger.info(`Booking ${payment.bookingId} auto-confirmed after successful payment`);
+    } catch (bookingError) {
+      logger.warn(`Failed to auto-confirm booking ${payment.bookingId}:`, bookingError);
+      // Don't fail payment if booking confirmation fails
+    }
 
     await client.query('COMMIT');
 
@@ -489,17 +431,45 @@ export const refundPayment = async (paymentId, refundAmount = null) => {
  * Map payment database row to response format
  */
 const mapPaymentForResponse = (payment) => {
+  // Handle metadata - could be JSON string or already parsed object
+  let metadata = {};
+  if (payment.metadata) {
+    if (typeof payment.metadata === 'string') {
+      try {
+        metadata = JSON.parse(payment.metadata);
+      } catch {
+        metadata = {};
+      }
+    } else {
+      metadata = payment.metadata;
+    }
+  }
+
+  // Handle booking - could be JSON string or already parsed object
+  let booking = null;
+  if (payment.booking) {
+    if (typeof payment.booking === 'string') {
+      try {
+        booking = JSON.parse(payment.booking);
+      } catch {
+        booking = null;
+      }
+    } else {
+      booking = payment.booking;
+    }
+  }
+
   return {
     id: payment.id,
     bookingId: payment.booking_id,
     userId: payment.user_id,
-    booking: payment.booking ? JSON.parse(payment.booking) : null,
+    booking,
     status: payment.status,
     amount: parseFloat(payment.amount),
     currency: payment.currency,
     transactionReference: payment.transaction_reference,
     invoiceUrl: payment.invoice_url,
-    metadata: payment.metadata ? JSON.parse(payment.metadata) : {},
+    metadata,
     createdAt: payment.created_at,
     updatedAt: payment.updated_at,
   };
