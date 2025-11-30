@@ -48,7 +48,25 @@ CACHE_ENABLED=false  # Default for development
 
 See `backend/docs/ENV_CACHE_SAMPLE.md` for cache configuration examples.
 
-### 3. Start Backend
+### 3. Seed Database (Optional)
+
+Seed the MongoDB database with US travel data (flights, hotels, cars):
+
+```bash
+cd backend
+npm run seed:us-data
+```
+
+This will populate the database with:
+- **193 flights** between major US cities (LAX, JFK, SFO, ORD, etc.)
+- **93 hotels** in major US cities
+- **98 car rentals** in major US cities
+
+All data is limited to United States locations with realistic airport codes, states, and cities.
+
+See `backend/docs/US_AIRPORTS_REFERENCE.md` for a complete list of airport codes.
+
+### 4. Start Backend
 
 ```bash
 cd backend
@@ -57,7 +75,7 @@ npm run dev
 
 Backend runs on `http://localhost:3000`
 
-### 4. Frontend Setup
+### 5. Frontend Setup
 
 ```bash
 cd frontend

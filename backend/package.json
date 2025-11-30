@@ -15,7 +15,8 @@
     "lint:fix": "eslint src/**/*.js --fix",
     "mongo:seed": "node scripts/seed-mongo.js",
     "mongo:list": "node scripts/list-mongo-collections.js",
-    "seed:test-users": "node scripts/seed-test-users.js"
+    "seed:test-users": "node scripts/seed-test-users.js",
+    "seed:us-data": "node scripts/seed-us-data.js"
   },
   "keywords": [
     "kayak",

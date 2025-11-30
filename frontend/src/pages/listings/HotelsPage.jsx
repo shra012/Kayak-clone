@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './HotelsMap.css';
@@ -73,6 +73,7 @@ const HotelsPage = () => {
   useDocumentTitle('Search Hotels');
   
   const location = useLocation();
+  const navigate = useNavigate();
   const searchData = location.state?.search;
   
   // Initialize filters with search data from HomePage if available
@@ -245,8 +246,24 @@ const HotelsPage = () => {
   };
 
   const handleViewDeal = (hotel) => {
-    setSelectedHotel(hotel);
-    setShowHotelModal(true);
+    // Calculate nights between check-in and check-out
+    // Use searchData first, then fallback to today/tomorrow
+    const checkIn = searchData?.checkIn || new Date().toISOString().split('T')[0];
+    const checkOut = searchData?.checkOut || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const checkInDate = new Date(checkIn);
+    const checkOutDate = new Date(checkOut);
+    const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
+
+    const bookingData = {
+      type: 'hotel',
+      hotel,
+      checkIn,
+      checkOut,
+      nights,
+      guests: searchData?.guests || 1,
+    };
+
+    navigate('/bookings', { state: { bookingData } });
   };
 
   const handlePriceFilterApply = () => {

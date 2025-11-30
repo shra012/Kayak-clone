@@ -99,28 +99,28 @@ async function main() {
         storagePath: 'kayak/backgrounds/flights/flight1.jpg',
       },
       {
-        name: 'flight2.avif',
+        name: 'flight2.jpg',
         url: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800&q=80', // Aircraft
-        storagePath: 'kayak/backgrounds/flights/flight2.avif',
+        storagePath: 'kayak/backgrounds/flights/flight2.jpg',
       },
       {
         name: 'flight3.jpg',
-        url: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80', // Airplane window
+        url: 'https://images.unsplash.com/photo-1556388158-158ea5ccacbd?w=800&q=80', // Airplane window view
         storagePath: 'kayak/backgrounds/flights/flight3.jpg',
       },
       {
         name: 'flight4.webp',
-        url: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&q=80', // Airport
+        url: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&q=80', // Airport terminal
         storagePath: 'kayak/backgrounds/flights/flight4.webp',
       },
       {
         name: 'flight5.jpg',
-        url: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80', // Airplane sunset
+        url: 'https://images.unsplash.com/photo-1464037866556-6812c9d1c72e?w=800&q=80', // Airplane sunset
         storagePath: 'kayak/backgrounds/flights/flight5.jpg',
       },
       {
         name: 'flight6.jpg',
-        url: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80', // Airplane takeoff
+        url: 'https://images.unsplash.com/photo-1540962351504-03099e0a754b?w=800&q=80', // Airplane takeoff
         storagePath: 'kayak/backgrounds/flights/flight6.jpg',
       },
     ],

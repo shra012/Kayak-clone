@@ -9,6 +9,20 @@ import {
 } from '../utils/cache.js';
 
 /**
+ * Extract airport code from parameter (handles "LAX" or "LAX - Los Angeles...")
+ */
+const extractAirportCode = (param) => {
+  if (!param) return null;
+  // If it's just a code (3 letters), return it
+  if (/^[A-Z]{3}$/.test(param.trim())) {
+    return param.trim();
+  }
+  // If it contains a code, extract it (format: "LAX - Los Angeles...")
+  const match = param.match(/^([A-Z]{3})/);
+  return match ? match[1] : param.trim();
+};
+
+/**
  * Search flights with filters and pagination
  */
 export const searchFlights = async (query) => {
@@ -40,8 +54,14 @@ export const searchFlights = async (query) => {
 
     // Build query filter
     const filter = {};
-    if (from) filter.from = from;
-    if (to) filter.to = to;
+    if (from) {
+      const fromCode = extractAirportCode(from);
+      filter.from = fromCode;
+    }
+    if (to) {
+      const toCode = extractAirportCode(to);
+      filter.to = toCode;
+    }
     if (departDate) filter.departDate = departDate;
     if (returnDate) filter.returnDate = returnDate;
     if (nonstop === 'true') filter.nonstop = true;
@@ -79,15 +99,44 @@ export const searchFlights = async (query) => {
 };
 
 /**
- * Get available airlines
+ * Get available airlines filtered by route and dates
  */
 export const getAvailableAirlines = async (query) => {
   try {
+    const { from, to, departDate, returnDate } = query;
+    
     const db = await getMongoDB();
     const collection = db.collection('flights');
     
-    const airlines = await collection.distinct('airline');
-    return { airlines };
+    // Build filter based on route and dates
+    const filter = {};
+    
+    if (from) {
+      const fromCode = extractAirportCode(from);
+      filter.from = fromCode;
+    }
+    
+    if (to) {
+      const toCode = extractAirportCode(to);
+      filter.to = toCode;
+    }
+    
+    if (departDate) {
+      filter.departDate = departDate;
+    }
+    
+    // For round trips, also check returnDate
+    if (returnDate) {
+      // For round trips, we want flights that match the outbound date
+      // The return flight would be a separate flight with from=to and to=from
+      // But for simplicity, we'll just filter by departDate for now
+      // The frontend can handle showing airlines for the outbound leg
+    }
+    
+    // Get distinct airlines that match the filter
+    const airlines = await collection.distinct('airline', filter);
+    
+    return { airlines: airlines.sort() };
   } catch (error) {
     logger.error('Error in getAvailableAirlines service:', error);
     throw error;
@@ -213,7 +262,7 @@ export const searchHotels = async (query) => {
     if (city) filter.city = new RegExp(city, 'i');
     if (state) filter.state = state;
     if (minRating) filter.rating = { $gte: parseFloat(minRating) };
-    if (maxPrice) filter['rooms.pricePerNight'] = { $lte: parseFloat(maxPrice) };
+    if (maxPrice) filter.pricePerNight = { $lte: parseFloat(maxPrice) };
     if (amenities) {
       const amenitiesList = amenities.split(',');
       filter.amenities = { $all: amenitiesList };

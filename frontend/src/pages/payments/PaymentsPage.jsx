@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { paymentsApi } from '../../services/api/payments';
 import { bookingsApi } from '../../services/api/bookings';
 import { useToast } from '../../hooks/useToast';
+import { FaCreditCard, FaCheckCircle, FaArrowLeft } from 'react-icons/fa';
 
 const PaymentsPage = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [payments, setPayments] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,9 +22,28 @@ const PaymentsPage = () => {
     amount: '',
     currency: 'USD',
   });
+  const [paymentMethod, setPaymentMethod] = useState({
+    type: 'card',
+    cardNumber: '',
+    expiryDate: '',
+    cvv: '',
+    cardholderName: '',
+  });
   const toast = useToast();
 
+  // Check if coming from booking flow
+  const bookingFromState = location.state;
+
   useEffect(() => {
+    if (bookingFromState?.bookingId) {
+      // Auto-populate payment form with booking data
+      setNewPayment({
+        bookingId: bookingFromState.bookingId,
+        amount: bookingFromState.amount || '',
+        currency: bookingFromState.currency || 'USD',
+      });
+      setShowCreateModal(true);
+    }
     loadPayments();
     loadBookings();
   }, [filters]);
@@ -62,15 +85,49 @@ const PaymentsPage = () => {
       };
       
       const payment = await paymentsApi.createPayment(paymentData);
-      toast.showSuccess('Payment created successfully');
-      setShowCreateModal(false);
-      setNewPayment({ bookingId: '', amount: '', currency: 'USD' });
-      loadPayments();
+      
+      // If coming from booking flow, automatically process payment with method
+      if (bookingFromState?.bookingId) {
+        await handleProcessPaymentWithMethod(payment.id);
+      } else {
+        toast.showSuccess('Payment created successfully');
+        setShowCreateModal(false);
+        setNewPayment({ bookingId: '', amount: '', currency: 'USD' });
+        loadPayments();
+      }
     } catch (error) {
       console.error('Error creating payment:', error);
       toast.showError(error.response?.data?.message || 'Failed to create payment');
     } finally {
       setProcessing({ create: false });
+    }
+  };
+
+  const handleProcessPaymentWithMethod = async (paymentId) => {
+    try {
+      setProcessing({ [`process-${paymentId}`]: true });
+      const paymentMethodData = {
+        type: paymentMethod.type,
+        cardNumber: paymentMethod.cardNumber.replace(/\s/g, ''),
+        expiryDate: paymentMethod.expiryDate,
+        cvv: paymentMethod.cvv,
+        cardholderName: paymentMethod.cardholderName,
+      };
+      
+      await paymentsApi.processPayment(paymentId, paymentMethodData);
+      toast.showSuccess('Payment processed successfully!');
+      setShowCreateModal(false);
+      loadPayments();
+      
+      // Navigate to bookings page to show confirmation
+      setTimeout(() => {
+        navigate('/bookings');
+      }, 1500);
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      toast.showError(error.response?.data?.message || 'Failed to process payment');
+    } finally {
+      setProcessing({ [`process-${paymentId}`]: false });
     }
   };
 
@@ -271,26 +328,61 @@ const PaymentsPage = () => {
       {/* Create Payment Modal */}
       {showCreateModal && (
         <div className="modal modal-open">
-          <div className="modal-box">
-            <h3 className="font-bold text-lg mb-4">Create New Payment</h3>
+          <div className="modal-box max-w-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg">
+                {bookingFromState?.bookingId ? 'Complete Payment' : 'Create New Payment'}
+              </h3>
+              {bookingFromState?.bookingId && (
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    navigate('/bookings');
+                  }}
+                >
+                  <FaArrowLeft /> Back
+                </button>
+              )}
+            </div>
+            
+            {bookingFromState?.bookingId && (
+              <div className="alert alert-info mb-4">
+                <FaCheckCircle />
+                <div>
+                  <h4 className="font-semibold">Booking Created!</h4>
+                  <p className="text-sm">Please complete payment to confirm your booking.</p>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleCreatePayment}>
               <div className="form-control mb-4">
                 <label className="label">
                   <span className="label-text">Booking</span>
                 </label>
-                <select
-                  className="select select-bordered"
-                  value={newPayment.bookingId}
-                  onChange={(e) => setNewPayment({ ...newPayment, bookingId: e.target.value })}
-                  required
-                >
-                  <option value="">Select a booking</option>
-                  {bookings.map((booking) => (
-                    <option key={booking.id} value={booking.id}>
-                      {booking.bookingType} - {formatCurrency(booking.price?.amount || 0, booking.price?.currency || 'USD')}
-                    </option>
-                  ))}
-                </select>
+                {bookingFromState?.bookingId ? (
+                  <input
+                    type="text"
+                    className="input input-bordered"
+                    value={bookingFromState.bookingId}
+                    disabled
+                  />
+                ) : (
+                  <select
+                    className="select select-bordered"
+                    value={newPayment.bookingId}
+                    onChange={(e) => setNewPayment({ ...newPayment, bookingId: e.target.value })}
+                    required
+                  >
+                    <option value="">Select a booking</option>
+                    {bookings.map((booking) => (
+                      <option key={booking.id} value={booking.id}>
+                        {booking.bookingType} - {formatCurrency(booking.price?.amount || 0, booking.price?.currency || 'USD')}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="form-control mb-4">
                 <label className="label">
@@ -304,6 +396,7 @@ const PaymentsPage = () => {
                   value={newPayment.amount}
                   onChange={(e) => setNewPayment({ ...newPayment, amount: e.target.value })}
                   required
+                  disabled={!!bookingFromState?.bookingId}
                 />
               </div>
               <div className="form-control mb-4">
@@ -314,12 +407,93 @@ const PaymentsPage = () => {
                   className="select select-bordered"
                   value={newPayment.currency}
                   onChange={(e) => setNewPayment({ ...newPayment, currency: e.target.value })}
+                  disabled={!!bookingFromState?.bookingId}
                 >
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
                   <option value="GBP">GBP</option>
                 </select>
               </div>
+
+              {/* Payment Method Fields - shown when coming from booking flow */}
+              {bookingFromState?.bookingId && (
+                <>
+                  <div className="divider">Payment Method</div>
+                  <div className="form-control mb-4">
+                    <label className="label">
+                      <span className="label-text"><FaCreditCard className="inline mr-2" />Card Number <span className="text-error">*</span></span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input input-bordered"
+                      placeholder="1234 5678 9012 3456"
+                      value={paymentMethod.cardNumber}
+                      onChange={(e) => {
+                        let value = e.target.value.replace(/\s/g, '');
+                        if (value.length <= 16) {
+                          value = value.match(/.{1,4}/g)?.join(' ') || value;
+                          setPaymentMethod({ ...paymentMethod, cardNumber: value });
+                        }
+                      }}
+                      maxLength={19}
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="form-control">
+                      <label className="label">
+                        <span className="label-text">Expiry Date <span className="text-error">*</span></span>
+                      </label>
+                      <input
+                        type="text"
+                        className="input input-bordered"
+                        placeholder="MM/YY"
+                        value={paymentMethod.expiryDate}
+                        onChange={(e) => {
+                          let value = e.target.value.replace(/\D/g, '');
+                          if (value.length >= 2) {
+                            value = value.slice(0, 2) + '/' + value.slice(2, 4);
+                          }
+                          setPaymentMethod({ ...paymentMethod, expiryDate: value });
+                        }}
+                        maxLength={5}
+                        required
+                      />
+                    </div>
+                    <div className="form-control">
+                      <label className="label">
+                        <span className="label-text">CVV <span className="text-error">*</span></span>
+                      </label>
+                      <input
+                        type="text"
+                        className="input input-bordered"
+                        placeholder="123"
+                        value={paymentMethod.cvv}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                          setPaymentMethod({ ...paymentMethod, cvv: value });
+                        }}
+                        maxLength={4}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="form-control mb-4">
+                    <label className="label">
+                      <span className="label-text">Cardholder Name <span className="text-error">*</span></span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input input-bordered"
+                      placeholder="John Doe"
+                      value={paymentMethod.cardholderName}
+                      onChange={(e) => setPaymentMethod({ ...paymentMethod, cardholderName: e.target.value })}
+                      required
+                    />
+                  </div>
+                </>
+              )}
+
               <div className="modal-action">
                 <button
                   type="button"
@@ -327,6 +501,7 @@ const PaymentsPage = () => {
                   onClick={() => {
                     setShowCreateModal(false);
                     setNewPayment({ bookingId: '', amount: '', currency: 'USD' });
+                    setPaymentMethod({ type: 'card', cardNumber: '', expiryDate: '', cvv: '', cardholderName: '' });
                   }}
                 >
                   Cancel
@@ -338,6 +513,10 @@ const PaymentsPage = () => {
                 >
                   {processing.create ? (
                     <span className="loading loading-spinner loading-xs"></span>
+                  ) : bookingFromState?.bookingId ? (
+                    <>
+                      <FaCreditCard className="mr-2" /> Pay Now
+                    </>
                   ) : (
                     'Create Payment'
                   )}

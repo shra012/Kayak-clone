@@ -85,11 +85,48 @@ const FlightsPage = () => {
   const [roundTripCombos, setRoundTripCombos] = useState([]);
   const [availableAirlines, setAvailableAirlines] = useState([]);
 
+  // Handle View Deal button click
+  const handleViewDeal = (flight, returnFlight = null) => {
+    // Navigate to bookings page with flight data
+    // If round trip, include both outbound and return flights
+    const bookingData = {
+      type: returnFlight ? 'round-trip' : 'one-way',
+      outbound: flight,
+      return: returnFlight || null,
+      searchParams: {
+        from: filters.from,
+        to: filters.to,
+        departDate: filters.date,
+        returnDate: filters.returnDate,
+        travelers: 1, // Default, can be enhanced later
+      }
+    };
+    
+    navigate('/bookings', { 
+      state: { 
+        bookingData,
+        createNew: true 
+      } 
+    });
+  };
+
+  // Extract airport code from label format (e.g., "LAX - Los Angeles..." -> "LAX")
+  const extractAirportCode = (value) => {
+    if (!value) return null;
+    // If it's already just a code (3 letters), return it
+    if (/^[A-Z]{3}$/.test(value.trim())) {
+      return value.trim();
+    }
+    // Extract code from format like "LAX - Los Angeles (Los Angeles International)"
+    const match = value.match(/^([A-Z]{3})/);
+    return match ? match[1] : value.trim();
+  };
+
   const loadAirlines = async (activeFilters) => {
     try {
       const params = {};
-      if (activeFilters.from) params.from = activeFilters.from;
-      if (activeFilters.to) params.to = activeFilters.to;
+      if (activeFilters.from) params.from = extractAirportCode(activeFilters.from);
+      if (activeFilters.to) params.to = extractAirportCode(activeFilters.to);
       if (activeFilters.date) params.departDate = activeFilters.date;
       if (activeFilters.returnDate) params.returnDate = activeFilters.returnDate;
 
@@ -132,8 +169,8 @@ const FlightsPage = () => {
         // For round trips, fetch outbound and return flights separately and create combinations
         const [outboundData, returnData] = await Promise.all([
           listingsApi.searchFlights({
-            from: activeFilters.from,
-            to: activeFilters.to,
+            from: extractAirportCode(activeFilters.from),
+            to: extractAirportCode(activeFilters.to),
             departDate: activeFilters.date,
             // Don't pass price filters for round trips - we filter by total price client-side
             nonstop: activeFilters.nonstop,
@@ -141,8 +178,8 @@ const FlightsPage = () => {
             pageSize: 100, // Get more flights for combinations
           }),
           listingsApi.searchFlights({
-            from: activeFilters.to, // Reverse direction
-            to: activeFilters.from,
+            from: extractAirportCode(activeFilters.to), // Reverse direction
+            to: extractAirportCode(activeFilters.from),
             departDate: activeFilters.returnDate,
             // Don't pass price filters for round trips - we filter by total price client-side
             nonstop: activeFilters.nonstop,
@@ -243,8 +280,8 @@ const FlightsPage = () => {
           sortOrder: sortOrder,
         };
 
-        if (activeFilters.from) params.from = activeFilters.from;
-        if (activeFilters.to) params.to = activeFilters.to;
+        if (activeFilters.from) params.from = extractAirportCode(activeFilters.from);
+        if (activeFilters.to) params.to = extractAirportCode(activeFilters.to);
         if (activeFilters.date) params.departDate = activeFilters.date;
         if (activeFilters.returnDate) params.returnDate = activeFilters.returnDate;
         if (activeFilters.minPrice) params.minPrice = activeFilters.minPrice;
@@ -310,8 +347,8 @@ const FlightsPage = () => {
       const endDateStr = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
 
       const priceData = await listingsApi.getFlightPricesByDate({
-        from: activeFilters.from,
-        to: activeFilters.to,
+        from: extractAirportCode(activeFilters.from),
+        to: extractAirportCode(activeFilters.to),
         startDate: startDateStr,
         endDate: endDateStr
       });
@@ -968,7 +1005,12 @@ const FlightsPage = () => {
                             </div>
                             <div className="text-xs text-base-content/60">per person</div>
                           </div>
-                          <button className="btn btn-primary">View Deal</button>
+                          <button 
+                            className="btn btn-primary"
+                            onClick={() => handleViewDeal(combo.outbound, combo.return)}
+                          >
+                            View Deal
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1046,7 +1088,12 @@ const FlightsPage = () => {
                               </div>
                               <div className="text-xs text-base-content/60">per person</div>
                             </div>
-                            <button className="btn btn-primary btn-sm">View Deal</button>
+                            <button 
+                              className="btn btn-primary btn-sm"
+                              onClick={() => handleViewDeal(flight)}
+                            >
+                              View Deal
+                            </button>
                           </div>
                         </div>
                       </div>

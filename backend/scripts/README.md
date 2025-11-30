@@ -1,85 +1,30 @@
-# Backend Scripts
+# Backend Scripts (current status)
 
-## MSK Tunnel Script
+We no longer create MSK via Terraform; Kafka is now an Aiven-managed cluster. The scripts below are marked as **deprecated** if they target the old MSK setup, and **active** if still useful.
 
-### `msk-tunnel.sh`
+## Kafka / Infra
 
-Establishes a simple SSH tunnel to access MSK Kafka brokers from your local machine.
+- **(deprecated) `msk-tunnel.sh`**
+  - Purpose: SSH tunnel to AWS MSK via bastion/terraform outputs.
+  - Status: Unused with Aiven Kafka. Safe to delete if you don’t plan to access MSK.
 
-**Prerequisites:**
-- AWS CLI configured with appropriate credentials
-- Terraform applied in `infra/aws/` directory
-- Bastion instance must be running
-- SSH key pair configured on bastion (or use default SSH key)
+- **(deprecated) `check-kafka-access.sh`**
+  - Purpose: Verifies tunnel/port/AWS/MSK broker access.
+  - Status: Unused with Aiven Kafka. Safe to delete if you don’t plan to access MSK.
 
-**Usage:**
+> If you need Kafka locally with Aiven: set `KAFKA_ENABLED=true` and point env to Aiven brokers; no tunnel required.
 
-```bash
-# From backend directory
-./scripts/msk-tunnel.sh
+## Utilities
 
-# With custom SSH key
-SSH_KEY=/path/to/key.pem ./scripts/msk-tunnel.sh
-```
+- **(active) `generate-secrets.js`**
+  - Purpose: Generate secure `JWT_SECRET` and `SESSION_SECRET` values.
+  - Usage:
+    ```bash
+    cd backend
+    node scripts/generate-secrets.js
+    ```
+  - Copy outputs into `backend/.env`.
 
-**What it does:**
-1. Gets bastion instance ID and IP from Terraform output
-2. Gets MSK broker endpoint automatically
-3. Establishes SSH port forwarding tunnel
-4. Forwards `localhost:9098` to MSK broker through bastion
-
-**After connecting:**
-Update your `.env` file:
-```env
-KAFKA_BROKERS=localhost:9098
-```
-
-**Note:** The tunnel must remain active while using Kafka. Run this in a separate terminal.
-
-**To add SSH key to bastion:**
-1. Create/import key pair in AWS EC2 console
-2. Add to `infra/aws/terraform.tfvars`: `bastion_key_name = "your-key-name"`
-3. Run `terraform apply` in `infra/aws/`
-
-## Kafka Access Check Script
-
-### `check-kafka-access.sh`
-
-Verifies that Kafka brokers are accessible through the SSH tunnel.
-
-**Usage:**
-
-```bash
-# From project root
-./backend/scripts/check-kafka-access.sh
-```
-
-**What it checks:**
-1. SSH tunnel is running on port 9098
-2. Port 9098 is accessible locally
-3. AWS credentials are configured
-4. MSK cluster information is available
-
-**Output:**
-- Shows tunnel status, port accessibility, AWS identity, and MSK broker endpoints
-- Provides configuration instructions for backend `.env`
-
-## Generate Secrets Script
-
-### `generate-secrets.js`
-
-Generates cryptographically secure random secrets for JWT and session management.
-
-**Usage:**
-
-```bash
-cd backend
-node scripts/generate-secrets.js
-```
-
-**Output:**
-- Generates `JWT_SECRET` and `SESSION_SECRET` using Node.js `crypto.randomBytes()`
-- Copy the output to your `.env` file
-
-See [docs/SECRETS.md](../docs/SECRETS.md) for more details.
-
+## Next steps
+- Delete the deprecated MSK scripts if you won’t use AWS MSK anymore.
+- Keep `generate-secrets.js` for env secret generation.
