@@ -20,5 +20,12 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    port: 5173,
+    host: '0.0.0.0',
+    // Allow all hosts in production (preview mode)
+    // This is safe because preview mode is only used in production containers behind a load balancer
+    allowedHosts: true,
+  },
 });
 
