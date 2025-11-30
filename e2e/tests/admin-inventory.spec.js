@@ -15,12 +15,8 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Admin inventory', () => {
   test('admin can reach inventory management views', async ({ page }) => {
-    const email = process.env.E2E_ADMIN_EMAIL;
-    const password = process.env.E2E_ADMIN_PASSWORD;
-
-    if (!email || !password) {
-      test.skip(true, 'E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD are not set');
-    }
+  const email = process.env.E2E_ADMIN_EMAIL || 'e2e.admin@test.kayak.com';
+  const password = process.env.E2E_ADMIN_PASSWORD || 'TestAdmin123!';
 
     await page.goto('/login');
 

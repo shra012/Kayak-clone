@@ -16,20 +16,18 @@ test.describe('Home and navigation', () => {
 
     await expect(page).toHaveTitle(/Kayak/i);
 
-    await expect(page.getByRole('link', { name: /Flights/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Stays|Hotels/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Cars/i })).toBeVisible();
+    // Use .first() to get the first matching navigation link (in header/navbar)
+    // There may be multiple "Flights" links on the page (in cards, etc.)
+    await expect(page.getByRole('link', { name: /Flights/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Stays|Hotels/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Cars/i }).first()).toBeVisible();
   });
 });
 
 test.describe('Login flow (optional, uses env credentials)', () => {
   test('can submit login form and see result', async ({ page }) => {
-    const email = process.env.E2E_USER_EMAIL;
-    const password = process.env.E2E_USER_PASSWORD;
-
-    if (!email || !password) {
-      test.skip(true, 'E2E_USER_EMAIL and E2E_USER_PASSWORD are not set');
-    }
+    const email = process.env.E2E_USER_EMAIL || 'e2e.traveler@test.kayak.com';
+    const password = process.env.E2E_USER_PASSWORD || 'TestTraveler123!';
 
     await page.goto('/login');
 
