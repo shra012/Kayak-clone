@@ -1,4 +1,22 @@
 services:
+  mongodb:
+    image: mongo:7.0
+    container_name: kayak-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build:
       context: ./backend
@@ -8,6 +26,8 @@ services:
     container_name: kayak-backend
     restart: unless-stopped
     depends_on:
+      mongodb:
+        condition: service_healthy
       ai-agent:
         condition: service_healthy
     ports:
@@ -20,6 +40,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-fallback-secret-change-me}
       SESSION_SECRET: ${SESSION_SECRET:-fallback-session-secret-change-me}
       AI_AGENT_URL: ${AI_AGENT_URL:-http://ai-agent:8000}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://root:password@mongodb:27017/kayak?authSource=admin}
     volumes:
       - ./backend/kafka:/app/kafka:ro
     healthcheck:
@@ -41,7 +62,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "5173:80"
+      - "5173:5173"
     env_file:
       - ./frontend/.env
     environment:
@@ -72,7 +93,6 @@ services:
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
       SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL:-${DATABASE_URL:-}}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - ./ai-agent/data:/app/data
@@ -82,3 +102,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+
+volumes:
+  mongodb_data:

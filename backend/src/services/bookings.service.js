@@ -80,7 +80,7 @@ export const createBooking = async (userId, bookingData) => {
       priceAmount,
       priceCurrency = 'USD',
       itinerary,
-      metadata = {},
+      metadata: incomingMetadata = {},
     } = bookingData;
 
     if (!Object.values(BOOKING_TYPES).includes(bookingType)) {
@@ -89,12 +89,12 @@ export const createBooking = async (userId, bookingData) => {
 
     const bookingId = uuidv4();
     
-    // Generate PNR for flight bookings
+    // Prepare metadata and PNR for flight bookings
     let pnr = null;
+    let finalMetadata = { ...incomingMetadata };
     if (bookingType === BOOKING_TYPES.FLIGHT) {
       pnr = generatePNR();
-      // Store PNR in metadata
-      metadata = { ...metadata, pnr };
+      finalMetadata = { ...finalMetadata, pnr };
       logger.info(`Generated PNR ${pnr} for flight booking ${bookingId}`);
     }
 
@@ -111,7 +111,7 @@ export const createBooking = async (userId, bookingData) => {
         priceAmount,
         priceCurrency,
         JSON.stringify(itinerary || {}),
-        JSON.stringify(metadata),
+        JSON.stringify(finalMetadata),
       ]
     );
 

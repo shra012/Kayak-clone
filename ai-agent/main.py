@@ -107,7 +107,8 @@ class ChatMessage(BaseModel):
     content: str = Field(..., description="Message content")
 
 class ChatSessionRequest(BaseModel):
-    user_id: str = Field(..., description="User ID")
+    # User ID is optional; default to "anonymous" so unauthenticated users can start sessions
+    user_id: Optional[str] = Field(default="anonymous", description="User ID (optional; defaults to 'anonymous')")
     initial_message: Optional[str] = Field(None, description="Initial user message")
 
 class ChatSessionResponse(BaseModel):
@@ -119,7 +120,8 @@ class ChatSessionResponse(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     message: str = Field(..., description="User message")
-    session_id: str = Field(..., description="Session ID")
+    # Session ID is passed in the path; keep this optional so backend doesn't need to send it in the body
+    session_id: Optional[str] = Field(default=None, description="Session ID (optional, taken from path)")
 
 class ChatMessageResponse(BaseModel):
     session_id: str
