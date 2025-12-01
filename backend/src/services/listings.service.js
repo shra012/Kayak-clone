@@ -22,6 +22,100 @@ const extractAirportCode = (param) => {
   return match ? match[1] : param.trim();
 };
 
+const STATE_CODE_TO_NAME = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming',
+  DC: 'District of Columbia',
+};
+
+const STATE_NAME_TO_CODE = Object.entries(STATE_CODE_TO_NAME).reduce((acc, [code, name]) => {
+  acc[name.toLowerCase()] = code;
+  return acc;
+}, {});
+
+const normalizeStateFilters = (value) => {
+  if (!value) return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  const normalized = new Set();
+  const upper = trimmed.toUpperCase();
+  if (/^[A-Z]{2}$/.test(upper)) {
+    normalized.add(upper);
+    const fullName = STATE_CODE_TO_NAME[upper];
+    if (fullName) normalized.add(fullName);
+  } else {
+    normalized.add(trimmed);
+    const code = STATE_NAME_TO_CODE[trimmed.toLowerCase()];
+    if (code) {
+      normalized.add(code);
+      const fullName = STATE_CODE_TO_NAME[code];
+      if (fullName) normalized.add(fullName);
+    }
+  }
+
+  return Array.from(normalized);
+};
+
+const parseListParam = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => item.trim()).filter(Boolean);
+  }
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 /**
  * Search flights with filters and pagination
  */
@@ -35,6 +129,8 @@ export const searchFlights = async (query) => {
       passengers = 1,
       class: flightClass = 'economy',
       nonstop,
+      airline,
+      airlines,
       maxPrice,
       departTimeStart,
       departTimeEnd,
@@ -80,6 +176,16 @@ export const searchFlights = async (query) => {
     if (maxPrice) filter.price = { $lte: parseFloat(maxPrice) };
     // Filter by class if specified (economy, premium_economy, business, first)
     if (flightClass) filter.class = flightClass;
+
+    const airlineFilters = Array.from(new Set([
+      ...parseListParam(airline),
+      ...parseListParam(airlines),
+    ]));
+    if (airlineFilters.length === 1) {
+      filter.airline = airlineFilters[0];
+    } else if (airlineFilters.length > 1) {
+      filter.airline = { $in: airlineFilters };
+    }
     if (minSeats) filter.availableSeats = { $gte: parseInt(minSeats, 10) };
     if (departTimeStart || departTimeEnd) {
       filter.departureTime = {};
@@ -411,18 +517,44 @@ export const searchCars = async (query) => {
   try {
     const {
       city,
+      location,
       state,
       pickupDate,
       dropoffDate,
+      pickupTime,
+      dropoffTime,
       carType,
+      type,
       transmission,
       availabilityStatus,
+      vendor,
+      vendors,
+      minPrice,
       maxPrice,
       page = 1,
-      limit = 20,
-      sort = 'price',
-      order = 'asc',
+      pageSize,
+      limit,
+      sort,
+      sortBy,
+      order,
+      sortOrder,
     } = query;
+
+    const normalizeCity = (value) => {
+      if (!value) return undefined;
+      return value.split(',')[0].trim();
+    };
+
+    const parseListParam = (value) => {
+      if (!value) return [];
+      if (Array.isArray(value)) {
+        return value.map((item) => item.trim()).filter(Boolean);
+      }
+      return value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    };
 
     // Try to get cached results
     const cached = await getCachedSearchResults('car', query);
@@ -435,38 +567,114 @@ export const searchCars = async (query) => {
     const collection = db.collection('cars');
 
     // Build query filter
-    const filter = {};
-    if (city) filter.city = new RegExp(city, 'i');
-    if (state) filter.state = state;
-    if (carType) filter.type = carType;
-    if (transmission) filter.transmission = transmission;
-    if (maxPrice) filter.pricePerDay = { $lte: parseFloat(maxPrice) };
-    if (availabilityStatus) {
-      // support either availabilityStatus or status fields in the collection
-      filter.$or = [
-        { availabilityStatus },
-        { status: availabilityStatus },
-      ];
+    const andConditions = [];
+    const cityFilter = normalizeCity(city || location);
+    if (cityFilter) {
+      const regex = new RegExp(cityFilter, 'i');
+      andConditions.push({
+        $or: [
+          { city: regex },
+          { location: regex },
+          { 'address.city': regex },
+        ],
+      });
     }
 
-    // Build sort
-    const sortObj = {};
-    sortObj[sort] = order === 'desc' ? -1 : 1;
+    if (state) {
+      const stateVariants = normalizeStateFilters(state);
+      const stateMatchers = stateVariants.map((variant) => new RegExp(`^${variant}$`, 'i'));
+      andConditions.push({
+        $or: [
+          { state: { $in: [...stateVariants, ...stateMatchers] } },
+          { 'address.state': { $in: [...stateVariants, ...stateMatchers] } },
+        ],
+      });
+    }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const resolvedCarType = (carType || type)?.toString().trim();
+    if (resolvedCarType && resolvedCarType.toLowerCase() !== 'any') {
+      andConditions.push({
+        $or: [
+          { type: resolvedCarType },
+          { carType: resolvedCarType },
+        ],
+      });
+    }
+
+    if (transmission) {
+      andConditions.push({ transmission });
+    }
+
+    const vendorFilters = Array.from(
+      new Set([...parseListParam(vendor), ...parseListParam(vendors)])
+    );
+    if (vendorFilters.length) {
+      andConditions.push({
+        $or: [
+          { vendor: { $in: vendorFilters } },
+          { companyName: { $in: vendorFilters } },
+        ],
+      });
+    }
+
+    const priceConstraints = {};
+    const minPriceValue = parseFloat(minPrice);
+    if (!Number.isNaN(minPriceValue)) {
+      priceConstraints.$gte = minPriceValue;
+    }
+    const maxPriceValue = parseFloat(maxPrice);
+    if (!Number.isNaN(maxPriceValue)) {
+      priceConstraints.$lte = maxPriceValue;
+    }
+    if (Object.keys(priceConstraints).length) {
+      andConditions.push({
+        $or: [
+          { pricePerDay: priceConstraints },
+          { price: priceConstraints },
+        ],
+      });
+    }
+
+    if (availabilityStatus) {
+      andConditions.push({
+        $or: [
+          { availabilityStatus },
+          { status: availabilityStatus },
+        ],
+      });
+    }
+
+    const filter = andConditions.length ? { $and: andConditions } : {};
+
+    // Build sort
+    const resolvedSortField = (() => {
+      const candidate = sortBy || sort || 'pricePerDay';
+      if (candidate === 'price') return 'pricePerDay';
+      if (candidate === 'seats') return 'seats';
+      if (candidate === 'vendor') return 'vendor';
+      return candidate;
+    })();
+    const resolvedOrder = (sortOrder || order || 'asc').toLowerCase() === 'desc' ? -1 : 1;
+    const sortObj = { [resolvedSortField]: resolvedOrder };
+
+    const parsedLimit = parseInt(pageSize ?? limit ?? 20, 10);
+    const safeLimit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 20;
+    const parsedPage = parseInt(page, 10);
+    const safePage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const skip = (safePage - 1) * safeLimit;
     
     const [items, totalItems] = await Promise.all([
-      collection.find(filter).sort(sortObj).skip(skip).limit(parseInt(limit)).toArray(),
+      collection.find(filter).sort(sortObj).skip(skip).limit(safeLimit).toArray(),
       collection.countDocuments(filter),
     ]);
 
     const results = {
       items,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: safePage,
+        limit: safeLimit,
         totalItems,
-        totalPages: Math.ceil(totalItems / parseInt(limit)),
+        totalPages: Math.ceil(totalItems / safeLimit) || 1,
       },
     };
 
