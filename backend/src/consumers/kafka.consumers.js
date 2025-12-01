@@ -213,7 +213,12 @@ export const startBookingStatusConsumer = async () => {
           };
 
           await notificationsCollection.insertOne(notification);
-          logger.info(`Notification created for booking: ${notification.bookingId}`);
+          
+          // Send WebSocket notification
+          const { sendToUser } = await import('../config/websocket.js');
+          sendToUser(notification.userId, 'notification', notification);
+          
+          logger.info(`Notification created and sent to user ${notification.userId} for booking: ${notification.bookingId}`);
         } catch (error) {
           logger.error('Error processing booking status event:', error);
         }
@@ -323,6 +328,14 @@ const sendWatchNotification = async (watch, listingData) => {
   };
 
   await notificationsCollection.insertOne(notification);
+  
+  // Send WebSocket notification
+  try {
+    const { sendToUser } = await import('../config/websocket.js');
+    sendToUser(watch.userId, 'notification', notification);
+  } catch (error) {
+    logger.error('Error sending WebSocket notification for watch:', error);
+  }
 };
 
 /**
@@ -345,6 +358,278 @@ const getBookingNotificationMessage = (topic, event) => {
 };
 
 /**
+ * Analytics consumer
+ * Processes booking and payment events for analytics
+ */
+export const startAnalyticsConsumer = async () => {
+  try {
+    const consumer = await getKafkaConsumer('analytics-group');
+    if (!consumer) {
+      logger.warn('Kafka consumer not available. Analytics consumer not started.');
+      return;
+    }
+
+    await consumer.subscribe({
+      topics: ['bookings.updated', 'payments.created'],
+      fromBeginning: false,
+    });
+
+    await consumer.run({
+      eachMessage: async ({ topic, partition, message }) => {
+        try {
+          const event = JSON.parse(message.value.toString());
+          logger.info(`Analytics consumer received event: ${topic}`, { eventId: event.eventId });
+
+          const db = await getMongoDB();
+          const tracesCollection = db.collection('user_traces');
+
+          const userId = event.userId || event.payload?.userId;
+          if (!userId) {
+            logger.warn('No userId in analytics event, skipping');
+            return;
+          }
+
+          // Create analytics event
+          const analyticsEvent = {
+            userId,
+            eventType: topic === 'bookings.updated' ? 'booking_updated' : 'payment_created',
+            eventData: {
+              bookingId: event.bookingId || event.payload?.bookingId,
+              paymentId: event.paymentId || event.payload?.paymentId,
+              status: event.status || event.newStatus || event.payload?.status,
+              amount: event.amount || event.priceAmount || event.payload?.amount,
+            },
+            occurredAt: new Date(event.occurredAt),
+            createdAt: new Date(),
+          };
+
+          // Upsert user trace (create or update)
+          await tracesCollection.updateOne(
+            { userId },
+            {
+              $push: {
+                steps: {
+                  $each: [analyticsEvent],
+                  $slice: -1000, // Keep last 1000 events per user
+                },
+              },
+              $setOnInsert: {
+                userId,
+                cohort: new Date().toISOString().split('T')[0], // Daily cohort
+                createdAt: new Date(),
+              },
+            },
+            { upsert: true }
+          );
+
+          logger.debug(`Analytics event stored for user ${userId}`);
+        } catch (error) {
+          logger.error('Error processing analytics event:', error);
+        }
+      },
+    });
+
+    logger.info('Analytics consumer started');
+  } catch (error) {
+    logger.error('Error starting analytics consumer:', error);
+  }
+};
+
+/**
+ * Notification consumer
+ * Sends notifications for payment and inventory events
+ */
+export const startNotificationConsumer = async () => {
+  try {
+    const consumer = await getKafkaConsumer('notification-group');
+    if (!consumer) {
+      logger.warn('Kafka consumer not available. Notification consumer not started.');
+      return;
+    }
+
+    await consumer.subscribe({
+      topics: ['payments.succeeded', 'inventory.updated'],
+      fromBeginning: false,
+    });
+
+    await consumer.run({
+      eachMessage: async ({ topic, partition, message }) => {
+        try {
+          const event = JSON.parse(message.value.toString());
+          logger.info(`Notification consumer received event: ${topic}`, { eventId: event.eventId });
+
+          const db = await getMongoDB();
+          const notificationsCollection = db.collection('notifications');
+
+          let userId = event.userId || event.payload?.userId;
+          let notification = null;
+
+          if (topic === 'payments.succeeded') {
+            userId = event.userId || event.payload?.userId;
+            notification = {
+              userId,
+              type: 'payment',
+              topic: 'payments.succeeded',
+              paymentId: event.paymentId || event.payload?.paymentId,
+              bookingId: event.bookingId || event.payload?.bookingId,
+              amount: event.amount || event.payload?.amount,
+              message: `Payment of $${event.amount || event.payload?.amount} succeeded for booking ${event.bookingId || event.payload?.bookingId}`,
+              read: false,
+              createdAt: new Date(event.occurredAt),
+            };
+          } else if (topic === 'inventory.updated') {
+            // For inventory updates, we need to find users watching this listing
+            const { listingType, listingId, action } = event.payload || event;
+            
+            if (action === 'deleted' || action === 'updated') {
+              // Find users with active watches for this listing
+              const watchesCollection = db.collection('watches');
+              const watches = await watchesCollection.find({
+                listingType,
+                listingId,
+                status: 'active',
+              }).toArray();
+
+              // Create notifications for each watch
+              for (const watch of watches) {
+                notification = {
+                  userId: watch.userId,
+                  type: 'inventory',
+                  topic: 'inventory.updated',
+                  listingType,
+                  listingId,
+                  watchId: watch._id.toString(),
+                  message: `Inventory updated for ${listingType} ${listingId}`,
+                  read: false,
+                  createdAt: new Date(event.occurredAt),
+                };
+
+                await notificationsCollection.insertOne(notification);
+
+                // Send WebSocket notification
+                const { sendToUser } = await import('../config/websocket.js');
+                sendToUser(watch.userId, 'notification', notification);
+              }
+
+              logger.info(`Created ${watches.length} notifications for inventory update`);
+              return;
+            }
+          }
+
+          if (notification && userId) {
+            await notificationsCollection.insertOne(notification);
+
+            // Send WebSocket notification
+            const { sendToUser } = await import('../config/websocket.js');
+            sendToUser(userId, 'notification', notification);
+
+            logger.info(`Notification created and sent to user ${userId}`);
+          }
+        } catch (error) {
+          logger.error('Error processing notification event:', error);
+        }
+      },
+    });
+
+    logger.info('Notification consumer started');
+  } catch (error) {
+    logger.error('Error starting notification consumer:', error);
+  }
+};
+
+/**
+ * Inventory consumer
+ * Updates inventory (seats/rooms) based on payment events
+ */
+export const startInventoryConsumer = async () => {
+  try {
+    const consumer = await getKafkaConsumer('inventory-payment-group');
+    if (!consumer) {
+      logger.warn('Kafka consumer not available. Inventory consumer not started.');
+      return;
+    }
+
+    await consumer.subscribe({
+      topics: ['payments.created', 'payments.succeeded'],
+      fromBeginning: false,
+    });
+
+    await consumer.run({
+      eachMessage: async ({ topic, partition, message }) => {
+        try {
+          const event = JSON.parse(message.value.toString());
+          logger.info(`Inventory consumer received event: ${topic}`, { eventId: event.eventId });
+
+          const db = await getMongoDB();
+
+          // Get booking details to find listing
+          const bookingId = event.bookingId || event.payload?.bookingId;
+          if (!bookingId) {
+            logger.warn('No bookingId in payment event, skipping inventory update');
+            return;
+          }
+
+          // Fetch booking to get itinerary details
+          const { getPostgresPool } = await import('../config/database.js');
+          const pool = getPostgresPool();
+          const bookingResult = await pool.query(
+            'SELECT booking_type, itinerary FROM bookings WHERE id = $1',
+            [bookingId]
+          );
+
+          if (bookingResult.rows.length === 0) {
+            logger.warn(`Booking ${bookingId} not found, skipping inventory update`);
+            return;
+          }
+
+          const booking = bookingResult.rows[0];
+          const itinerary = booking.itinerary || {};
+
+          if (topic === 'payments.created') {
+            // Reserve inventory (temporarily hold seats/rooms)
+            // This is optional - you might want to reserve on booking creation instead
+            logger.debug(`Payment created for booking ${bookingId}, inventory reservation handled at booking time`);
+          } else if (topic === 'payments.succeeded') {
+            // Decrement inventory when payment succeeds
+            if (booking.booking_type === 'flight' && itinerary.flightId) {
+              const flightsCollection = db.collection('flights');
+              const result = await flightsCollection.updateOne(
+                { _id: itinerary.flightId },
+                {
+                  $inc: { availableSeats: -(itinerary.passengers || 1) },
+                }
+              );
+
+              if (result.modifiedCount > 0) {
+                logger.info(`Decremented ${itinerary.passengers || 1} seats for flight ${itinerary.flightId}`);
+              }
+            } else if (booking.booking_type === 'hotel' && itinerary.hotelId) {
+              const hotelsCollection = db.collection('hotels');
+              const result = await hotelsCollection.updateOne(
+                { _id: itinerary.hotelId },
+                {
+                  $inc: { availableRooms: -(itinerary.rooms || 1) },
+                }
+              );
+
+              if (result.modifiedCount > 0) {
+                logger.info(`Decremented ${itinerary.rooms || 1} rooms for hotel ${itinerary.hotelId}`);
+              }
+            }
+          }
+        } catch (error) {
+          logger.error('Error processing inventory event:', error);
+        }
+      },
+    });
+
+    logger.info('Inventory consumer started');
+  } catch (error) {
+    logger.error('Error starting inventory consumer:', error);
+  }
+};
+
+/**
  * Start all Kafka consumers
  */
 export const startAllConsumers = async () => {
@@ -355,6 +640,9 @@ export const startAllConsumers = async () => {
       startInventoryUpdateConsumer(),
       startBookingStatusConsumer(),
       startPaymentConfirmationConsumer(),
+      startAnalyticsConsumer(),
+      startNotificationConsumer(),
+      startInventoryConsumer(),
     ]);
 
     logger.info('All Kafka consumers started');

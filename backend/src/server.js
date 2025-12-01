@@ -22,6 +22,7 @@ if (existsSync(envPath)) {
 }
 
 import express from 'express';
+import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -44,6 +45,16 @@ try {
   logger.error('Failed to initialize Firebase:', error);
   // Firebase is optional, don't exit
   console.log('Server starting without Firebase (image uploads will not work)');
+}
+
+// Initialize WebSocket server
+try {
+  const { initializeWebSocket } = await import('./config/websocket.js');
+  initializeWebSocket(server);
+  logger.info('WebSocket server initialized');
+} catch (error) {
+  logger.warn('Failed to initialize WebSocket server:', error);
+  // WebSocket is optional, continue without it
 }
 
 // Initialize Kafka (optional, won't fail if not configured)
@@ -73,6 +84,7 @@ try {
 })();
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:5174,http://localhost:5175')
@@ -187,10 +199,8 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-let server;
-
 try {
-  server = app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`Server started successfully on port ${PORT}`);
     logger.info(`Server running in ${NODE_ENV} mode on port ${PORT}`);
     logger.info(`Health check: http://localhost:${PORT}/health/live`);
