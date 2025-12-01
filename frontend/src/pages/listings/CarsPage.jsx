@@ -31,6 +31,8 @@ const CarsPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const searchData = location.state?.search;
+  const { isAuthenticated } = useAuth();
+  const toast = useToast();
 
   // Initialize filters with search data if available
   const initialFilters = {
@@ -53,6 +55,8 @@ const CarsPage = () => {
   // Date states
   const [pickUpDate, setPickUpDate] = useState(searchData?.pickUp || '');
   const [dropOffDate, setDropOffDate] = useState(searchData?.dropOff || '');
+  const pickUpTime = searchData?.pickUpTime || '12:00';
+  const dropOffTime = searchData?.dropOffTime || '12:00';
   const [showPickUpCalendar, setShowPickUpCalendar] = useState(false);
   const [showDropOffCalendar, setShowDropOffCalendar] = useState(false);
 

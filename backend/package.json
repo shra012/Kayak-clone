@@ -16,7 +16,16 @@
     "seed:test-users": "node scripts/seed-test-users.js",
     "seed:us-data": "node scripts/seed-us-data.js",
     "load:kaggle-data": "node scripts/load-kaggle-data.js",
-    "create:indexes": "node scripts/create-indexes.js"
+    "create:indexes": "node scripts/create-indexes.js",
+    "migrate:users": "node scripts/run-users-migration.js",
+    "migrate:payments": "node scripts/run-payments-migration.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:status": "prisma migrate status",
+    "prisma:studio": "prisma studio",
+    "prisma:format": "prisma format",
+    "prisma:validate": "prisma validate"
   },
   "keywords": [
     "kayak",
@@ -26,6 +35,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^5.19.0",
     "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
@@ -58,6 +68,7 @@
     "eslint-plugin-import": "^2.29.1",
     "jest": "^29.7.0",
     "nodemon": "^3.0.2",
+    "prisma": "^5.19.0",
     "supertest": "^6.3.3"
   }
 }

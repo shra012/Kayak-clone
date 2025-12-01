@@ -214,6 +214,7 @@ SESSION_MAX_AGE=86400000
 
 # Redis (for sessions and caching)
 REDIS_URL=redis://default:password@host:port
+CACHE_ENABLED=false  # Set to 'true' to enable Redis caching (default: false)
 
 # Kafka (for events)
 KAFKA_BROKERS=broker1:port,broker2:port

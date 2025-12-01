@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { toggleSidebar, setTheme } from "../../store/slices/uiSlice";
-import { FaBars, FaHotel, FaCar, FaHome } from "react-icons/fa";
+import { FaBars, FaHotel, FaCar, FaHome, FaChartLine } from "react-icons/fa";
 import AnimatedIcon from "../common/AnimatedIcon";
 
 const Layout = ({ children }) => {
@@ -102,6 +102,19 @@ const Layout = ({ children }) => {
                         <FaCar className="w-4 h-4" />
                         My Cars
                       </NavLink>
+                      <NavLink 
+                        to="/analytics"
+                        className={({ isActive }) => 
+                          `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                            isActive 
+                              ? 'bg-primary text-primary-content font-semibold' 
+                              : 'hover:bg-base-200'
+                          }`
+                        }
+                      >
+                        <FaChartLine className="w-4 h-4" />
+                        Analytics
+                      </NavLink>
                     </>
                   ) : (
                     <>
@@ -187,6 +200,19 @@ const Layout = ({ children }) => {
                     <FaCar className="w-4 h-4" />
                     Cars
                   </NavLink>
+                  <NavLink 
+                    to="/analytics"
+                    className={({ isActive }) => 
+                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        isActive 
+                          ? 'bg-primary text-primary-content font-semibold' 
+                          : 'hover:bg-base-200'
+                      }`
+                    }
+                  >
+                    <FaChartLine className="w-4 h-4" />
+                    Analytics
+                  </NavLink>
                 </>
               ) : (
                 <>
@@ -213,6 +239,19 @@ const Layout = ({ children }) => {
                     }
                   >
                     Payments
+                  </NavLink>
+                  <NavLink 
+                    to="/analytics"
+                    className={({ isActive }) => 
+                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        isActive 
+                          ? 'bg-primary text-primary-content font-semibold' 
+                          : 'hover:bg-base-200'
+                      }`
+                    }
+                  >
+                    <FaChartLine className="w-4 h-4" />
+                    Analytics
                   </NavLink>
                 </>
               )}
@@ -274,11 +313,19 @@ const Layout = ({ children }) => {
                     <li>
                       <Link to="/owner/cars">My Cars</Link>
                     </li>
+                    <li>
+                      <Link to="/analytics">Analytics</Link>
+                    </li>
                   </>
                 )}
                 {isAdmin() && (
                   <li>
                     <Link to="/admin">Admin</Link>
+                  </li>
+                )}
+                {!isOwner && (
+                  <li>
+                    <Link to="/analytics">Analytics</Link>
                   </li>
                 )}
                 <li>

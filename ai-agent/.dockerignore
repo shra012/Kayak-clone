@@ -61,5 +61,6 @@ docker-compose*.yml
 
 # Scripts
 update-requirements.sh
+update-requirements.ps1
 pyproject.toml
 

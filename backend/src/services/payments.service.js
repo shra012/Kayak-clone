@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getPostgresPool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { sendKafkaMessage } from '../config/kafka.js';
+import { ensurePaymentsSchema } from '../utils/schemaGuards.js';
 import { getBookingById, confirmBooking, cancelBooking } from './bookings.service.js';
 
 const PAYMENT_STATUSES = {
@@ -40,6 +41,7 @@ export const createPayment = async (userId, paymentData) => {
   const client = await pool.connect();
 
   try {
+    await ensurePaymentsSchema(client);
     await client.query('BEGIN');
 
     const {

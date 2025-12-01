@@ -93,7 +93,18 @@ export const getMongoDB = async () => {
 
 let redisClient = null;
 
-export const getRedisClient = async () => {
+/**
+ * Get Redis client for cache operations
+ * Returns null if CACHE_ENABLED is false
+ * Note: Sessions may still use Redis even if caching is disabled
+ */
+export const getRedisClient = async (forCache = true) => {
+  // If this is for cache operations and caching is disabled, return null
+  if (forCache && process.env.CACHE_ENABLED !== 'true') {
+    logger.debug('Redis cache disabled (CACHE_ENABLED=false), skipping Redis connection for cache');
+    return null;
+  }
+
   if (!redisClient) {
     const redisUrl = process.env.REDIS_URL;
     
