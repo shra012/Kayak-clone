@@ -96,6 +96,13 @@ cd ai-agent
 source .venv/bin/activate
 uvicorn main:app --reload  # http://localhost:8000
 ```
+```powershell
+# Windows
+cd ai-agent
+pwsh -ExecutionPolicy Bypass -File ./update-requirements.ps1
+.\.venv\Scripts\Activate.ps1
+uvicorn main:app --reload  # http://localhost:8000
+```
 
 ## Tech Stack
 
