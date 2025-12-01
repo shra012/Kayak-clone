@@ -52,11 +52,11 @@ async function runMigration() {
     
     await client.query('COMMIT');
     
-    logger.info('✓ Migration completed successfully!');
+    logger.info('Migration completed successfully!');
     logger.info('users.id is now TEXT type and can store MongoDB ObjectIds');
   } catch (error) {
     await client.query('ROLLBACK');
-    logger.error('✗ Migration failed:', error);
+    logger.error('Migration failed:', error);
     throw error;
   } finally {
     client.release();

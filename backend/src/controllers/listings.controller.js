@@ -663,7 +663,7 @@ export const checkDatabaseStatus = async (req, res, next) => {
         laxToSfoOn2025_12_08: laxToSfoDateCheck.length > 0 ? laxToSfoDateCheck : 'No LAX to SFO flights found for 2025-12-08',
       },
       message: flightsCount === 0 
-        ? 'Database appears to be empty. Run: npm run seed:us-data'
+        ? 'Database appears to be empty. Run: npm run load:kaggle-data'
         : `Database has ${flightsCount} flights, ${hotelsCount} hotels, ${carsCount} cars`,
     });
   } catch (error) {

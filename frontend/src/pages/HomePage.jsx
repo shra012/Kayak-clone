@@ -68,53 +68,8 @@ const generateTimeOptions = () => {
   return times;
 };
 
-const AIRPORTS = [
-  // India
-  { code: 'MAA', city: 'Chennai', name: 'Chennai International' },
-  { code: 'DEL', city: 'New Delhi', name: 'Indira Gandhi International' },
-  { code: 'BOM', city: 'Mumbai', name: 'Chhatrapati Shivaji International' },
-  { code: 'BLR', city: 'Bengaluru', name: 'Kempegowda International' },
-  { code: 'HYD', city: 'Hyderabad', name: 'Rajiv Gandhi International' },
-  { code: 'CCU', city: 'Kolkata', name: 'Netaji Subhas Chandra Bose' },
-  { code: 'GOI', city: 'Goa', name: 'Dabolim Airport' },
-  { code: 'PNQ', city: 'Pune', name: 'Pune Airport' },
-  { code: 'COK', city: 'Kochi', name: 'Cochin International' },
-  { code: 'AMD', city: 'Ahmedabad', name: 'Sardar Vallabhbhai Patel' },
-  // USA
-  { code: 'SFO', city: 'San Francisco', name: 'San Francisco International' },
-  { code: 'LAX', city: 'Los Angeles', name: 'Los Angeles International' },
-  { code: 'JFK', city: 'New York', name: 'John F. Kennedy International' },
-  { code: 'EWR', city: 'Newark', name: 'Newark Liberty International' },
-  { code: 'SEA', city: 'Seattle', name: 'Seattle-Tacoma International' },
-  { code: 'ORD', city: 'Chicago', name: 'O\'Hare International' },
-  { code: 'DFW', city: 'Dallas', name: 'Dallas/Fort Worth International' },
-  { code: 'IAD', city: 'Washington DC', name: 'Dulles International' },
-  { code: 'BOS', city: 'Boston', name: 'Logan International' },
-  { code: 'DEN', city: 'Denver', name: 'Denver International' },
-];
-
-const formatAirportLabel = (airport) => {
-  const cityPart = airport.city ? ` - ${airport.city}` : '';
-  const namePart = airport.name ? ` (${airport.name})` : '';
-  return `${airport.code}${cityPart}${namePart}`;
-};
-
-const searchAirports = (query, limit = 10) => {
-  if (!query) return [];
-  const q = query.toLowerCase();
-  return AIRPORTS
-    .filter(
-      (a) =>
-        a.code.toLowerCase().includes(q) ||
-        (a.city && a.city.toLowerCase().includes(q)) ||
-        (a.name && a.name.toLowerCase().includes(q))
-    )
-    .slice(0, limit)
-    .map((a) => ({
-      ...a,
-      label: formatAirportLabel(a),
-    }));
-};
+// Airport data is now loaded from database via API
+// Local array removed - using listingsApi.searchFlightLocations instead
 
 const HomePage = () => {
   useDocumentTitle('Search Flights, Hotels & Cars');
@@ -654,10 +609,22 @@ const HomePage = () => {
     }
   };
 
-  // Airport typeahead (local list for fast suggestions)
-  const loadFlightLocations = (query, setter) => {
-    const options = searchAirports(query, 12);
-    setter(options);
+  // Airport typeahead (loads from database with Redis cache)
+  const loadFlightLocations = async (query, setter) => {
+    try {
+      const trimmed = query.trim();
+      if (!trimmed) {
+        setter([]);
+        return;
+      }
+      const { items } = await listingsApi.searchFlightLocations(trimmed, 12);
+      // The API now returns objects with code, city, name, and label
+      // Format: { code: "LAX", city: "Los Angeles", name: "Los Angeles International", label: "LAX - Los Angeles (Los Angeles International)" }
+      setter(items || []);
+    } catch (err) {
+      console.error('Failed to load flight locations from database', err);
+      setter([]);
+    }
   };
 
   // Unified date validation helper - get minimum allowed date (today)
@@ -667,7 +634,7 @@ const HomePage = () => {
   };
 
   const handleFromInputChange = (e) => {
-    const value = e.target.value;
+    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
     setSearchData({
       ...searchData,
       flights: { ...searchData.flights, from: value }
@@ -677,42 +644,39 @@ const HomePage = () => {
     setFromError('');
     setFromSelected(false);
     
-    // Debounced search and validation
+    // Debounced search
     if (fromSearchTimeoutRef.current) {
       clearTimeout(fromSearchTimeoutRef.current);
     }
     
     fromSearchTimeoutRef.current = setTimeout(() => {
       if (value.trim()) {
-        const options = searchAirports(value);
-        setFromOptions(options);
-        if (options.length === 0) {
-          setFromError('No matching airport found. Try code or city (e.g., MAA, Chennai, SFO).');
-          setFromSelected(false);
-        }
+        loadFlightLocations(value, setFromOptions);
+        setShowFromDropdown(true);
       } else {
         setFromOptions([]);
+        setShowFromDropdown(false);
       }
-    }, 200);
-    
-    setShowFromDropdown(true);
+    }, 300);
   };
   
   // Validate from input on blur
   const handleFromBlur = () => {
-    const value = searchData.flights.from;
-    if (value.trim() && !fromSelected) {
-      // Clear invalid input instead of showing error
-      setSearchData({
-        ...searchData,
-        flights: { ...searchData.flights, from: '' }
-      });
-      setFromOptions([]);
-    }
+    // Delay to allow click events to fire first
+    setTimeout(() => {
+      if (!fromSelected && searchData.flights.from.trim() && !/^[A-Z]{3}$/.test(searchData.flights.from.trim())) {
+        // Clear invalid input
+        setSearchData({
+          ...searchData,
+          flights: { ...searchData.flights, from: '' }
+        });
+      }
+      setShowFromDropdown(false);
+    }, 200);
   };
 
   const handleToInputChange = (e) => {
-    const value = e.target.value;
+    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
     setSearchData({
       ...searchData,
       flights: { ...searchData.flights, to: value }
@@ -722,58 +686,57 @@ const HomePage = () => {
     setToError('');
     setToSelected(false);
     
-    // Debounced search and validation
+    // Debounced search
     if (toSearchTimeoutRef.current) {
       clearTimeout(toSearchTimeoutRef.current);
     }
     
     toSearchTimeoutRef.current = setTimeout(() => {
       if (value.trim()) {
-        const options = searchAirports(value);
-        setToOptions(options);
-        if (options.length === 0) {
-          setToError('No matching airport found. Try code or city (e.g., SFO, MAA).');
-          setToSelected(false);
-        }
+        loadFlightLocations(value, setToOptions);
+        setShowToDropdown(true);
       } else {
         setToOptions([]);
+        setShowToDropdown(false);
       }
-    }, 200);
-    
-    setShowToDropdown(true);
+    }, 300);
   };
   
   // Validate to input on blur
   const handleToBlur = () => {
-    const value = searchData.flights.to;
-    if (value.trim() && !toSelected) {
-      // Clear invalid input instead of showing error
-      setSearchData({
-        ...searchData,
-        flights: { ...searchData.flights, to: '' }
-      });
-      setToOptions([]);
-    }
+    // Delay to allow click events to fire first
+    setTimeout(() => {
+      if (!toSelected && searchData.flights.to.trim() && !/^[A-Z]{3}$/.test(searchData.flights.to.trim())) {
+        // Clear invalid input
+        setSearchData({
+          ...searchData,
+          flights: { ...searchData.flights, to: '' }
+        });
+      }
+      setShowToDropdown(false);
+    }, 200);
   };
 
   const handleFromSelect = (location) => {
     setSearchData({
       ...searchData,
-      flights: { ...searchData.flights, from: location.label }
+      flights: { ...searchData.flights, from: location.code }
     });
     setShowFromDropdown(false);
     setFromError(''); // Clear error on valid selection
     setFromSelected(true); // Mark as properly selected
+    setFromOptions([]);
   };
 
   const handleToSelect = (location) => {
     setSearchData({
       ...searchData,
-      flights: { ...searchData.flights, to: location.label }
+      flights: { ...searchData.flights, to: location.code }
     });
     setShowToDropdown(false);
     setToError(''); // Clear error on valid selection
     setToSelected(true); // Mark as properly selected
+    setToOptions([]);
   };
 
   // Multi-city flight handlers
@@ -821,19 +784,19 @@ const HomePage = () => {
       // Debounced search
       multiCitySearchTimeoutRefs.current[timeoutKey] = setTimeout(() => {
         if (value.trim()) {
-          const options = searchAirports(value);
-          setMultiCityFromOptions(prev => ({ ...prev, [index]: options }));
-          
-          if (options.length === 0) {
-            setMultiCityErrors(prev => ({
-              ...prev,
-              [`${index}_from`]: 'No matching airport found. Try code or city.'
-            }));
-          }
+          loadFlightLocations(value, (options) => {
+            setMultiCityFromOptions(prev => ({ ...prev, [index]: options }));
+            if (options.length === 0) {
+              setMultiCityErrors(prev => ({
+                ...prev,
+                [`${index}_from`]: 'No matching airport found. Try airport code (e.g., LAX, SFO).'
+              }));
+            }
+          });
         } else {
           setMultiCityFromOptions(prev => ({ ...prev, [index]: [] }));
         }
-      }, 200);
+      }, 300);
       
     } else if (field === 'to') {
       setMultiCityErrors(prev => {
@@ -858,25 +821,25 @@ const HomePage = () => {
       // Debounced search
       multiCitySearchTimeoutRefs.current[timeoutKey] = setTimeout(() => {
         if (value.trim()) {
-          const options = searchAirports(value);
-          setMultiCityToOptions(prev => ({ ...prev, [index]: options }));
-          
-          if (options.length === 0) {
-            setMultiCityErrors(prev => ({
-              ...prev,
-              [`${index}_to`]: 'No matching airport found. Try code or city.'
-            }));
-          }
+          loadFlightLocations(value, (options) => {
+            setMultiCityToOptions(prev => ({ ...prev, [index]: options }));
+            if (options.length === 0) {
+              setMultiCityErrors(prev => ({
+                ...prev,
+                [`${index}_to`]: 'No matching airport found. Try airport code (e.g., LAX, SFO).'
+              }));
+            }
+          });
         } else {
           setMultiCityToOptions(prev => ({ ...prev, [index]: [] }));
         }
-      }, 200);
+      }, 300);
     }
   };
 
   const handleMultiCityFromSelect = (index, location) => {
     const updated = [...multiCityFlights];
-    updated[index]['from'] = location.label;
+        updated[index]['from'] = location.code;
     setMultiCityFlights(updated);
     setMultiCityFromDropdowns(prev => ({ ...prev, [index]: false }));
     // Clear error on valid selection and mark as selected
@@ -893,7 +856,7 @@ const HomePage = () => {
 
   const handleMultiCityToSelect = (index, location) => {
     const updated = [...multiCityFlights];
-    updated[index]['to'] = location.label;
+        updated[index]['to'] = location.code;
     setMultiCityFlights(updated);
     setMultiCityToDropdowns(prev => ({ ...prev, [index]: false }));
     // Clear error on valid selection and mark as selected
@@ -1118,8 +1081,10 @@ const HomePage = () => {
                               }}
                             >
                               <div className="flex flex-col">
-                                <span className="font-semibold text-base">{loc.label}</span>
-                                <span className="text-xs text-base-content/60">{loc.name || ''}</span>
+                                <span className="font-semibold text-base">{loc.label || loc.code}</span>
+                                {loc.city && (
+                                  <span className="text-xs text-base-content/60">{loc.city}</span>
+                                )}
                               </div>
                               <span className="badge badge-ghost badge-sm">{loc.code}</span>
                             </button>
@@ -1167,8 +1132,10 @@ const HomePage = () => {
                               }}
                             >
                               <div className="flex flex-col">
-                                <span className="font-semibold text-base">{loc.label}</span>
-                                <span className="text-xs text-base-content/60">{loc.name || ''}</span>
+                                <span className="font-semibold text-base">{loc.label || loc.code}</span>
+                                {loc.city && (
+                                  <span className="text-xs text-base-content/60">{loc.city}</span>
+                                )}
                               </div>
                               <span className="badge badge-ghost badge-sm">{loc.code}</span>
                             </button>
@@ -1676,21 +1643,21 @@ const HomePage = () => {
                             const displayValue = isProperty ? loc.city : loc.name;
                             
                             return (
-                              <button
+                            <button
                                 key={`${loc.type}-${loc.name}-${index}`}
-                                type="button"
-                                className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
-                                onMouseDown={(e) => {
-                                  e.preventDefault(); // Prevent blur from firing
-                                  setSearchData({
-                                    ...searchData,
+                              type="button"
+                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                              onMouseDown={(e) => {
+                                e.preventDefault(); // Prevent blur from firing
+                                setSearchData({
+                                  ...searchData,
                                     hotels: { ...searchData.hotels, location: displayValue }
-                                  });
-                                  setHotelLocationSelected(true);
-                                  setShowHotelLocationDropdown(false);
-                                  setHotelLocationOptions([]);
-                                }}
-                              >
+                                });
+                                setHotelLocationSelected(true);
+                                setShowHotelLocationDropdown(false);
+                                setHotelLocationOptions([]);
+                              }}
+                            >
                                 <div className="flex flex-col">
                                   <div className="flex items-center gap-2">
                                     {isLocation && (
@@ -1706,11 +1673,11 @@ const HomePage = () => {
                                   )}
                                 </div>
                                 {loc.country && (
-                                  <span className="text-sm text-base-content/60 ml-4 whitespace-nowrap">
-                                    {loc.country}
-                                  </span>
+                              <span className="text-sm text-base-content/60 ml-4 whitespace-nowrap">
+                                {loc.country}
+                              </span>
                                 )}
-                              </button>
+                            </button>
                             );
                           })}
                         </div>
@@ -2205,17 +2172,17 @@ const HomePage = () => {
                     };
 
                     return (
-                      <div
-                        key={city}
-                        className="flex items-center justify-between py-2 border-b border-base-300 cursor-pointer hover:text-primary transition-colors"
-                        onClick={() => {
+                    <div
+                      key={city}
+                      className="flex items-center justify-between py-2 border-b border-base-300 cursor-pointer hover:text-primary transition-colors"
+                      onClick={() => {
                           // Default to flights when clicking the main row
                           navigateWithLocation('flights', city);
-                        }}
-                      >
-                        <div>
-                          <div className="font-semibold text-base-content">{city}</div>
-                          <div className="text-sm text-primary">
+                      }}
+                    >
+                      <div>
+                        <div className="font-semibold text-base-content">{city}</div>
+                        <div className="text-sm text-primary">
                             <a
                               href="/cars"
                               onClick={(e) => {
@@ -2227,7 +2194,7 @@ const HomePage = () => {
                             >
                               CARS
                             </a>
-                            {' • '}
+                          {' • '}
                             <a
                               href="/flights"
                               onClick={(e) => {
@@ -2239,7 +2206,7 @@ const HomePage = () => {
                             >
                               FLIGHTS
                             </a>
-                            {' • '}
+                          {' • '}
                             <a
                               href="/hotels"
                               onClick={(e) => {
@@ -2251,12 +2218,12 @@ const HomePage = () => {
                             >
                               HOTELS
                             </a>
-                          </div>
                         </div>
-                        <AnimatedIcon>
-                          <FaChevronDown className="w-4 h-4 text-base-content/50" />
-                        </AnimatedIcon>
                       </div>
+                      <AnimatedIcon>
+                        <FaChevronDown className="w-4 h-4 text-base-content/50" />
+                      </AnimatedIcon>
+                    </div>
                     );
                   })}
                 </div>
