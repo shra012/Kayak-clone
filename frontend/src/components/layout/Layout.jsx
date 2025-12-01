@@ -112,7 +112,7 @@ const Layout = ({ children }) => {
                         Bookings
                       </NavLink>
                       <NavLink 
-                        to="/concierge"
+                        to="/payments"
                         className={({ isActive }) => 
                           `px-4 py-2 rounded-lg transition-colors ${
                             isActive 
@@ -121,7 +121,7 @@ const Layout = ({ children }) => {
                           }`
                         }
                       >
-                        Concierge
+                        Payments
                       </NavLink>
                     </>
                   )}
@@ -197,7 +197,7 @@ const Layout = ({ children }) => {
                     Bookings
                   </NavLink>
                   <NavLink 
-                    to="/concierge"
+                    to="/payments"
                     className={({ isActive }) => 
                       `px-4 py-2 rounded-lg transition-colors ${
                         isActive 
@@ -206,7 +206,7 @@ const Layout = ({ children }) => {
                       }`
                     }
                   >
-                    Concierge
+                    Payments
                   </NavLink>
                 </>
               )}

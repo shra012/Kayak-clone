@@ -1,5 +1,6 @@
 import { logger } from '../config/logger.js';
-import { getPostgresPool } from '../config/database.js';
+import { getPostgresPool, getMongoDB } from '../config/database.js';
+import { ObjectId } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
 import { PROFILE_TYPES } from '../constants/profileTypes.js';
 import { isValidSsn } from '../utils/validators.js';
@@ -70,7 +71,8 @@ export const listUsers = async (filters) => {
 
 export const createUser = async (userData) => {
   const pool = getPostgresPool();
-  const userId = uuidv4();
+  // Use provided userId (MongoDB ObjectId) or generate UUID for backward compatibility
+  const userId = userData.userId || uuidv4();
 
   const {
     ssn,
@@ -133,6 +135,7 @@ export const getUserById = async (userId) => {
     return cached;
   }
 
+  // Try PostgreSQL first
   const pool = getPostgresPool();
   const result = await pool.query(
     `SELECT id, ssn, first_name, last_name, email, phone_number,
@@ -143,7 +146,45 @@ export const getUserById = async (userId) => {
     [userId]
   );
 
-  const user = result.rows[0] || null;
+  let user = result.rows[0] ? { ...result.rows[0], data_source: 'postgres' } : null;
+
+  // If not found in PostgreSQL, fall back to MongoDB
+  if (!user) {
+    try {
+      const db = await getMongoDB();
+      const usersCollection = db.collection('users');
+      const mongoUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
+      
+      if (mongoUser) {
+        // Map MongoDB user to PostgreSQL format
+        user = {
+          id: mongoUser._id.toString(),
+          ssn: mongoUser.ssn || null,
+          first_name: mongoUser.firstName,
+          last_name: mongoUser.lastName,
+          email: mongoUser.email,
+          phone_number: mongoUser.phoneNumber,
+          address_line1: mongoUser.address?.line1 || null,
+          address_line2: mongoUser.address?.line2 || null,
+          address_city: mongoUser.address?.city || null,
+          address_state: mongoUser.address?.state || null,
+          address_zip_code: mongoUser.address?.zipCode || null,
+          profile_image_url: mongoUser.profileImageUrl || null,
+          role: mongoUser.role || 'user',
+          loyalty_tier: mongoUser.loyaltyTier || 'none',
+          profile_type: normalizeProfileType(mongoUser.profileType),
+          ssn_verified_at: mongoUser.ssnVerifiedAt || null,
+          partner_details: mongoUser.partnerProfile || mongoUser.partnerDetails || null,
+          created_at: mongoUser.createdAt || null,
+          updated_at: mongoUser.updatedAt || null,
+          last_login: mongoUser.lastLogin || null,
+          data_source: 'mongo',
+        };
+      }
+    } catch (error) {
+      logger.warn(`Failed to fetch user from MongoDB: ${error.message}`);
+    }
+  }
 
   if (user) {
     // Cache the user profile
@@ -194,10 +235,93 @@ export const updateUser = async (userId, userData) => {
   const pool = getPostgresPool();
   logger.info(`Updating user ${userId}`);
   
+  const {
+    firstName,
+    lastName,
+    phoneNumber,
+    address,
+    profileImageUrl,
+  } = userData;
+
+  const updates = [];
+  const params = [];
+  let paramIndex = 1;
+
+  if (firstName !== undefined) {
+    updates.push(`first_name = $${paramIndex++}`);
+    params.push(firstName);
+  }
+
+  if (lastName !== undefined) {
+    updates.push(`last_name = $${paramIndex++}`);
+    params.push(lastName);
+  }
+
+  if (phoneNumber !== undefined) {
+    updates.push(`phone_number = $${paramIndex++}`);
+    params.push(phoneNumber);
+  }
+
+  if (address?.line1 !== undefined) {
+    updates.push(`address_line1 = $${paramIndex++}`);
+    params.push(address.line1);
+  }
+
+  if (address?.line2 !== undefined) {
+    updates.push(`address_line2 = $${paramIndex++}`);
+    params.push(address.line2 || null);
+  }
+
+  if (address?.city !== undefined) {
+    updates.push(`address_city = $${paramIndex++}`);
+    params.push(address.city);
+  }
+
+  if (address?.state !== undefined) {
+    updates.push(`address_state = $${paramIndex++}`);
+    params.push(address.state);
+  }
+
+  if (address?.zipCode !== undefined) {
+    updates.push(`address_zip_code = $${paramIndex++}`);
+    params.push(address.zipCode);
+  }
+
+  if (profileImageUrl !== undefined) {
+    updates.push(`profile_image_url = $${paramIndex++}`);
+    params.push(profileImageUrl);
+  }
+
+  if (updates.length === 0) {
+    // No updates to make, just return current user
+    return getUserById(userId);
+  }
+
+  updates.push(`updated_at = NOW()`);
+  params.push(userId);
+
+  const query = `
+    UPDATE users
+    SET ${updates.join(', ')}
+    WHERE id = $${paramIndex}
+    RETURNING id, ssn, first_name, last_name, email, phone_number,
+     address_line1, address_line2, address_city, address_state, address_zip_code,
+     profile_image_url, role, loyalty_tier, profile_type, ssn_verified_at,
+     partner_details, created_at, updated_at, last_login
+  `;
+
+  const result = await pool.query(query, params);
+
+  if (result.rowCount === 0) {
+    const error = new Error('User not found');
+    error.code = 'NOT_FOUND';
+    throw error;
+  }
+
   // Invalidate user profile cache
   await invalidateUserProfileCache(userId);
-  
-  return getUserById(userId);
+
+  return result.rows[0];
 };
 
 export const deleteUser = async (userId) => {

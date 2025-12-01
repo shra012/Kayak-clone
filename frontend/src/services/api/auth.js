@@ -25,5 +25,10 @@ export const authApi = {
     const { data } = await apiClient.post('/auth/refresh');
     return data;
   },
+
+  updateProfile: async (updates) => {
+    const { data } = await apiClient.put('/auth/profile', updates);
+    return data;
+  },
 };
 

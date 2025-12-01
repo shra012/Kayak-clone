@@ -88,7 +88,7 @@ router.post(
   [
     validateUUID('paymentId'),
     body('amount')
-      .optional()
+      .optional({ nullable: true, checkFalsy: true })
       .isFloat({ min: 0.01 })
       .withMessage('Refund amount must be greater than 0'),
   ],

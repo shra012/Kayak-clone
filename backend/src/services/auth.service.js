@@ -239,6 +239,14 @@ export const refreshToken = async (userId) => {
   };
 };
 
+export const deleteUserAccount = async (userId) => {
+  const db = await getMongoDB();
+  const usersCollection = db.collection('users');
+  const result = await usersCollection.deleteOne({ _id: new ObjectId(userId) });
+  logger.info(`Deleted Mongo user ${userId}: deletedCount=${result.deletedCount}`);
+  return result.deletedCount > 0;
+};
+
 export default {
   register,
   login,
@@ -249,5 +257,5 @@ export default {
   verifyToken,
   hashPassword,
   comparePassword,
+  deleteUserAccount,
 };
-
