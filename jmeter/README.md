@@ -13,7 +13,7 @@
 3) Generate an HTML dashboard from the saved results (writes to `jmeter/results/report-latest`):
    ```bash
    mkdir -p jmeter/results/report-latest
-   "$JMETER_HOME"/jmeter -g /tmp/jmeter-kayak.jtl -o jmeter/results/reportlatest
+   "$JMETER_HOME"/jmeter -g /tmp/jmeter-kayak.jtl -o jmeter/results/report-latest
    # open jmeter/results/report-latest/index.html
    ```
 
