@@ -1,11 +1,14 @@
 import { getMongoDB } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import {
+  getCached,
+  setCached,
   getOrSetCached,
   getCachedSearchResults,
   cacheSearchResults,
   getCachedListing,
   cacheListing,
+  generateCacheKey,
 } from '../utils/cache.js';
 
 /**
@@ -240,35 +243,54 @@ export const getAvailableAirlines = async (query) => {
     const db = await getMongoDB();
     const collection = db.collection('flights');
     
-    // Build filter based on route and dates
-    const filter = {};
-    
-    if (from) {
-      const fromCode = extractAirportCode(from);
-      filter.from = fromCode;
-    }
-    
-    if (to) {
-      const toCode = extractAirportCode(to);
-      filter.to = toCode;
-    }
-    
-    if (departDate) {
-      filter.departDate = departDate;
-    }
-    
-    // For round trips, also check returnDate
     if (returnDate) {
-      // For round trips, we want flights that match the outbound date
-      // The return flight would be a separate flight with from=to and to=from
-      // But for simplicity, we'll just filter by departDate for now
-      // The frontend can handle showing airlines for the outbound leg
+      // For round trips, find airlines that exist for both outbound and return flights
+      const fromCode = extractAirportCode(from);
+      const toCode = extractAirportCode(to);
+      
+      // Get airlines for outbound flight
+      const outboundFilter = {
+        from: fromCode,
+        to: toCode,
+        departDate: departDate,
+      };
+      const outboundAirlines = await collection.distinct('airline', outboundFilter);
+      
+      // Get airlines for return flight (reversed route)
+      const returnFilter = {
+        from: toCode,
+        to: fromCode,
+        departDate: returnDate,
+      };
+      const returnAirlines = await collection.distinct('airline', returnFilter);
+      
+      // Return airlines that exist in both directions
+      const commonAirlines = outboundAirlines.filter(airline => returnAirlines.includes(airline));
+      
+      return { airlines: commonAirlines.sort() };
+    } else {
+      // For one-way trips, just get airlines for the route
+      const filter = {};
+      
+      if (from) {
+        const fromCode = extractAirportCode(from);
+        filter.from = fromCode;
+      }
+      
+      if (to) {
+        const toCode = extractAirportCode(to);
+        filter.to = toCode;
+      }
+      
+      if (departDate) {
+        filter.departDate = departDate;
+      }
+      
+      // Get distinct airlines that match the filter
+      const airlines = await collection.distinct('airline', filter);
+      
+      return { airlines: airlines.sort() };
     }
-    
-    // Get distinct airlines that match the filter
-    const airlines = await collection.distinct('airline', filter);
-    
-    return { airlines: airlines.sort() };
   } catch (error) {
     logger.error('Error in getAvailableAirlines service:', error);
     throw error;
@@ -276,19 +298,87 @@ export const getAvailableAirlines = async (query) => {
 };
 
 /**
- * Get flight locations for autocomplete
+ * Get flight locations for autocomplete (with Redis caching)
  */
 export const getFlightLocations = async (query, limit = 10) => {
   try {
+    const trimmedQuery = (query || '').trim();
+    
+    // If query is empty, return empty array
+    if (!trimmedQuery) {
+      return [];
+    }
+    
+    // Generate cache key based on query
+    const cacheKey = generateCacheKey('flight_locations', trimmedQuery.toLowerCase(), limit);
+    
+    // Try to get from cache first
+    const cached = await getCached(cacheKey);
+    if (cached) {
+      logger.debug(`Returning cached flight locations for query: ${trimmedQuery}`);
+      return cached;
+    }
+    
+    // If not in cache, query database
     const db = await getMongoDB();
-    const collection = db.collection('flights');
+    const flightsCollection = db.collection('flights');
+    const airportsCollection = db.collection('airports');
     
-    const regex = new RegExp(query, 'i');
-    const fromLocations = await collection.distinct('from', { from: regex });
-    const toLocations = await collection.distinct('to', { to: regex });
+    // Use regex to match airport codes that start with or contain the query
+    // Escape special regex characters in the query
+    const escapedQuery = trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedQuery, 'i');
     
-    const uniqueLocations = [...new Set([...fromLocations, ...toLocations])];
-    return uniqueLocations.slice(0, limit);
+    // Query with regex filter using MongoDB $regex operator (more efficient)
+    const fromLocations = await flightsCollection.distinct('from', { from: { $regex: regex } });
+    const toLocations = await flightsCollection.distinct('to', { to: { $regex: regex } });
+    
+    // Combine and deduplicate, filter out null/undefined values
+    const uniqueCodes = [...new Set([...fromLocations, ...toLocations])]
+      .filter(code => code && typeof code === 'string' && code.trim().length > 0)
+      .slice(0, limit);
+    
+    // Look up full airport details from airports collection
+    const airportDetails = await airportsCollection.find({
+      code: { $in: uniqueCodes }
+    }).toArray();
+    
+    // Create a map of code -> airport details
+    const airportMap = new Map();
+    airportDetails.forEach(airport => {
+      airportMap.set(airport.code, airport);
+    });
+    
+    // Format results with full airport names
+    const results = uniqueCodes.map(code => {
+      const airport = airportMap.get(code);
+      if (airport) {
+        // Format: "CODE - City (Airport Name)"
+        const cityPart = airport.city && airport.city !== 'Unknown' ? ` - ${airport.city}` : '';
+        const namePart = airport.name && airport.name !== 'Unknown' ? ` (${airport.name})` : '';
+        return {
+          code: code,
+          city: airport.city || null,
+          name: airport.name || null,
+          label: `${code}${cityPart}${namePart}`,
+        };
+      } else {
+        // If airport not found in airports collection, return just the code
+        return {
+          code: code,
+          city: null,
+          name: null,
+          label: code,
+        };
+      }
+    });
+    
+    logger.debug(`Found ${results.length} flight locations for query: ${trimmedQuery}`);
+    
+    // Cache the results for 1 minute (60 seconds)
+    await setCached(cacheKey, results, 60);
+    
+    return results;
   } catch (error) {
     logger.error('Error in getFlightLocations service:', error);
     throw error;

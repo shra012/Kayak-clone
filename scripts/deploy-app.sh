@@ -8,14 +8,14 @@
 cd "$(dirname "$0")/.."
 
 # 1. Deploy Secrets & Config
-echo "🔐 Deploying Secrets..."
+echo "Deploying Secrets..."
 ./scripts/deploy-k8s-config.sh
 
 # 2. Deploy Backend
-echo "🚀 Deploying Backend..."
-kubectl apply -f infra2/k8s/backend-deployment.yaml
+echo "Deploying Backend..."
+kubectl apply -f infra/aws/k8s/backend-deployment.yaml
 
-echo "⏳ Waiting for Backend LoadBalancer..."
+echo "Waiting for Backend LoadBalancer..."
 kubectl wait --namespace kayak \
   --for=condition=ready pod \
   --selector=app=backend \
@@ -25,21 +25,21 @@ kubectl wait --namespace kayak \
 BACKEND_LB=$(kubectl get svc backend -n kayak -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 if [ -z "$BACKEND_LB" ]; then
   # Fallback for AWS LoadBalancer Controller (might take time)
-  echo "⚠️  Backend LoadBalancer hostname not ready yet. Waiting..."
+  echo "WARNING: Backend LoadBalancer hostname not ready yet. Waiting..."
   sleep 30
   BACKEND_LB=$(kubectl get svc backend -n kayak -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 fi
 
 if [ -z "$BACKEND_LB" ]; then
-  echo "❌ Could not get Backend LoadBalancer URL. Is the service type LoadBalancer?"
+  echo "ERROR: Could not get Backend LoadBalancer URL. Is the service type LoadBalancer?"
   exit 1
 fi
 
 BACKEND_URL="http://$BACKEND_LB"
-echo "✅ Backend URL: $BACKEND_URL"
+echo "Backend URL: $BACKEND_URL"
 
 # 3. Build & Push Frontend (with Backend URL)
-echo "🏗️  Rebuilding Frontend with API URL..."
+echo "Rebuilding Frontend with API URL..."
 
 # Load AWS Account ID & Region
 source .env
@@ -59,11 +59,11 @@ docker build \
 docker push $ECR_REPO:latest
 
 # 4. Deploy Frontend
-echo "🚀 Deploying Frontend..."
-kubectl apply -f infra2/k8s/frontend-deployment.yaml
+echo "Deploying Frontend..."
+kubectl apply -f infra/aws/k8s/frontend-deployment.yaml
 
 # Restart to pick up new image
 kubectl rollout restart deployment/frontend -n kayak
 
-echo "✅ Application Deployed Successfully!"
+echo "Application Deployed Successfully!"
 echo "Frontend URL: http://$(kubectl get svc frontend -n kayak -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
