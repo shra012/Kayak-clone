@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
-import { FaHotel, FaCar, FaChartLine, FaDollarSign, FaUsers } from 'react-icons/fa';
+import { FaHotel, FaCar, FaChartLine, FaDollarSign, FaUsers, FaChartBar } from 'react-icons/fa';
 
 const OwnerDashboard = () => {
   useDocumentTitle('Owner Dashboard');
@@ -96,7 +96,7 @@ const OwnerDashboard = () => {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body">
             <h2 className="card-title">
@@ -132,6 +132,23 @@ const OwnerDashboard = () => {
               </Link>
               <Link to="/owner/cars/new" className="btn btn-outline">
                 Add New Car
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="card bg-base-100 shadow-xl">
+          <div className="card-body">
+            <h2 className="card-title">
+              <FaChartBar className="text-primary" />
+              Analytics
+            </h2>
+            <p className="text-base-content/70 mb-4">
+              View analytics, clicks, reviews, and user traces for your properties.
+            </p>
+            <div className="card-actions">
+              <Link to="/analytics" className="btn btn-primary">
+                View Analytics
               </Link>
             </div>
           </div>

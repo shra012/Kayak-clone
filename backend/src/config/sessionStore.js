@@ -13,7 +13,8 @@ class RedisStore extends session.Store {
 
   async getClient() {
     if (!this.client) {
-      this.client = await getRedisClient();
+      // Sessions always use Redis, even if caching is disabled
+      this.client = await getRedisClient(false); // false = not for cache (for sessions)
     }
     return this.client;
   }
