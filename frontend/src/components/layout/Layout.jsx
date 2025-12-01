@@ -25,7 +25,7 @@ const Layout = ({ children }) => {
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
-    const nextTheme = savedTheme && ["light", "cupcake"].includes(savedTheme)
+    const nextTheme = savedTheme && ["light", "cupcake", "dark"].includes(savedTheme)
       ? savedTheme
       : "light";
     document.documentElement.setAttribute("data-theme", nextTheme);
@@ -221,6 +221,7 @@ const Layout = ({ children }) => {
           >
             <option value="light">Light</option>
             <option value="cupcake">Cupcake</option>
+            <option value="dark">Dark</option>
           </select>
           {isAuthenticated ? (
             <div className="dropdown dropdown-end">

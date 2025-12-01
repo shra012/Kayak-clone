@@ -1,6 +1,6 @@
 import { createSlice } from '@reduxjs/toolkit';
 
-const allowedThemes = ['light', 'cupcake'];
+const allowedThemes = ['light', 'cupcake', 'dark'];
 
 const getInitialTheme = () => {
   if (typeof localStorage === 'undefined') return 'light';
