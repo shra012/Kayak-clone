@@ -1,0 +1,145 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Performance Test Results</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .chart-container { width: 800px; height: 400px; margin: 20px 0; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Performance Test Results - 100 Simultaneous Users</h1>
+    
+    <h2>Summary Table</h2>
+    <table>
+        <tr>
+            <th>Scenario</th>
+            <th>Avg Response Time (ms)</th>
+            <th>Throughput (RPS)</th>
+            <th>Error Rate (%)</th>
+            <th>95th Percentile (ms)</th>
+        </tr>
+        
+        <tr>
+            <td>Base (B)</td>
+            <td>2.08</td>
+            <td>3.33</td>
+            <td>98.33</td>
+            <td>8</td>
+        </tr>
+        
+        <tr>
+            <td>Base + Cache (B+S)</td>
+            <td>182.18</td>
+            <td>3.33</td>
+            <td>98.33</td>
+            <td>11</td>
+        </tr>
+        
+        <tr>
+            <td>Base + Cache + Kafka (B+S+K)</td>
+            <td>181.66</td>
+            <td>3.33</td>
+            <td>98.33</td>
+            <td>10</td>
+        </tr>
+        
+        <tr>
+            <td>Base + Cache + Kafka + Optimizations (B+S+K+O)</td>
+            <td>182.39</td>
+            <td>3.33</td>
+            <td>98.33</td>
+            <td>11</td>
+        </tr>
+        
+    </table>
+    
+    <h2>Charts</h2>
+    <div class="chart-container">
+        <canvas id="chart1"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="chart2"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="chart3"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="chart4"></canvas>
+    </div>
+    
+    <script>
+        const scenarios = ["Base (B)","Base + Cache (B+S)","Base + Cache + Kafka (B+S+K)","Base + Cache + Kafka + Optimizations (B+S+K+O)"];
+        
+        new Chart(document.getElementById('chart1'), {
+            type: 'bar',
+            data: {
+                labels: scenarios,
+                datasets: [{
+                    label: 'Average Response Time (ms)',
+                    data: [2.08,182.18,181.66,182.39],
+                    backgroundColor: 'rgba(75, 192, 192, 0.6)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+        
+        new Chart(document.getElementById('chart2'), {
+            type: 'bar',
+            data: {
+                labels: scenarios,
+                datasets: [{
+                    label: 'Throughput (RPS)',
+                    data: [3.33,3.33,3.33,3.33],
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+        
+        new Chart(document.getElementById('chart3'), {
+            type: 'bar',
+            data: {
+                labels: scenarios,
+                datasets: [{
+                    label: 'Error Rate (%)',
+                    data: [98.33,98.33,98.33,98.33],
+                    backgroundColor: 'rgba(255, 99, 132, 0.6)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+        
+        new Chart(document.getElementById('chart4'), {
+            type: 'bar',
+            data: {
+                labels: scenarios,
+                datasets: [{
+                    label: '95th Percentile Response Time (ms)',
+                    data: [8,11,10,11],
+                    backgroundColor: 'rgba(153, 102, 255, 0.6)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    </script>
+</body>
+</html>
+  

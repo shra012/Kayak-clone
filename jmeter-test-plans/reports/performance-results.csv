@@ -1,0 +1,5 @@
+Metric,Base (B),Base + Cache (B+S),Base + Cache + Kafka (B+S+K),Base + Cache + Kafka + Optimizations (B+S+K+O)
+Average Response Time (ms),2.08,182.18,181.66,182.39
+Throughput (RPS),3.33,3.33,3.33,3.33
+Error Rate (%),98.33,98.33,98.33,98.33
+95th Percentile (ms),8,11,10,11
