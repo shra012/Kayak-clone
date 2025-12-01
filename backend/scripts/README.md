@@ -12,9 +12,11 @@ node scripts/generate-secrets.js
 npm run seed:test-users
 ```
 
-**`seed-us-data.js`** - Seed MongoDB with flights, hotels, cars
+**`load-kaggle-data.js`** - Load real Kaggle datasets into MongoDB (flights, hotels, cars)
 ```bash
-npm run seed:us-data
+npm run load:kaggle-data
+npm run load:kaggle-data -- --no-drop    # Append data without clearing
+npm run load:kaggle-data -- --drop-all   # Drop all collections before loading
 ```
 
 **`check-env.js`** - Verify environment variables

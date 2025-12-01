@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FaPlane, FaBed, FaCar, FaClock, FaCalendar, FaTimes } from 'react-icons/fa';
 import { listingsApi } from '../../services/api/listings';
@@ -88,6 +88,18 @@ const FlightsPage = () => {
   const [isRoundTrip, setIsRoundTrip] = useState(false);
   const [roundTripCombos, setRoundTripCombos] = useState([]);
   const [availableAirlines, setAvailableAirlines] = useState([]);
+  
+  // Autocomplete states
+  const [showFromDropdown, setShowFromDropdown] = useState(false);
+  const [showToDropdown, setShowToDropdown] = useState(false);
+  const [fromOptions, setFromOptions] = useState([]);
+  const [toOptions, setToOptions] = useState([]);
+  const [fromSelected, setFromSelected] = useState(false);
+  const [toSelected, setToSelected] = useState(false);
+  const fromDropdownRef = useRef(null);
+  const toDropdownRef = useRef(null);
+  const fromSearchTimeoutRef = useRef(null);
+  const toSearchTimeoutRef = useRef(null);
 
   // Handle View Deal button click
   const handleViewDeal = (flight, returnFlight = null) => {
@@ -147,6 +159,125 @@ const FlightsPage = () => {
     const match = value.match(/^([A-Z]{3})/);
     return match ? match[1] : value.trim();
   };
+
+  // Load flight location options from API
+  const loadFlightLocations = async (query, setter) => {
+    try {
+      const trimmed = query.trim();
+      if (!trimmed) {
+        setter([]);
+        return;
+      }
+      const { items } = await listingsApi.searchFlightLocations(trimmed, 10);
+      // The API now returns objects with code, city, name, and label
+      // Format: { code: "LAX", city: "Los Angeles", name: "Los Angeles International", label: "LAX - Los Angeles (Los Angeles International)" }
+      setter(items || []);
+    } catch (err) {
+      console.error('Failed to load flight locations', err);
+      setter([]);
+    }
+  };
+
+  // Handle from input change
+  const handleFromInputChange = (e) => {
+    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
+    setFilters((prev) => ({ ...prev, from: value }));
+    setFromSelected(false);
+    
+    // Debounced search
+    if (fromSearchTimeoutRef.current) {
+      clearTimeout(fromSearchTimeoutRef.current);
+    }
+    
+    fromSearchTimeoutRef.current = setTimeout(() => {
+      if (value.trim()) {
+        loadFlightLocations(value, setFromOptions);
+        setShowFromDropdown(true);
+      } else {
+        setFromOptions([]);
+        setShowFromDropdown(false);
+      }
+    }, 300);
+  };
+
+  // Handle to input change
+  const handleToInputChange = (e) => {
+    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
+    setFilters((prev) => ({ ...prev, to: value }));
+    setToSelected(false);
+    
+    // Debounced search
+    if (toSearchTimeoutRef.current) {
+      clearTimeout(toSearchTimeoutRef.current);
+    }
+    
+    toSearchTimeoutRef.current = setTimeout(() => {
+      if (value.trim()) {
+        loadFlightLocations(value, setToOptions);
+        setShowToDropdown(true);
+      } else {
+        setToOptions([]);
+        setShowToDropdown(false);
+      }
+    }, 300);
+  };
+
+  // Handle from select
+  const handleFromSelect = (location) => {
+    setFilters((prev) => ({ ...prev, from: location.code }));
+    setShowFromDropdown(false);
+    setFromSelected(true);
+    setFromOptions([]);
+  };
+
+  // Handle to select
+  const handleToSelect = (location) => {
+    setFilters((prev) => ({ ...prev, to: location.code }));
+    setShowToDropdown(false);
+    setToSelected(true);
+    setToOptions([]);
+  };
+
+  // Handle from blur
+  const handleFromBlur = () => {
+    // Delay to allow click events to fire first
+    setTimeout(() => {
+      if (!fromSelected && filters.from.trim() && !/^[A-Z]{3}$/.test(filters.from.trim())) {
+        // Clear invalid input
+        setFilters((prev) => ({ ...prev, from: '' }));
+      }
+      setShowFromDropdown(false);
+    }, 200);
+  };
+
+  // Handle to blur
+  const handleToBlur = () => {
+    // Delay to allow click events to fire first
+    setTimeout(() => {
+      if (!toSelected && filters.to.trim() && !/^[A-Z]{3}$/.test(filters.to.trim())) {
+        // Clear invalid input
+        setFilters((prev) => ({ ...prev, to: '' }));
+      }
+      setShowToDropdown(false);
+    }, 200);
+  };
+
+  // Click outside handler
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (fromDropdownRef.current && !fromDropdownRef.current.contains(event.target)) {
+        setShowFromDropdown(false);
+      }
+      if (toDropdownRef.current && !toDropdownRef.current.contains(event.target)) {
+        setShowToDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const loadAirlines = async (activeFilters) => {
     try {
@@ -435,6 +566,12 @@ const FlightsPage = () => {
   const swapLocations = () => {
     const newFilters = { ...filters, from: filters.to, to: filters.from };
     setFilters(newFilters);
+    setFromSelected(false);
+    setToSelected(false);
+    setFromOptions([]);
+    setToOptions([]);
+    setShowFromDropdown(false);
+    setShowToDropdown(false);
     loadFlights(1, newFilters);
   };
 
@@ -546,15 +683,48 @@ const FlightsPage = () => {
 
           {/* Editable From/To inputs */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              placeholder="From (e.g., MAA)"
-              className="input input-sm input-bordered w-32"
-              value={filters.from}
-              onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))}
-              onBlur={() => loadFlights(1, { ...filters, from: filters.from })}
-              autoComplete="off"
-            />
+            {/* From input with autocomplete */}
+            <div className="relative" ref={fromDropdownRef}>
+              <input
+                type="text"
+                placeholder="From (e.g., LAX)"
+                className="input input-sm input-bordered w-32"
+                value={filters.from}
+                onChange={handleFromInputChange}
+                onFocus={() => {
+                  if (filters.from.trim()) {
+                    loadFlightLocations(filters.from, setFromOptions);
+                    setShowFromDropdown(true);
+                  }
+                }}
+                onBlur={handleFromBlur}
+                autoComplete="off"
+                maxLength={3}
+              />
+              {showFromDropdown && fromOptions.length > 0 && (
+                <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-64 max-h-72 overflow-y-auto z-50">
+                  {fromOptions.map((loc, index) => (
+                    <button
+                      key={`from-${loc.code}-${index}`}
+                      type="button"
+                      className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // Prevent blur from firing
+                        handleFromSelect(loc);
+                      }}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-base">{loc.label || loc.code}</span>
+                        {loc.city && (
+                          <span className="text-xs text-base-content/60">{loc.city}</span>
+                        )}
+                      </div>
+                      <span className="badge badge-ghost badge-sm">{loc.code}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
@@ -563,15 +733,48 @@ const FlightsPage = () => {
             >
               ⇆
             </button>
-            <input
-              type="text"
-              placeholder="To (e.g., LAX)"
-              className="input input-sm input-bordered w-32"
-              value={filters.to}
-              onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))}
-              onBlur={() => loadFlights(1, { ...filters, to: filters.to })}
-              autoComplete="off"
-            />
+            {/* To input with autocomplete */}
+            <div className="relative" ref={toDropdownRef}>
+              <input
+                type="text"
+                placeholder="To (e.g., SFO)"
+                className="input input-sm input-bordered w-32"
+                value={filters.to}
+                onChange={handleToInputChange}
+                onFocus={() => {
+                  if (filters.to.trim()) {
+                    loadFlightLocations(filters.to, setToOptions);
+                    setShowToDropdown(true);
+                  }
+                }}
+                onBlur={handleToBlur}
+                autoComplete="off"
+                maxLength={3}
+              />
+              {showToDropdown && toOptions.length > 0 && (
+                <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-64 max-h-72 overflow-y-auto z-50">
+                  {toOptions.map((loc, index) => (
+                    <button
+                      key={`to-${loc.code}-${index}`}
+                      type="button"
+                      className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // Prevent blur from firing
+                        handleToSelect(loc);
+                      }}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-base">{loc.label || loc.code}</span>
+                        {loc.city && (
+                          <span className="text-xs text-base-content/60">{loc.city}</span>
+                        )}
+                      </div>
+                      <span className="badge badge-ghost badge-sm">{loc.code}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="btn btn-primary btn-sm"

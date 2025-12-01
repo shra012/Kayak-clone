@@ -200,7 +200,7 @@ async function createTopics(admin, topicsConfig, existingTopics) {
     if (result) {
       log.success(`Successfully created ${topicsToCreate.length} topics!`);
       topicsToCreate.forEach(t => {
-        console.log(`  ${colors.green}✓${colors.reset} ${t.topic}`);
+        console.log(`  ${colors.green}[OK]${colors.reset} ${t.topic}`);
       });
     } else {
       log.warning('Topics may already exist or creation returned false');

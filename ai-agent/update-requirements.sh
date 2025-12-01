@@ -24,5 +24,5 @@ uv sync --no-dev
 echo "Generating requirements.txt..."
 uv pip freeze | grep -v "kayak-ai-agent" | grep -v "file://" > requirements.txt
 
-echo "✓ requirements.txt generated successfully"
+echo "requirements.txt generated successfully"
 
