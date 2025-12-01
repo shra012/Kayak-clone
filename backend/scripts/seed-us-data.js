@@ -45,17 +45,20 @@ const US_AIRPORTS = [
   { code: 'SMF', city: 'Sacramento', state: 'California', lat: 38.6954, lng: -121.5908 },
 ];
 
-// Major US Airlines
+// Major US Airlines with their IATA codes
 const AIRLINES = [
-  'American Airlines',
-  'Delta Air Lines',
-  'United Airlines',
-  'Southwest Airlines',
-  'JetBlue Airways',
-  'Alaska Airlines',
-  'Spirit Airlines',
-  'Frontier Airlines',
+  { name: 'American Airlines', code: 'AA' },
+  { name: 'Delta Air Lines', code: 'DL' },
+  { name: 'United Airlines', code: 'UA' },
+  { name: 'Southwest Airlines', code: 'WN' },
+  { name: 'JetBlue Airways', code: 'B6' },
+  { name: 'Alaska Airlines', code: 'AS' },
+  { name: 'Spirit Airlines', code: 'NK' },
+  { name: 'Frontier Airlines', code: 'F9' },
 ];
+
+// Flight classes
+const FLIGHT_CLASSES = ['economy', 'premium_economy', 'business', 'first'];
 
 // Hotel chains and names
 const HOTEL_CHAINS = [
@@ -115,9 +118,12 @@ const AMENITIES = [
   'business_center',
 ];
 
-// Generate date string in YYYY-MM-DD format
+// Generate date string in YYYY-MM-DD format (local timezone, not UTC)
 const formatDate = (date) => {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 // Generate dates for flights - from November 15, 2025 to February 29, 2026
@@ -173,6 +179,42 @@ const calculateDuration = (from, to) => {
   return 120 + Math.floor(Math.random() * 180);
 };
 
+// Generate flight number (airline code + 3-4 digit number)
+const generateFlightNumber = (airlineCode) => {
+  const flightNum = Math.floor(100 + Math.random() * 9900); // 100-9999
+  return `${airlineCode}${flightNum}`;
+};
+
+// Generate random flight class with weighted distribution
+// 60% economy, 20% premium_economy, 15% business, 5% first
+const getRandomFlightClass = () => {
+  const rand = Math.random();
+  if (rand < 0.6) return 'economy';
+  if (rand < 0.8) return 'premium_economy';
+  if (rand < 0.95) return 'business';
+  return 'first';
+};
+
+// Calculate price multiplier based on class
+const getClassPriceMultiplier = (flightClass) => {
+  switch (flightClass) {
+    case 'economy': return 1.0;
+    case 'premium_economy': return 1.5;
+    case 'business': return 2.5;
+    case 'first': return 4.0;
+    default: return 1.0;
+  }
+};
+
+// Generate total seats based on aircraft type (estimated)
+const getTotalSeats = () => {
+  // Random aircraft size: small (100-150), medium (150-200), large (200-300)
+  const size = Math.random();
+  if (size < 0.3) return 100 + Math.floor(Math.random() * 50); // 100-150
+  if (size < 0.7) return 150 + Math.floor(Math.random() * 50); // 150-200
+  return 200 + Math.floor(Math.random() * 100); // 200-300
+};
+
 // Generate flights
 const generateFlights = () => {
   const flights = [];
@@ -221,13 +263,27 @@ const generateFlights = () => {
       const flightsPerDate = isPopularRoute ? (3 + Math.floor(Math.random() * 3)) : (2 + Math.floor(Math.random() * 2));
       
       for (let j = 0; j < flightsPerDate; j++) {
-        const airline = AIRLINES[Math.floor(Math.random() * AIRLINES.length)];
+        const airlineObj = AIRLINES[Math.floor(Math.random() * AIRLINES.length)];
+        const airline = airlineObj.name;
+        const airlineCode = airlineObj.code;
         const duration = calculateDuration(from, to);
         const nonstop = Math.random() > 0.3; // 70% nonstop
         
-        // Price varies by route distance and airline
+        // Generate flight class and adjust price
+        const flightClass = getRandomFlightClass();
+        const classMultiplier = getClassPriceMultiplier(flightClass);
+        
+        // Base price varies by route distance and airline
         const basePrice = duration * 0.8 + (nonstop ? 50 : 0);
-        const price = basePrice + Math.floor(Math.random() * 200) - 100;
+        const price = (basePrice * classMultiplier) + Math.floor(Math.random() * 200) - 100;
+        
+        // Generate seats
+        const totalSeats = getTotalSeats();
+        // Available seats: 20-95% of total (some flights more full than others)
+        const availableSeats = Math.floor(totalSeats * (0.2 + Math.random() * 0.75));
+        
+        // Generate flight number
+        const flightNumber = generateFlightNumber(airlineCode);
         
         // One-way flight
         flights.push({
@@ -238,10 +294,14 @@ const generateFlights = () => {
           departDate,
           returnDate: null,
           airline,
+          flightNumber,
           durationMinutes: duration,
           price: Math.max(99, Math.round(price * 100) / 100),
           currency: 'USD',
+          class: flightClass,
           nonstop,
+          totalSeats,
+          availableSeats,
           departureTime: getRandomTime(),
           arrivalTime: getRandomTime(),
           createdAt: new Date(),
@@ -256,6 +316,11 @@ const generateFlights = () => {
           
           // Only add if return date is within our date range
           if (availableDates.includes(returnDate)) {
+            // For round trip, use same class and generate new flight number
+            const returnFlightNumber = generateFlightNumber(airlineCode);
+            const returnTotalSeats = getTotalSeats();
+            const returnAvailableSeats = Math.floor(returnTotalSeats * (0.2 + Math.random() * 0.75));
+            
             flights.push({
               _id: `FL-${flightIdCounter.count++}`,
               id: `FL-${flightIdCounter.count - 1}`,
@@ -264,10 +329,14 @@ const generateFlights = () => {
               departDate,
               returnDate,
               airline,
+              flightNumber: returnFlightNumber,
               durationMinutes: duration,
               price: Math.max(199, Math.round(price * 1.8 * 100) / 100), // Round trip costs more
               currency: 'USD',
+              class: flightClass,
               nonstop,
+              totalSeats: returnTotalSeats,
+              availableSeats: returnAvailableSeats,
               departureTime: getRandomTime(),
               arrivalTime: getRandomTime(),
               createdAt: new Date(),
