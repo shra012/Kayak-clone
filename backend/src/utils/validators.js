@@ -166,6 +166,8 @@ export const validateFlightSearch = () => {
     query('returnDate').optional().isISO8601().withMessage('Invalid return date'),
     query('passengers').optional().isInt({ min: 1, max: 9 }).toInt(),
     query('class').optional().isIn(['economy', 'business', 'first']),
+    query('airline').optional().isString().trim(),
+    query('airlines').optional().isString().trim(),
     query('maxPrice').optional().isFloat({ min: 0 }).toFloat(),
     ...validatePagination(),
     ...validateSortOrder(),
