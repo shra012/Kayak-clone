@@ -180,6 +180,9 @@ async function createTopics(admin, topicsConfig, existingTopics) {
     if (config?.description) {
       console.log(`   Description: ${config.description}`);
     }
+    if (config?.consumers && Array.isArray(config.consumers) && config.consumers.length > 0) {
+      console.log(`   Consumers: ${config.consumers.join(', ')}`);
+    }
   });
   
   console.log('\n' + '='.repeat(60));

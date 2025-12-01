@@ -3,7 +3,9 @@ import { logger } from '../config/logger.js';
 import crypto from 'crypto';
 
 // Cache configuration from environment
-const CACHE_ENABLED = process.env.CACHE_ENABLED === 'true'; // Default: disabled (set to 'true' to enable)
+// Default: disabled (CACHE_ENABLED=false)
+// Set CACHE_ENABLED=true to enable caching
+const CACHE_ENABLED = process.env.CACHE_ENABLED === 'true';
 const CACHE_TTL_LISTING = parseInt(process.env.CACHE_TTL_LISTING || '300', 10); // 5 minutes
 const CACHE_TTL_SEARCH = parseInt(process.env.CACHE_TTL_SEARCH || '60', 10); // 1 minute
 const CACHE_TTL_USER = parseInt(process.env.CACHE_TTL_USER || '600', 10); // 10 minutes
@@ -45,9 +47,9 @@ export const getCached = async (key) => {
   }
 
   try {
-    const redis = await getRedisClient();
+    const redis = await getRedisClient(true); // true = for cache operations
     if (!redis) {
-      logger.debug('Redis client not available');
+      logger.debug('Redis client not available (cache disabled or connection failed)');
       return null;
     }
 
@@ -76,9 +78,9 @@ export const setCached = async (key, value, ttlSeconds = DEFAULT_TTL.LISTING) =>
   }
 
   try {
-    const redis = await getRedisClient();
+    const redis = await getRedisClient(true); // true = for cache operations
     if (!redis) {
-      logger.debug('Redis client not available');
+      logger.debug('Redis client not available (cache disabled or connection failed)');
       return;
     }
 
@@ -99,9 +101,9 @@ export const deleteCached = async (key) => {
   }
 
   try {
-    const redis = await getRedisClient();
+    const redis = await getRedisClient(true); // true = for cache operations
     if (!redis) {
-      logger.debug('Redis client not available');
+      logger.debug('Redis client not available (cache disabled or connection failed)');
       return;
     }
 
@@ -122,9 +124,9 @@ export const deleteCachedByPattern = async (pattern) => {
   }
 
   try {
-    const redis = await getRedisClient();
+    const redis = await getRedisClient(true); // true = for cache operations
     if (!redis) {
-      logger.debug('Redis client not available');
+      logger.debug('Redis client not available (cache disabled or connection failed)');
       return;
     }
 
