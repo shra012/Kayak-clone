@@ -118,8 +118,44 @@ const uploadEntityImage = async (file, entityType, entityId) => {
   }
 };
 
-export const uploadProfileImage = async (file, profileId) => {
-  return uploadEntityImage(file, 'profiles', profileId);
+export const uploadProfileImage = async (file, userId) => {
+  validateImageFile(file);
+  
+  // Use the specific path format: kayak/profile/user_id/profile.jpg
+  const fileExtension = file.name.split('.').pop().toLowerCase();
+  const fileName = `kayak/profile/${userId}/profile.${fileExtension}`;
+  const storageRef = ref(storage, fileName);
+
+  try {
+    // Delete old profile image if it exists (different extensions)
+    try {
+      const oldExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+      for (const ext of oldExtensions) {
+        if (ext !== fileExtension) {
+          const oldFileRef = ref(storage, `kayak/profile/${userId}/profile.${ext}`);
+          try {
+            await deleteObject(oldFileRef);
+          } catch (err) {
+            // Ignore if file doesn't exist
+          }
+        }
+      }
+    } catch (err) {
+      // Ignore cleanup errors
+    }
+
+    const snapshot = await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(snapshot.ref);
+
+    return {
+      url: downloadURL,
+      fileName,
+      size: file.size,
+      contentType: file.type,
+    };
+  } catch (error) {
+    throw new Error(`Failed to upload profile image: ${error.message}`);
+  }
 };
 
 export const uploadFlightImage = async (file, flightId) => {

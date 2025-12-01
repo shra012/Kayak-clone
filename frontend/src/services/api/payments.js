@@ -37,9 +37,11 @@ export const paymentsApi = {
    * Refund a payment
    */
   refundPayment: async (paymentId, refundAmount = null) => {
-    const { data } = await apiClient.post(`/payments/${paymentId}/refunds`, {
-      amount: refundAmount,
-    });
+    const body = {};
+    if (refundAmount !== null && refundAmount !== undefined) {
+      body.amount = refundAmount;
+    }
+    const { data } = await apiClient.post(`/payments/${paymentId}/refunds`, body);
     return data;
   },
 };

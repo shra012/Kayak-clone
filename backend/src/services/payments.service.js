@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getPostgresPool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { sendKafkaMessage } from '../config/kafka.js';
-import { getBookingById, confirmBooking } from './bookings.service.js';
+import { getBookingById, confirmBooking, cancelBooking } from './bookings.service.js';
 
 const PAYMENT_STATUSES = {
   PENDING: 'PENDING',
@@ -64,10 +64,12 @@ export const createPayment = async (userId, paymentData) => {
       throw new Error('Booking not found');
     }
 
+    // Compare userIds (both are MongoDB ObjectIds stored as-is)
     if (booking.userId !== userId) {
       throw new Error('Payment can only be created by booking owner');
     }
 
+    // Check idempotency if key is provided
     if (idempotencyKey) {
       const existingPayment = await client.query(
         'SELECT * FROM payments WHERE idempotency_key = $1',
@@ -83,6 +85,7 @@ export const createPayment = async (userId, paymentData) => {
 
     const paymentId = uuidv4();
 
+    // Insert payment - user_id is TEXT type (MongoDB ObjectId)
     const paymentResult = await client.query(
       `INSERT INTO payments (
         id, booking_id, user_id, status, amount, currency, transaction_reference, idempotency_key, metadata, created_at, updated_at
@@ -191,6 +194,7 @@ export const searchPayments = async (filters = {}) => {
     let paramIndex = 1;
 
     if (userId) {
+      // user_id is stored as TEXT (MongoDB ObjectId)
       query += ` AND p.user_id = $${paramIndex}`;
       params.push(userId);
       paramIndex++;
@@ -225,9 +229,47 @@ export const searchPayments = async (filters = {}) => {
 
     const result = await pool.query(query, params);
 
-    const countResult = await pool.query(
-      query.replace(/SELECT.*FROM/, 'SELECT COUNT(*) as total FROM').replace(/ORDER BY.*$/, '')
-    );
+    // Build count query with same filters but without LIMIT/OFFSET
+    let countQuery = `
+      SELECT COUNT(*) as total
+      FROM payments p
+      LEFT JOIN bookings b ON p.booking_id = b.id
+      WHERE 1=1
+    `;
+    const countParams = [];
+    let countParamIndex = 1;
+
+    if (userId) {
+      countQuery += ` AND p.user_id = $${countParamIndex}`;
+      countParams.push(userId);
+      countParamIndex++;
+    }
+
+    if (bookingId) {
+      countQuery += ` AND p.booking_id = $${countParamIndex}`;
+      countParams.push(bookingId);
+      countParamIndex++;
+    }
+
+    if (status) {
+      countQuery += ` AND p.status = $${countParamIndex}`;
+      countParams.push(status);
+      countParamIndex++;
+    }
+
+    if (startDate) {
+      countQuery += ` AND p.created_at >= $${countParamIndex}`;
+      countParams.push(startDate);
+      countParamIndex++;
+    }
+
+    if (endDate) {
+      countQuery += ` AND p.created_at <= $${countParamIndex}`;
+      countParams.push(endDate);
+      countParamIndex++;
+    }
+
+    const countResult = await pool.query(countQuery, countParams);
 
     const payments = result.rows.map(mapPaymentForResponse);
 
@@ -368,7 +410,7 @@ export const processPayment = async (paymentId, paymentMethodData = {}) => {
 };
 
 /**
- * Refund payment
+ * Refund payment - dummy refund always succeeds, also cancels the booking
  */
 export const refundPayment = async (paymentId, refundAmount = null) => {
   const pool = getPostgresPool();
@@ -392,6 +434,7 @@ export const refundPayment = async (paymentId, refundAmount = null) => {
       throw new Error('Refund amount cannot exceed payment amount');
     }
 
+    // Dummy refund - always succeeds
     const result = await client.query(
       `UPDATE payments 
        SET status = $1, updated_at = NOW()
@@ -401,6 +444,15 @@ export const refundPayment = async (paymentId, refundAmount = null) => {
     );
 
     const refundedPayment = result.rows[0];
+
+    // Cancel the associated booking
+    try {
+      await cancelBooking(payment.bookingId);
+      logger.info(`Booking ${payment.bookingId} cancelled after payment refund`);
+    } catch (bookingError) {
+      logger.warn(`Failed to cancel booking ${payment.bookingId} after refund:`, bookingError);
+      // Continue with refund even if booking cancellation fails
+    }
 
     await client.query('COMMIT');
 

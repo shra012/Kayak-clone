@@ -146,15 +146,16 @@ const PaymentsPage = () => {
   };
 
   const handleRefundPayment = async (paymentId, amount = null) => {
-    if (!window.confirm('Are you sure you want to refund this payment?')) {
+    if (!window.confirm('Are you sure you want to refund this payment? The associated booking will be cancelled.')) {
       return;
     }
     
     try {
       setProcessing({ [`refund-${paymentId}`]: true });
       await paymentsApi.refundPayment(paymentId, amount);
-      toast.showSuccess('Payment refunded successfully');
+      toast.showSuccess('Payment refunded successfully. Booking has been cancelled.');
       loadPayments();
+      loadBookings(); // Refresh bookings to show cancelled status
     } catch (error) {
       console.error('Error refunding payment:', error);
       toast.showError(error.response?.data?.message || 'Failed to refund payment');

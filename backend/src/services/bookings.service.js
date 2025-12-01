@@ -323,8 +323,8 @@ export const updateBookingStatus = async (bookingId, newStatus, metadata = {}) =
         amount: parseFloat(booking.price_amount),
         currency: booking.price_currency,
       },
-      itinerary: booking.itinerary ? JSON.parse(booking.itinerary) : null,
-      metadata: booking.metadata ? JSON.parse(booking.metadata) : {},
+      itinerary: booking.itinerary ? (typeof booking.itinerary === 'string' ? JSON.parse(booking.itinerary) : booking.itinerary) : null,
+      metadata: booking.metadata ? (typeof booking.metadata === 'string' ? JSON.parse(booking.metadata) : booking.metadata) : {},
       createdAt: booking.created_at,
       updatedAt: booking.updated_at,
     };
@@ -382,4 +382,68 @@ export const cancelBooking = async (bookingId) => {
   return await updateBookingStatus(bookingId, BOOKING_STATUSES.CANCELLED, {
     cancelledAt: new Date().toISOString(),
   });
+};
+
+const ACTIVE_BOOKING_STATUSES = [
+  BOOKING_STATUSES.PENDING,
+  BOOKING_STATUSES.CONFIRMED,
+  BOOKING_STATUSES.COMPLETED,
+];
+
+const parseItinerary = (itinerary) => {
+  if (!itinerary) return null;
+  if (typeof itinerary === 'object') return itinerary;
+  try {
+    return JSON.parse(itinerary);
+  } catch {
+    return null;
+  }
+};
+
+const getBookingEndDate = (booking) => {
+  const itinerary = parseItinerary(booking.itinerary);
+  if (itinerary?.checkOut) return new Date(itinerary.checkOut);
+  if (itinerary?.dropoffDate) return new Date(itinerary.dropoffDate);
+  if (itinerary?.return?.departDate) return new Date(itinerary.return.departDate);
+  if (itinerary?.outbound?.departDate) return new Date(itinerary.outbound.departDate);
+  return booking.updated_at || booking.created_at || null;
+};
+
+/**
+ * Returns bookings that block account deletion:
+ * - PENDING or CONFIRMED bookings
+ * - COMPLETED bookings whose end date is less than 30 days ago
+ */
+export const getBlockingBookingsForDeletion = async (userId) => {
+  const pool = getPostgresPool();
+  const result = await pool.query(
+    `SELECT id, status, itinerary, created_at, updated_at
+     FROM bookings
+     WHERE user_id = $1
+       AND status = ANY($2::text[])`,
+    [userId, ACTIVE_BOOKING_STATUSES]
+  );
+
+  const now = new Date();
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+  const blocking = result.rows.filter((booking) => {
+    if (booking.status === BOOKING_STATUSES.PENDING || booking.status === BOOKING_STATUSES.CONFIRMED) {
+      return true;
+    }
+
+    const endDate = getBookingEndDate(booking);
+    if (!endDate) {
+      return true; // Fail-safe: unknown end date blocks deletion
+    }
+
+    const diffMs = now - new Date(endDate);
+    return diffMs < THIRTY_DAYS_MS;
+  });
+
+  return blocking.map((booking) => ({
+    id: booking.id,
+    status: booking.status,
+    endDate: getBookingEndDate(booking),
+  }));
 };
