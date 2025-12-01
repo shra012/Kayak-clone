@@ -36,7 +36,9 @@ export const searchFlights = async (query) => {
       departDate,
       returnDate,
       passengers = 1,
-      class: flightClass = 'economy',
+      // Do NOT default class to 'economy' – many seeded docs have no class field,
+      // and a default would filter them all out.
+      class: flightClass,
       nonstop,
       maxPrice,
       departTimeStart,
