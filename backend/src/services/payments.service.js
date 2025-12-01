@@ -49,6 +49,8 @@ export const createPayment = async (userId, paymentData) => {
       transactionReference,
       idempotencyKey,
       metadata = {},
+      paymentMethod,
+      invoiceUrl,
     } = paymentData;
 
     if (!bookingId) {
@@ -86,10 +88,15 @@ export const createPayment = async (userId, paymentData) => {
     const paymentId = uuidv4();
 
     // Insert payment - user_id is TEXT type (MongoDB ObjectId)
+    const mergedMetadata = {
+      ...metadata,
+      ...(paymentMethod ? { paymentMethod } : {}),
+    };
+
     const paymentResult = await client.query(
       `INSERT INTO payments (
-        id, booking_id, user_id, status, amount, currency, transaction_reference, idempotency_key, metadata, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        id, booking_id, user_id, status, amount, currency, transaction_reference, idempotency_key, metadata, created_at, updated_at, invoice_url
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW(), $10)
       RETURNING *`,
       [
         paymentId,
@@ -100,7 +107,8 @@ export const createPayment = async (userId, paymentData) => {
         currency,
         transactionReference || null,
         idempotencyKey || null,
-        JSON.stringify(metadata),
+        JSON.stringify(mergedMetadata),
+        invoiceUrl || null,
       ]
     );
 
@@ -521,9 +529,9 @@ const mapPaymentForResponse = (payment) => {
     currency: payment.currency,
     transactionReference: payment.transaction_reference,
     invoiceUrl: payment.invoice_url,
+    paymentMethod: metadata?.paymentMethod || null,
     metadata,
     createdAt: payment.created_at,
     updatedAt: payment.updated_at,
   };
 };
-

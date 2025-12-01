@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { getMongoDB } from '../config/database.js';
+import { getMongoDB, getPostgresPool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { ObjectId } from 'mongodb';
 import { doesProfileRequireSsn } from '../constants/profileTypes.js';
@@ -10,6 +10,7 @@ import {
   normalizePartnerDetails,
 } from '../utils/profile.js';
 import { getJWTSecret, getJWTExpiresIn } from '../config/jwt.js';
+import { invalidateUserProfileCache } from '../utils/cache.js';
 
 const SALT_ROUNDS = 12;
 
@@ -213,6 +214,60 @@ export const updateUserProfile = async (userId, updates) => {
   if (result.matchedCount === 0) {
     throw new Error('User not found');
   }
+
+  // Also update PostgreSQL if user exists there
+  try {
+    const pool = getPostgresPool();
+    const pgUpdates = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (allowedUpdates.firstName !== undefined) {
+      pgUpdates.push(`first_name = $${paramIndex++}`);
+      params.push(allowedUpdates.firstName);
+    }
+    if (allowedUpdates.lastName !== undefined) {
+      pgUpdates.push(`last_name = $${paramIndex++}`);
+      params.push(allowedUpdates.lastName);
+    }
+    if (allowedUpdates.phoneNumber !== undefined) {
+      pgUpdates.push(`phone_number = $${paramIndex++}`);
+      params.push(allowedUpdates.phoneNumber);
+    }
+    if (allowedUpdates.address !== undefined) {
+      pgUpdates.push(`address_line1 = $${paramIndex++}`);
+      params.push(allowedUpdates.address.line1 || null);
+      pgUpdates.push(`address_line2 = $${paramIndex++}`);
+      params.push(allowedUpdates.address.line2 || null);
+      pgUpdates.push(`address_city = $${paramIndex++}`);
+      params.push(allowedUpdates.address.city || null);
+      pgUpdates.push(`address_state = $${paramIndex++}`);
+      params.push(allowedUpdates.address.state || null);
+      pgUpdates.push(`address_zip_code = $${paramIndex++}`);
+      params.push(allowedUpdates.address.zipCode || null);
+    }
+    if (allowedUpdates.profileImageUrl !== undefined) {
+      pgUpdates.push(`profile_image_url = $${paramIndex++}`);
+      params.push(allowedUpdates.profileImageUrl);
+    }
+
+    if (pgUpdates.length > 0) {
+      pgUpdates.push(`updated_at = NOW()`);
+      params.push(userId);
+      
+      await pool.query(
+        `UPDATE users SET ${pgUpdates.join(', ')} WHERE id = $${paramIndex}`,
+        params
+      );
+      logger.info(`Synced user update to PostgreSQL: ${userId}`);
+    }
+  } catch (pgError) {
+    // Log but don't fail if PostgreSQL update fails (user might not exist in PostgreSQL)
+    logger.warn(`Failed to sync user update to PostgreSQL: ${pgError.message}`);
+  }
+
+  // Invalidate user profile cache
+  await invalidateUserProfileCache(userId);
 
   const updatedUser = await getUserById(userId);
   logger.info(`User profile updated: ${userId}`);

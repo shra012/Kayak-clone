@@ -24,5 +24,9 @@ router.patch('/users/:userId', adminController.modifyUser);
 
 router.get('/reports/revenue', adminController.getRevenueReport);
 router.get('/reports/providers', adminController.getTopProviders);
+router.get('/reports/top-properties', adminController.getTopProperties);
+router.get('/reports/city-revenue', adminController.getCityRevenue);
+router.get('/reports/providers/last-month', adminController.getProvidersLastMonth);
+router.get('/bills', adminController.searchBills);
 
 export default router;

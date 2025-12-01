@@ -608,6 +608,17 @@ const HomePage = () => {
     }
   };
 
+  // Load hotel location options (cities and property names)
+  const loadHotelLocationOptions = async (searchTerm) => {
+    try {
+      const { items } = await listingsApi.searchHotelLocations(searchTerm, 10);
+      setHotelLocationOptions(items || []);
+    } catch (error) {
+      console.error('Failed to load hotel locations', error);
+      setHotelLocationOptions([]);
+    }
+  };
+
   const getFilteredLocations = () => locationOptions;
 
   const handleLocationSelect = (location) => {
@@ -1635,7 +1646,7 @@ const HomePage = () => {
                           
                           // Load location options with debounce
                           if (value.trim().length >= 2) {
-                            setTimeout(() => loadLocations(value, setHotelLocationOptions), 300);
+                            setTimeout(() => loadHotelLocationOptions(value), 300);
                           } else {
                             setHotelLocationOptions([]);
                           }
@@ -1650,7 +1661,7 @@ const HomePage = () => {
                         onFocus={() => {
                           setShowHotelLocationDropdown(true);
                           if (!hotelLocationOptions.length && searchData.hotels.location) {
-                            loadLocations(searchData.hotels.location, setHotelLocationOptions);
+                            loadHotelLocationOptions(searchData.hotels.location);
                           }
                         }}
                         autoComplete="off"
@@ -1659,28 +1670,49 @@ const HomePage = () => {
                       {/* Location Dropdown */}
                       {showHotelLocationDropdown && hotelLocationOptions.length > 0 && (
                         <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-80 max-h-72 overflow-y-auto z-50">
-                          {hotelLocationOptions.map((loc, index) => (
-                            <button
-                              key={`${loc.name}-${index}`}
-                              type="button"
-                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
-                              onMouseDown={(e) => {
-                                e.preventDefault(); // Prevent blur from firing
-                                setSearchData({
-                                  ...searchData,
-                                  hotels: { ...searchData.hotels, location: loc.name }
-                                });
-                                setHotelLocationSelected(true);
-                                setShowHotelLocationDropdown(false);
-                                setHotelLocationOptions([]);
-                              }}
-                            >
-                              <span className="font-medium text-base">{loc.name}</span>
-                              <span className="text-sm text-base-content/60 ml-4 whitespace-nowrap">
-                                {loc.country}
-                              </span>
-                            </button>
-                          ))}
+                          {hotelLocationOptions.map((loc, index) => {
+                            const isLocation = loc.type === 'location';
+                            const isProperty = loc.type === 'property';
+                            const displayValue = isProperty ? loc.city : loc.name;
+                            
+                            return (
+                              <button
+                                key={`${loc.type}-${loc.name}-${index}`}
+                                type="button"
+                                className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                                onMouseDown={(e) => {
+                                  e.preventDefault(); // Prevent blur from firing
+                                  setSearchData({
+                                    ...searchData,
+                                    hotels: { ...searchData.hotels, location: displayValue }
+                                  });
+                                  setHotelLocationSelected(true);
+                                  setShowHotelLocationDropdown(false);
+                                  setHotelLocationOptions([]);
+                                }}
+                              >
+                                <div className="flex flex-col">
+                                  <div className="flex items-center gap-2">
+                                    {isLocation && (
+                                      <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">Location</span>
+                                    )}
+                                    {isProperty && (
+                                      <span className="text-xs bg-secondary/20 text-secondary px-2 py-0.5 rounded">Property</span>
+                                    )}
+                                    <span className="font-medium text-base">{loc.displayName || loc.name}</span>
+                                  </div>
+                                  {isProperty && loc.city && (
+                                    <span className="text-sm text-base-content/60 mt-1">{loc.city}{loc.state ? `, ${loc.state}` : ''}</span>
+                                  )}
+                                </div>
+                                {loc.country && (
+                                  <span className="text-sm text-base-content/60 ml-4 whitespace-nowrap">
+                                    {loc.country}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -2132,33 +2164,101 @@ const HomePage = () => {
                 ['London', 'Paris', 'Manila', 'Denver', 'San Francisco', 'San Diego', 'Punta Cana', 'Europe', 'Florida', 'Washington, D.C.', 'Portland']
               ].map((column, colIndex) => (
                 <div key={colIndex} className="space-y-1">
-                  {column.map((city) => (
-                    <div
-                      key={city}
-                      className="flex items-center justify-between py-2 border-b border-base-300 cursor-pointer hover:text-primary transition-colors"
-                      onClick={() => {
-                        setActiveTab('flights');
-                        setSearchData({
-                          ...searchData,
-                          flights: { ...searchData.flights, to: city }
+                  {column.map((city) => {
+                    // Helper function to navigate with location filter
+                    const navigateWithLocation = (page, location) => {
+                      const today = new Date().toISOString().split('T')[0];
+                      const nextWeek = new Date();
+                      nextWeek.setDate(nextWeek.getDate() + 7);
+                      const nextWeekStr = nextWeek.toISOString().split('T')[0];
+                      
+                      if (page === 'flights') {
+                        navigate('/flights', {
+                          state: {
+                            search: {
+                              to: location,
+                              from: '',
+                              departDate: today,
+                              returnDate: nextWeekStr,
+                            }
+                          }
                         });
-                      }}
-                    >
-                      <div>
-                        <div className="font-semibold text-base-content">{city}</div>
-                        <div className="text-sm text-primary">
-                          <a href="/cars" className="hover:underline">CARS</a>
-                          {' • '}
-                          <a href="/flights" className="hover:underline">FLIGHTS</a>
-                          {' • '}
-                          <a href="/hotels" className="hover:underline">HOTELS</a>
+                      } else if (page === 'hotels') {
+                        navigate('/hotels', {
+                          state: {
+                            search: {
+                              location: location,
+                            }
+                          }
+                        });
+                      } else if (page === 'cars') {
+                        navigate('/cars', {
+                          state: {
+                            search: {
+                              location: location,
+                              pickUp: today,
+                              dropOff: nextWeekStr,
+                            }
+                          }
+                        });
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={city}
+                        className="flex items-center justify-between py-2 border-b border-base-300 cursor-pointer hover:text-primary transition-colors"
+                        onClick={() => {
+                          // Default to flights when clicking the main row
+                          navigateWithLocation('flights', city);
+                        }}
+                      >
+                        <div>
+                          <div className="font-semibold text-base-content">{city}</div>
+                          <div className="text-sm text-primary">
+                            <a
+                              href="/cars"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                navigateWithLocation('cars', city);
+                              }}
+                              className="hover:underline"
+                            >
+                              CARS
+                            </a>
+                            {' • '}
+                            <a
+                              href="/flights"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                navigateWithLocation('flights', city);
+                              }}
+                              className="hover:underline"
+                            >
+                              FLIGHTS
+                            </a>
+                            {' • '}
+                            <a
+                              href="/hotels"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                navigateWithLocation('hotels', city);
+                              }}
+                              className="hover:underline"
+                            >
+                              HOTELS
+                            </a>
+                          </div>
                         </div>
+                        <AnimatedIcon>
+                          <FaChevronDown className="w-4 h-4 text-base-content/50" />
+                        </AnimatedIcon>
                       </div>
-                      <AnimatedIcon>
-                        <FaChevronDown className="w-4 h-4 text-base-content/50" />
-                      </AnimatedIcon>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ))}
             </div>

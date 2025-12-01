@@ -1,20 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { bookingsApi } from '../../services/api/bookings';
+import { usersApi } from '../../services/api/users';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { FaPlane, FaBed, FaCar, FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaCreditCard, FaArrowRight } from 'react-icons/fa';
-
-const US_STATES = [
-  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
-  'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
-  'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi',
-  'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',
-  'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania',
-  'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
-  'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
-];
+import { US_STATES, getStateCode } from '../../constants/usStates';
 
 const US_CITIES = [
   'New York City', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
@@ -76,12 +68,13 @@ const BookingsPage = () => {
         loadBookings();
       }
     }
-  }, [location.state]);
+  }, [location.state, user]);
 
   const loadBookings = async () => {
+    if (!user?.id) return;
     try {
       setLoading(true);
-      const response = await bookingsApi.searchBookings({});
+      const response = await usersApi.getUserBookings(user.id);
       if (response.items) {
         setExistingBookings(response.items);
       }
@@ -407,8 +400,13 @@ const BookingsPage = () => {
                           <Icon className="w-8 h-8 text-primary mt-1" />
                           <div>
                             <h3 className="text-xl font-semibold capitalize">{booking.bookingType} Booking</h3>
-                            <p className="text-sm text-base-content/70">
-                              Status: <span className="badge badge-sm">{booking.status}</span>
+                            <p className="text-sm text-base-content/70 flex gap-2 items-center">
+                              <span>Status: <span className="badge badge-sm">{booking.status}</span></span>
+                              {booking.timeline && (
+                                <span className="badge badge-outline badge-sm">
+                                  {booking.timeline.toUpperCase()}
+                                </span>
+                              )}
                             </p>
                             {booking.itinerary && (
                               <div className="mt-2 space-y-1 text-sm">
@@ -426,6 +424,11 @@ const BookingsPage = () => {
                           </div>
                         </div>
                         <div className="text-right">
+                          {booking.startDate && booking.endDate && (
+                            <p className="text-xs text-base-content/70">
+                              {new Date(booking.startDate).toLocaleDateString()} - {new Date(booking.endDate).toLocaleDateString()}
+                            </p>
+                          )}
                           <p className="text-2xl font-bold text-primary">
                             {booking.price?.currency || 'USD'} {booking.price?.amount?.toFixed(2) || '0.00'}
                           </p>
@@ -650,7 +653,7 @@ const BookingsPage = () => {
                         >
                           <option value="">Select state</option>
                           {US_STATES.map((state) => (
-                            <option key={state} value={state}>{state}</option>
+                            <option key={state.value} value={state.value}>{state.label}</option>
                           ))}
                         </select>
                         {errors['address.state'] && <label className="label"><span className="label-text-alt text-error">{errors['address.state']}</span></label>}

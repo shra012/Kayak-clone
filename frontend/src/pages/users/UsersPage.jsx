@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { usersApi } from '../../services/api/users';
 import { Link } from 'react-router-dom';
+import { getStateName } from '../../constants/usStates';
 
 const UsersPage = () => {
   const { data, isLoading, error } = useQuery({
@@ -44,7 +45,7 @@ const UsersPage = () => {
                 <td>{user.id}</td>
                 <td>{user.first_name} {user.last_name}</td>
                 <td>{user.email}</td>
-                <td>{user.address_state}</td>
+                <td>{getStateName(user.address_state)}</td>
                 <td>
                   <Link
                     to={`/users/${user.id}`}

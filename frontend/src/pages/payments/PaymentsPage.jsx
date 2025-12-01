@@ -83,6 +83,9 @@ const PaymentsPage = () => {
         amount: parseFloat(newPayment.amount),
         currency: newPayment.currency,
       };
+      if (bookingFromState?.bookingId) {
+        paymentData.paymentMethod = paymentMethod;
+      }
       
       const payment = await paymentsApi.createPayment(paymentData);
       
@@ -280,9 +283,22 @@ const PaymentsPage = () => {
                           <strong>Booking:</strong> {payment.bookingId?.substring(0, 8)}...
                           {payment.booking && ` (${payment.booking.bookingType})`}
                         </p>
+                        {payment.paymentMethod?.type && (
+                          <p>
+                            <strong>Method:</strong> {payment.paymentMethod.type}
+                          </p>
+                        )}
                         {payment.transactionReference && (
                           <p>
                             <strong>Transaction:</strong> {payment.transactionReference}
+                          </p>
+                        )}
+                        {payment.invoiceUrl && (
+                          <p>
+                            <strong>Invoice:</strong>{' '}
+                            <a href={payment.invoiceUrl} className="link link-primary" target="_blank" rel="noreferrer">
+                              View
+                            </a>
                           </p>
                         )}
                         <p>

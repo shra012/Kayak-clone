@@ -31,6 +31,12 @@ const Layout = ({ children }) => {
     document.documentElement.setAttribute("data-theme", nextTheme);
   }, [theme]);
 
+  const profileImage =
+    user?.profileImageUrl ||
+    user?.profile_image_url ||
+    user?.profileImage ||
+    null;
+
   const initials = (() => {
     const first = user?.firstName?.trim()?.charAt(0) || "";
     const last = user?.lastName?.trim()?.charAt(0) || "";
@@ -231,8 +237,8 @@ const Layout = ({ children }) => {
                 className="btn btn-ghost btn-circle avatar"
               >
                 <div className="w-10 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
-                  {user?.profileImageUrl ? (
-                    <img src={user.profileImageUrl} alt="Profile" className="object-cover" />
+                  {profileImage ? (
+                    <img src={profileImage} alt="Profile" className="object-cover" />
                   ) : (
                     <div className="w-full h-full rounded-full bg-primary text-primary-content flex items-center justify-center font-semibold text-lg uppercase">
                       {initials}
