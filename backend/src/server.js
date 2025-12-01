@@ -152,14 +152,23 @@ app.use(session({
   }
 }));
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: NODE_ENV === 'production' ? 100 : 500, // 500 requests per 15 min in dev, 100 in production
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api/', limiter);
+const RATE_LIMIT_ENABLED = process.env.RATE_LIMIT_ENABLED !== 'false';
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX, 10)
+  || (NODE_ENV === 'production' ? 100 : 500);
+
+if (RATE_LIMIT_ENABLED) {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: RATE_LIMIT_MAX,
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/', limiter);
+  logger.info(`Rate limiter enabled (max ${RATE_LIMIT_MAX} req/15min)`);
+} else {
+  logger.warn('Rate limiter disabled via RATE_LIMIT_ENABLED=false');
+}
 
 if (NODE_ENV === 'development') {
   app.use(morgan('dev'));

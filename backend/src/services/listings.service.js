@@ -9,6 +9,8 @@ import {
   getCachedListing,
   cacheListing,
   generateCacheKey,
+  getCachedAvailableAirlines,
+  cacheAvailableAirlines,
 } from '../utils/cache.js';
 
 /**
@@ -235,22 +237,25 @@ export const searchFlights = async (query) => {
   }
 };
 
-/**
- * Get available airlines filtered by route and dates
- */
 export const getAvailableAirlines = async (query) => {
   try {
+    const cached = await getCachedAvailableAirlines(query);
+    if (cached) {
+      logger.debug('Returning cached available airlines');
+      return cached;
+    }
+
     const { from, to, departDate, returnDate } = query;
     
     const db = await getMongoDB();
     const collection = db.collection('flights');
     
+    let result;
+    
     if (returnDate) {
-      // For round trips, find airlines that exist for both outbound and return flights
       const fromCode = extractAirportCode(from);
       const toCode = extractAirportCode(to);
       
-      // Get airlines for outbound flight
       const outboundFilter = {
         from: fromCode,
         to: toCode,
@@ -258,7 +263,6 @@ export const getAvailableAirlines = async (query) => {
       };
       const outboundAirlines = await collection.distinct('airline', outboundFilter);
       
-      // Get airlines for return flight (reversed route)
       const returnFilter = {
         from: toCode,
         to: fromCode,
@@ -266,12 +270,10 @@ export const getAvailableAirlines = async (query) => {
       };
       const returnAirlines = await collection.distinct('airline', returnFilter);
       
-      // Return airlines that exist in both directions
       const commonAirlines = outboundAirlines.filter(airline => returnAirlines.includes(airline));
       
-      return { airlines: commonAirlines.sort() };
+      result = { airlines: commonAirlines.sort() };
     } else {
-      // For one-way trips, just get airlines for the route
       const filter = {};
       
       if (from) {
@@ -288,11 +290,14 @@ export const getAvailableAirlines = async (query) => {
         filter.departDate = departDate;
       }
       
-      // Get distinct airlines that match the filter
       const airlines = await collection.distinct('airline', filter);
       
-      return { airlines: airlines.sort() };
+      result = { airlines: airlines.sort() };
     }
+
+    await cacheAvailableAirlines(query, result);
+    
+    return result;
   } catch (error) {
     logger.error('Error in getAvailableAirlines service:', error);
     throw error;
