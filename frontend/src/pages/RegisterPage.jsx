@@ -4,35 +4,11 @@ import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import { useAuth } from '../hooks/useAuth';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { getHomePageFlightImages } from '../services/backgroundImages.service.js';
-import { US_STATES } from '../constants/usStates';
+import { ALL_STATES } from '../constants/internationalStates';
 
 const formatPhoneInput = (value) => {
-  // Only allow digits, don't accept letters or special characters
-  const digits = value.replace(/\D/g, '');
-  
-  if (!digits) {
-    return '';
-  }
-
-  const withoutCountry = digits.startsWith('1') ? digits.slice(1) : digits;
-  const trimmed = withoutCountry.slice(0, 10);
-  const area = trimmed.slice(0, 3);
-  const prefix = trimmed.slice(3, 6);
-  const lineNumber = trimmed.slice(6, 10);
-
-  let formatted = '+1';
-
-  if (area) {
-    formatted += `-${area}`;
-  }
-  if (prefix) {
-    formatted += `-${prefix}`;
-  }
-  if (lineNumber) {
-    formatted += `-${lineNumber}`;
-  }
-
-  return formatted;
+  // Allow plus, digits, spaces, hyphens, parentheses
+  return value.replace(/[^\d+\-\s()]/g, '');
 };
 
 // Validate phone number has only digits
@@ -102,25 +78,54 @@ const RegisterPage = () => {
     } else if (name === 'phoneNumber') {
       // Only allow numeric input for phone number
       if (isValidPhoneInput(value)) {
-        setFormData({
-          ...formData,
-          phoneNumber: formatPhoneInput(value),
-        });
-        // Clear phone error if user is typing valid input
-        if (errors.phoneNumber) {
-          setErrors((prev) => ({ ...prev, phoneNumber: undefined }));
+        const formatted = formatPhoneInput(value);
+        // Count only digits and limit to 15 digits (E.164 standard)
+        const phoneDigits = formatted.replace(/\D/g, '');
+        if (phoneDigits.length <= 15) {
+          setFormData({
+            ...formData,
+            phoneNumber: formatted,
+          });
+          // Clear phone error if user is typing valid input
+          if (errors.phoneNumber) {
+            setErrors((prev) => ({ ...prev, phoneNumber: undefined }));
+          }
+        } else {
+          // If exceeds 15 digits, show error
+          setErrors((prev) => ({ ...prev, phoneNumber: 'Phone number must be between 7 and 15 digits' }));
         }
       }
       // If invalid characters, don't update the field (silently reject)
     } else if (name.startsWith('address.')) {
       const field = name.split('.')[1];
-      setFormData({
-        ...formData,
-        address: {
-          ...formData.address,
-          [field]: value,
-        },
-      });
+      // Validate zip code length in real-time
+      if (field === 'zipCode') {
+        // Limit zip code to 12 characters (accommodates US ZIP+4, UK postcodes, etc.)
+        const trimmedValue = value.slice(0, 12);
+        setFormData({
+          ...formData,
+          address: {
+            ...formData.address,
+            [field]: trimmedValue,
+          },
+        });
+        // Clear zip code error if user is typing valid input
+        if (errors['address.zipCode']) {
+          setErrors((prev) => {
+            const newErrors = { ...prev };
+            delete newErrors['address.zipCode'];
+            return newErrors;
+          });
+        }
+      } else {
+        setFormData({
+          ...formData,
+          address: {
+            ...formData.address,
+            [field]: value,
+          },
+        });
+      }
     } else if (name.startsWith('partnerProfile.')) {
       const field = name.split('.')[1];
       setFormData({
@@ -149,8 +154,22 @@ const RegisterPage = () => {
       newErrors.password = 'Password must be at least 8 characters';
     }
 
-    if (!/^\+1-\d{3}-\d{3}-\d{4}$/.test(formData.phoneNumber)) {
-      newErrors.phoneNumber = 'Phone must be in format +1-XXX-XXX-XXXX';
+    // Validate phone number: count only digits, should be 7-15 digits (E.164 standard)
+    const phoneDigits = formData.phoneNumber.replace(/\D/g, '');
+    if (!phoneDigits || phoneDigits.length < 7 || phoneDigits.length > 15) {
+      newErrors.phoneNumber = 'Phone number must be between 7 and 15 digits';
+    } else if (!/^[\d+\-\s()]+$/.test(formData.phoneNumber)) {
+      newErrors.phoneNumber = 'Phone number contains invalid characters';
+    }
+
+    // Validate zip code: 3-12 characters (accommodates various international formats)
+    const zipCode = formData.address.zipCode.trim();
+    if (!zipCode) {
+      newErrors['address.zipCode'] = 'Zip/Postal code is required';
+    } else if (zipCode.length < 3) {
+      newErrors['address.zipCode'] = 'Zip/Postal code must be at least 3 characters';
+    } else if (zipCode.length > 12) {
+      newErrors['address.zipCode'] = 'Zip/Postal code must be 12 characters or less';
     }
 
     if (formData.profileType === 'owner') {
@@ -270,7 +289,7 @@ const RegisterPage = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">First Name</span>
+                    <span className="label-text">First Name <span className="text-error">*</span></span>
                   </label>
                   <input
                     type="text"
@@ -292,13 +311,12 @@ const RegisterPage = () => {
                     className="input input-bordered"
                     value={formData.lastName}
                     onChange={handleChange}
-                    required
                     disabled={loading}
                   />
                 </div>
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">Email</span>
+                    <span className="label-text">Email <span className="text-error">*</span></span>
                   </label>
                   <input
                     type="email"
@@ -312,12 +330,12 @@ const RegisterPage = () => {
                 </div>
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">Phone Number</span>
+                    <span className="label-text">Phone Number <span className="text-error">*</span></span>
                   </label>
                   <input
                     type="tel"
                     name="phoneNumber"
-                    placeholder="+1-XXX-XXX-XXXX"
+                    placeholder="+1 234 567 8900"
                     className={`input input-bordered ${errors.phoneNumber ? 'input-error' : ''}`}
                     value={formData.phoneNumber}
                     onChange={handleChange}
@@ -337,7 +355,7 @@ const RegisterPage = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="form-control">
                         <label className="label">
-                          <span className="label-text">Company Name</span>
+                          <span className="label-text">Company Name <span className="text-error">*</span></span>
                         </label>
                         <input
                           type="text"
@@ -368,7 +386,7 @@ const RegisterPage = () => {
                       </div>
                       <div className="form-control">
                         <label className="label">
-                          <span className="label-text">Primary Contact Email</span>
+                          <span className="label-text">Primary Contact Email <span className="text-error">*</span></span>
                         </label>
                         <input
                           type="email"
@@ -421,7 +439,7 @@ const RegisterPage = () => {
                 )}
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">Password</span>
+                    <span className="label-text">Password <span className="text-error">*</span></span>
                   </label>
                   <div className="relative">
                     <input
@@ -454,7 +472,7 @@ const RegisterPage = () => {
                 </div>
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">Confirm Password</span>
+                    <span className="label-text">Confirm Password <span className="text-error">*</span></span>
                   </label>
                   <div className="relative">
                     <input
@@ -487,7 +505,7 @@ const RegisterPage = () => {
                 </div>
                 <div className="form-control md:col-span-2">
                   <label className="label">
-                    <span className="label-text">Address Line 1</span>
+                    <span className="label-text">Address Line 1 <span className="text-error">*</span></span>
                   </label>
                   <input
                     type="text"
@@ -514,7 +532,7 @@ const RegisterPage = () => {
                 </div>
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">City</span>
+                    <span className="label-text">City <span className="text-error">*</span></span>
                   </label>
                   <input
                     type="text"
@@ -528,7 +546,7 @@ const RegisterPage = () => {
                 </div>
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">State</span>
+                    <span className="label-text">State/Province <span className="text-error">*</span></span>
                   </label>
                   <select
                     name="address.state"
@@ -539,28 +557,35 @@ const RegisterPage = () => {
                     disabled={loading}
                   >
                     <option value="" disabled hidden>
-                      Select state
+                      Select state/province
                     </option>
-                    {US_STATES.map((state) => (
+                    {ALL_STATES.map((state) => (
                       <option key={state.value} value={state.value}>
-                        {state.label}
+                        {state.label} ({state.country})
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">Zip Code</span>
+                    <span className="label-text">Zip/Postal Code <span className="text-error">*</span></span>
                   </label>
                   <input
                     type="text"
                     name="address.zipCode"
-                    className="input input-bordered"
+                    className={`input input-bordered ${errors['address.zipCode'] ? 'input-error' : ''}`}
                     value={formData.address.zipCode}
                     onChange={handleChange}
+                    placeholder="e.g., 10001 or 400001"
+                    maxLength={12}
                     required
                     disabled={loading}
                   />
+                  {errors['address.zipCode'] && (
+                    <label className="label">
+                      <span className="label-text-alt text-error">{errors['address.zipCode']}</span>
+                    </label>
+                  )}
                 </div>
               </div>
               {formData.profileType === 'owner' && (
