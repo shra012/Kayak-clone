@@ -42,10 +42,14 @@ export const searchFlights = async (query) => {
       arriveTimeEnd,
       minSeats,
       page = 1,
-      limit = 20,
+      limit: limitParam,
+      pageSize,
       sort = 'price',
       order = 'asc',
     } = query;
+    
+    // Support both 'limit' and 'pageSize' query parameters
+    const limit = limitParam || pageSize || 20;
 
     // Try to get cached results
     const cached = await getCachedSearchResults('flight', query);
@@ -67,12 +71,16 @@ export const searchFlights = async (query) => {
       const toCode = extractAirportCode(to);
       filter.to = toCode;
     }
-    if (departDate) filter.departDate = departDate;
+    if (departDate) {
+      filter.departDate = departDate;
+    }
     if (returnDate) filter.returnDate = returnDate;
+    // Only filter by nonstop if explicitly set to 'true' (ignore 'any' or 'false')
     if (nonstop === 'true') filter.nonstop = true;
     if (maxPrice) filter.price = { $lte: parseFloat(maxPrice) };
+    // Filter by class if specified (economy, premium_economy, business, first)
     if (flightClass) filter.class = flightClass;
-    if (minSeats) filter.totalAvailableSeats = { $gte: parseInt(minSeats, 10) };
+    if (minSeats) filter.availableSeats = { $gte: parseInt(minSeats, 10) };
     if (departTimeStart || departTimeEnd) {
       filter.departureTime = {};
       if (departTimeStart) filter.departureTime.$gte = departTimeStart;
@@ -90,6 +98,7 @@ export const searchFlights = async (query) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
+    // Execute query
     const [items, totalItems] = await Promise.all([
       collection.find(filter).sort(sortObj).skip(skip).limit(parseInt(limit)).toArray(),
       collection.countDocuments(filter),

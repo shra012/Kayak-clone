@@ -4,6 +4,19 @@ import { logger } from '../config/logger.js';
 import { sendKafkaMessage } from '../config/kafka.js';
 import { ObjectId } from 'mongodb';
 
+/**
+ * Generate a unique PNR (Passenger Name Record)
+ * Format: 6 alphanumeric characters (uppercase letters and numbers)
+ */
+const generatePNR = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let pnr = '';
+  for (let i = 0; i < 6; i++) {
+    pnr += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return pnr;
+};
+
 const BOOKING_STATUSES = {
   PENDING: 'PENDING',
   CONFIRMED: 'CONFIRMED',
@@ -75,6 +88,15 @@ export const createBooking = async (userId, bookingData) => {
     }
 
     const bookingId = uuidv4();
+    
+    // Generate PNR for flight bookings
+    let pnr = null;
+    if (bookingType === BOOKING_TYPES.FLIGHT) {
+      pnr = generatePNR();
+      // Store PNR in metadata
+      metadata = { ...metadata, pnr };
+      logger.info(`Generated PNR ${pnr} for flight booking ${bookingId}`);
+    }
 
     const bookingResult = await client.query(
       `INSERT INTO bookings (
@@ -121,6 +143,7 @@ export const createBooking = async (userId, bookingData) => {
       },
       itinerary: booking.itinerary || null,
       metadata: booking.metadata || {},
+      pnr: pnr || (booking.metadata?.pnr || null), // Include PNR in response for flight bookings
       createdAt: booking.created_at,
       updatedAt: booking.updated_at,
     };

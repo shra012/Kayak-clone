@@ -560,7 +560,7 @@ const buildPagination = ({ page, pageSize, total }) => {
     hasNextPage: page < totalPages,
     hasPrevPage: page > 1,
   };
-};
+}; 
 
 export const searchFlights = async (req, res, next) => {
   try {
@@ -569,6 +569,109 @@ export const searchFlights = async (req, res, next) => {
   } catch (error) {
     logger.error('Error in searchFlights controller:', error);
     next(error);
+  }
+};
+
+// Test endpoint to debug search filter
+export const testFlightSearch = async (req, res, next) => {
+  try {
+    const { getMongoDB } = await import('../config/database.js');
+    const db = await getMongoDB();
+    const collection = db.collection('flights');
+    
+    const { from, to, departDate } = req.query;
+    
+    // Build the exact filter the service would use
+    const filter = {};
+    if (from) filter.from = from;
+    if (to) filter.to = to;
+    if (departDate) filter.departDate = departDate;
+    
+    // Test the query
+    const count = await collection.countDocuments(filter);
+    const results = await collection.find(filter).limit(5).toArray();
+    
+    // Also test without date
+    const filterNoDate = { from, to };
+    const countNoDate = await collection.countDocuments(filterNoDate);
+    
+    res.json({
+      filter,
+      count,
+      results,
+      filterNoDate,
+      countNoDate,
+      message: count > 0 ? 'Found flights' : 'No flights found with this filter',
+    });
+  } catch (error) {
+    logger.error('Error in testFlightSearch:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Diagnostic endpoint to check database status
+export const checkDatabaseStatus = async (req, res, next) => {
+  try {
+    const { getMongoDB } = await import('../config/database.js');
+    const db = await getMongoDB();
+    
+    const flightsCount = await db.collection('flights').countDocuments({});
+    const hotelsCount = await db.collection('hotels').countDocuments({});
+    const carsCount = await db.collection('cars').countDocuments({});
+    
+    // Sample flights for SFO to LAX
+    const sfoToLaxSample = await db.collection('flights')
+      .find({ from: 'SFO', to: 'LAX' })
+      .limit(3)
+      .toArray();
+    
+    // Sample flights for LAX to SFO
+    const laxToSfoSample = await db.collection('flights')
+      .find({ from: 'LAX', to: 'SFO' })
+      .limit(3)
+      .toArray();
+    
+    // Check for specific date SFO to LAX
+    const sfoToLaxDateCheck = await db.collection('flights')
+      .find({ from: 'SFO', to: 'LAX', departDate: '2025-12-08' })
+      .limit(3)
+      .toArray();
+    
+    // Check for specific date LAX to SFO
+    const laxToSfoDateCheck = await db.collection('flights')
+      .find({ from: 'LAX', to: 'SFO', departDate: '2025-12-08' })
+      .limit(3)
+      .toArray();
+    
+    // Count flights for each route
+    const sfoToLaxCount = await db.collection('flights').countDocuments({ from: 'SFO', to: 'LAX' });
+    const laxToSfoCount = await db.collection('flights').countDocuments({ from: 'LAX', to: 'SFO' });
+    
+    res.json({
+      status: 'ok',
+      counts: {
+        flights: flightsCount,
+        hotels: hotelsCount,
+        cars: carsCount,
+        sfoToLax: sfoToLaxCount,
+        laxToSfo: laxToSfoCount,
+      },
+      sample: {
+        sfoToLax: sfoToLaxSample.length > 0 ? sfoToLaxSample : 'No SFO to LAX flights found',
+        laxToSfo: laxToSfoSample.length > 0 ? laxToSfoSample : 'No LAX to SFO flights found',
+        sfoToLaxOn2025_12_08: sfoToLaxDateCheck.length > 0 ? sfoToLaxDateCheck : 'No SFO to LAX flights found for 2025-12-08',
+        laxToSfoOn2025_12_08: laxToSfoDateCheck.length > 0 ? laxToSfoDateCheck : 'No LAX to SFO flights found for 2025-12-08',
+      },
+      message: flightsCount === 0 
+        ? 'Database appears to be empty. Run: npm run seed:us-data'
+        : `Database has ${flightsCount} flights, ${hotelsCount} hotels, ${carsCount} cars`,
+    });
+  } catch (error) {
+    logger.error('Error checking database status:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message,
+    });
   }
 };
 
