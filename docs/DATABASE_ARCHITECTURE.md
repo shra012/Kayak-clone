@@ -164,6 +164,25 @@ const createBooking = async (userId, bookingData) => {
 }
 ```
 
+#### Airports Collection
+- Airport reference data for flight location autocomplete
+- Stores airport codes (IATA), names, cities, states, coordinates
+- Used by `getFlightLocations` service for autocomplete functionality
+- Schema:
+```javascript
+{
+  code: "LAX",           // IATA code (unique, indexed)
+  name: "Los Angeles International Airport",
+  city: "Los Angeles",
+  state: "CA",
+  country: "US",
+  lat: 33.9425,
+  lng: -118.4081,
+  elevation: 126,
+  timezone: "America/Los_Angeles"
+}
+```
+
 #### Concierge Sessions Collection
 - AI conversation sessions
 - User context and preferences
@@ -171,9 +190,26 @@ const createBooking = async (userId, bookingData) => {
 - Bundle recommendations
 
 #### Watches Collection
-- Price/inventory watches
+- Price/inventory watches for user alerts
 - User notification preferences
 - Watch criteria and status
+- Schema:
+```javascript
+{
+  _id: ObjectId,
+  userId: "user_id",
+  listingType: "flight" | "hotel" | "car",
+  listingId: "listing_id",
+  criteria: {
+    priceThreshold: 500.00,      // Alert if price drops below
+    availabilityThreshold: 5     // Alert if seats/rooms available >=
+  },
+  status: "active" | "triggered" | "cancelled" | "expired",
+  triggeredAt: Date,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
 
 #### User Traces Collection (Analytics)
 - User behavior events
@@ -246,6 +282,13 @@ Value: { JSON search results }
 TTL: 60 seconds (1 minute)
 ```
 
+**Flight Locations Cache**
+```
+Key: flight_locations:{query}:{limit}
+Value: { JSON array of airport objects }
+TTL: 60 seconds (1 minute)
+```
+
 #### Rate Limiting
 
 ```
@@ -305,6 +348,7 @@ const checkRateLimit = async (userId, endpoint) => {
 | Flight listings | MongoDB | Document-based, flexible schema, high read volume |
 | Hotel listings | MongoDB | Document-based, nested room data, search-heavy |
 | Car listings | MongoDB | Document-based, simple structure, search-heavy |
+| Airport reference data | MongoDB | Static reference data, autocomplete lookups |
 | Concierge sessions | MongoDB | Flexible conversation structure, JSON-friendly |
 | Price watches | MongoDB | Document-based, flexible criteria |
 | User analytics | MongoDB | High volume, flexible schema, time-series friendly |

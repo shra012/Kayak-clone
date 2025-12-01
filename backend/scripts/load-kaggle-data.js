@@ -855,20 +855,37 @@ const seedDatabase = async (options = {}) => {
     
     // Create indexes for better query performance
     console.log('\nCreating indexes...');
-    await db.collection('flights').createIndex({ from: 1, to: 1, departDate: 1 });
-    await db.collection('flights').createIndex({ airline: 1 });
-    await db.collection('flights').createIndex({ price: 1 });
-    await db.collection('flights').createIndex({ isDeal: 1 });
     
-    await db.collection('hotels').createIndex({ city: 1 });
-    await db.collection('hotels').createIndex({ state: 1 });
-    await db.collection('hotels').createIndex({ pricePerNight: 1 });
-    await db.collection('hotels').createIndex({ rating: 1 });
-    await db.collection('hotels').createIndex({ isDeal: 1 });
+    // Flights indexes
+    await db.collection('flights').createIndex({ from: 1, to: 1, departDate: 1 }, { background: true });
+    await db.collection('flights').createIndex({ airline: 1 }, { background: true });
+    await db.collection('flights').createIndex({ price: 1 }, { background: true });
+    await db.collection('flights').createIndex({ isDeal: 1 }, { background: true });
+    await db.collection('flights').createIndex({ class: 1 }, { background: true });
+    await db.collection('flights').createIndex({ availableSeats: 1 }, { background: true });
+    await db.collection('flights').createIndex({ from: 1, to: 1 }, { background: true });
     
-    await db.collection('cars').createIndex({ city: 1 });
-    await db.collection('cars').createIndex({ state: 1 });
-    await db.collection('cars').createIndex({ pricePerDay: 1 });
+    // Hotels indexes
+    await db.collection('hotels').createIndex({ city: 1 }, { background: true });
+    await db.collection('hotels').createIndex({ state: 1 }, { background: true });
+    await db.collection('hotels').createIndex({ pricePerNight: 1 }, { background: true });
+    await db.collection('hotels').createIndex({ rating: 1 }, { background: true });
+    await db.collection('hotels').createIndex({ isDeal: 1 }, { background: true });
+    
+    // Cars indexes
+    await db.collection('cars').createIndex({ city: 1 }, { background: true });
+    await db.collection('cars').createIndex({ state: 1 }, { background: true });
+    await db.collection('cars').createIndex({ pricePerDay: 1 }, { background: true });
+    
+    // Airports indexes (if collection exists)
+    try {
+      await db.collection('airports').createIndex({ code: 1 }, { unique: true, background: true });
+      await db.collection('airports').createIndex({ city: 1 }, { background: true });
+      await db.collection('airports').createIndex({ state: 1 }, { background: true });
+    } catch (error) {
+      // Index might already exist, continue
+      console.log('   Airports indexes may already exist');
+    }
     
     console.log('Indexes created');
     
