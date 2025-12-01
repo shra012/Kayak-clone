@@ -153,17 +153,33 @@ export const getUserById = async (userId) => {
     try {
       const db = await getMongoDB();
       const usersCollection = db.collection('users');
-      const mongoUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
+      
+      // Try to find user by ObjectId first
+      let mongoUser = null;
+      try {
+        mongoUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
+      } catch (objectIdError) {
+        // If ObjectId conversion fails, userId might be a UUID or other format
+        // Try to find by email or other identifier if needed
+        logger.debug(`ObjectId conversion failed for userId ${userId}, trying alternative lookup`);
+      }
+      
+      // If ObjectId lookup failed, try finding by email (if userId happens to be an email)
+      // This is a fallback for edge cases
+      if (!mongoUser && userId.includes('@')) {
+        mongoUser = await usersCollection.findOne({ email: userId });
+      }
       
       if (mongoUser) {
         // Map MongoDB user to PostgreSQL format
+        // Ensure all fields have proper defaults to avoid undefined values
         user = {
           id: mongoUser._id.toString(),
           ssn: mongoUser.ssn || null,
-          first_name: mongoUser.firstName,
-          last_name: mongoUser.lastName,
-          email: mongoUser.email,
-          phone_number: mongoUser.phoneNumber,
+          first_name: mongoUser.firstName || null,
+          last_name: mongoUser.lastName || null,
+          email: mongoUser.email || null,
+          phone_number: mongoUser.phoneNumber || null,
           address_line1: mongoUser.address?.line1 || null,
           address_line2: mongoUser.address?.line2 || null,
           address_city: mongoUser.address?.city || null,
@@ -180,6 +196,8 @@ export const getUserById = async (userId) => {
           last_login: mongoUser.lastLogin || null,
           data_source: 'mongo',
         };
+        
+        logger.debug(`Found user in MongoDB: ${mongoUser.email}, firstName: ${user.first_name}, lastName: ${user.last_name}`);
       }
     } catch (error) {
       logger.warn(`Failed to fetch user from MongoDB: ${error.message}`);
@@ -318,6 +336,39 @@ export const updateUser = async (userId, userData) => {
     throw error;
   }
 
+  // Also update MongoDB if user exists there
+  try {
+    const db = await getMongoDB();
+    const usersCollection = db.collection('users');
+    const mongoUpdates = {};
+    
+    if (firstName !== undefined) mongoUpdates.firstName = firstName;
+    if (lastName !== undefined) mongoUpdates.lastName = lastName;
+    if (phoneNumber !== undefined) mongoUpdates.phoneNumber = phoneNumber;
+    if (address !== undefined) {
+      mongoUpdates.address = {
+        line1: address.line1,
+        line2: address.line2 || null,
+        city: address.city,
+        state: address.state,
+        zipCode: address.zipCode,
+      };
+    }
+    if (profileImageUrl !== undefined) mongoUpdates.profileImageUrl = profileImageUrl;
+    
+    if (Object.keys(mongoUpdates).length > 0) {
+      mongoUpdates.updatedAt = new Date();
+      await usersCollection.updateOne(
+        { _id: new ObjectId(userId) },
+        { $set: mongoUpdates }
+      );
+      logger.info(`Synced user update to MongoDB: ${userId}`);
+    }
+  } catch (mongoError) {
+    // Log but don't fail if MongoDB update fails (user might not exist in MongoDB)
+    logger.warn(`Failed to sync user update to MongoDB: ${mongoError.message}`);
+  }
+
   // Invalidate user profile cache
   await invalidateUserProfileCache(userId);
 
@@ -336,7 +387,121 @@ export const deleteUser = async (userId) => {
 
 export const getUserBookings = async (userId, filters) => {
   logger.info(`Getting bookings for user ${userId}`);
-  return { items: [], pagination: {} };
+  const pool = getPostgresPool();
+
+  const { page = 1, pageSize = 25, status } = filters || {};
+  const limit = parseInt(pageSize, 10);
+  const offset = (parseInt(page, 10) - 1) * limit;
+
+  const params = [userId];
+  let paramIndex = 2;
+
+  let baseQuery = `
+    SELECT id, booking_type, status, price_amount, price_currency, itinerary, metadata, created_at, updated_at
+    FROM bookings
+    WHERE user_id = $1
+  `;
+
+  if (status) {
+    baseQuery += ` AND status = $${paramIndex}`;
+    params.push(status);
+    paramIndex++;
+  }
+
+  const queryWithPaging = `${baseQuery} ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+  const pagingParams = [...params, limit, offset];
+
+  const [result, countResult] = await Promise.all([
+    pool.query(queryWithPaging, pagingParams),
+    pool.query(`SELECT COUNT(*) AS total FROM (${baseQuery}) AS sub`, params),
+  ]);
+
+  const totalItems = parseInt(countResult.rows[0].total, 10);
+
+  const parseItinerary = (raw) => {
+    if (!raw) return null;
+    if (typeof raw === 'object') return raw;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  const deriveTripWindow = (itinerary, bookingType, createdAt, updatedAt) => {
+    const fallbackDate = updatedAt || createdAt || null;
+    if (!itinerary) return { startDate: fallbackDate, endDate: fallbackDate };
+
+    if (bookingType === 'hotel') {
+      const startDate = itinerary.checkIn || itinerary.checkin || fallbackDate;
+      const endDate = itinerary.checkOut || itinerary.checkout || startDate;
+      return { startDate, endDate };
+    }
+
+    if (bookingType === 'car') {
+      const startDate = itinerary.pickupDate || fallbackDate;
+      const endDate = itinerary.dropoffDate || startDate;
+      return { startDate, endDate };
+    }
+
+    // flights and defaults
+    const startDate =
+      itinerary.outbound?.departDate ||
+      itinerary.departDate ||
+      itinerary.return?.departDate ||
+      fallbackDate;
+    const endDate = itinerary.return?.departDate || startDate;
+    return { startDate, endDate };
+  };
+
+  const now = new Date();
+
+  const items = result.rows.map((row) => {
+    const itinerary = parseItinerary(row.itinerary);
+    const { startDate, endDate } = deriveTripWindow(
+      itinerary,
+      row.booking_type,
+      row.created_at,
+      row.updated_at
+    );
+
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+
+    let timeline = 'upcoming';
+    if (end && end < now) {
+      timeline = 'past';
+    } else if (start && start <= now && end && end >= now) {
+      timeline = 'current';
+    }
+
+    return {
+      id: row.id,
+      bookingType: row.booking_type,
+      status: row.status,
+      price: {
+        amount: row.price_amount ? parseFloat(row.price_amount) : null,
+        currency: row.price_currency || 'USD',
+      },
+      itinerary,
+      metadata: row.metadata || {},
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      timeline,
+      startDate,
+      endDate,
+    };
+  });
+
+  return {
+    items,
+    pagination: {
+      page: parseInt(page, 10),
+      pageSize: limit,
+      totalItems,
+      totalPages: Math.ceil(totalItems / limit),
+    },
+  };
 };
 
 export const createUserBooking = async (userId, bookingData) => {

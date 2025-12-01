@@ -44,6 +44,8 @@ const formatUserRecord = (userRecord) => {
     profileType: userRecord.profile_type || userRecord.profileType || 'traveler',
     role: userRecord.role || 'user',
     loyaltyTier: userRecord.loyalty_tier || userRecord.loyaltyTier || 'none',
+    ssn: userRecord.ssn || null,
+    ssnVerifiedAt: userRecord.ssn_verified_at || userRecord.ssnVerifiedAt || null,
     partnerDetails:
       parsePartnerDetails(userRecord.partner_details) ||
       userRecord.partnerDetails ||
@@ -66,7 +68,6 @@ export const createProfile = async (userId, payload = {}) => {
     throw buildError('CONFLICT', 'Profile already exists');
   }
 
-  // Use MongoDB as fallback for required fields
   const mongoUser = await authService.getUserById(userId).catch(() => null);
 
   const data = {
@@ -123,7 +124,6 @@ export const updateProfile = async (userId, updates) => {
       null,
   };
 
-  // Update Mongo only if user exists there
   const mongoUser = await authService.getUserById(userId).catch(() => null);
   if (mongoUser) {
     try {
@@ -133,7 +133,26 @@ export const updateProfile = async (userId, updates) => {
     }
   }
 
-  await usersService.updateUser(userId, normalizedUpdates);
+  try {
+    await usersService.updateUser(userId, normalizedUpdates);
+  } catch (error) {
+    // If the user isn't in Postgres yet, seed it once
+    if (error.code === 'NOT_FOUND' || error.message?.includes('not found')) {
+      await usersService.createUser({
+        userId,
+        email: existing.email,
+        firstName: normalizedUpdates.firstName,
+        lastName: normalizedUpdates.lastName,
+        phoneNumber: normalizedUpdates.phoneNumber,
+        address: normalizedUpdates.address,
+        profileImageUrl: normalizedUpdates.profileImageUrl,
+        profileType: normalizedUpdates.profileType,
+        partnerDetails: normalizedUpdates.partnerDetails,
+      });
+    } else {
+      throw error;
+    }
+  }
   await invalidateUserProfileCache(userId);
 
   return await getProfile(userId);

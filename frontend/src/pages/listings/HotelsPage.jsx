@@ -8,6 +8,7 @@ import './HotelsMap.css';
 import L from 'leaflet';
 import { listingsApi } from '../../services/api/listings';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { US_STATES } from '../../constants/usStates';
 
 // Fix for default marker icon in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -63,6 +64,7 @@ const availableCities = [
 
 const defaultFilters = {
   city: '',
+  state: '',
   minPrice: '',
   maxPrice: '',
   minRating: '',
@@ -152,6 +154,7 @@ const HotelsPage = () => {
       };
 
       if (activeFilters.city) params.city = activeFilters.city;
+      if (activeFilters.state) params.state = activeFilters.state;
       if (activeFilters.minPrice) params.minPrice = activeFilters.minPrice;
       if (activeFilters.maxPrice) params.maxPrice = activeFilters.maxPrice;
       if (activeFilters.minRating) params.minRating = activeFilters.minRating;
@@ -456,6 +459,19 @@ const HotelsPage = () => {
             >
               All filters
             </button>
+            {filters.state && (
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  const newFilters = { ...filters, state: '' };
+                  setFilters(newFilters);
+                  loadHotels(1, newFilters);
+                }}
+              >
+                State: {US_STATES.find(s => s.value === filters.state)?.label || filters.state}
+                <span className="ml-2">×</span>
+              </button>
+            )}
             <button className="btn btn-sm btn-outline">Smart Filters</button>
             <button 
               className={`btn btn-sm ${filters.amenity === 'breakfast' ? 'btn-primary' : 'btn-outline'}`}
@@ -862,6 +878,12 @@ const HotelsPage = () => {
               <div className="w-64 border-r border-base-300 overflow-y-auto">
                 <div className="py-2">
                   <button
+                    className={`w-full text-left px-6 py-3 hover:bg-base-200 ${selectedFilterSection === 'location' ? 'border-l-4 border-primary bg-base-200' : ''}`}
+                    onClick={() => setSelectedFilterSection('location')}
+                  >
+                    <span className="font-semibold">Location</span>
+                  </button>
+                  <button
                     className={`w-full text-left px-6 py-3 hover:bg-base-200 ${selectedFilterSection === 'price' ? 'border-l-4 border-primary bg-base-200' : ''}`}
                     onClick={() => setSelectedFilterSection('price')}
                   >
@@ -890,6 +912,33 @@ const HotelsPage = () => {
 
               {/* Right Content - Filter Options */}
               <div className="flex-1 overflow-y-auto p-6">
+                {/* Location Section */}
+                {selectedFilterSection === 'location' && (
+                  <div>
+                    <h3 className="text-xl font-bold mb-4">Location</h3>
+                    
+                    <div className="mb-6">
+                      <label className="block text-sm font-medium mb-2">State</label>
+                      <select
+                        className="select select-bordered w-full"
+                        value={filters.state}
+                        onChange={(e) => {
+                          const newFilters = { ...filters, state: e.target.value };
+                          setFilters(newFilters);
+                          loadHotels(1, newFilters);
+                        }}
+                      >
+                        <option value="">All states</option>
+                        {US_STATES.map((state) => (
+                          <option key={state.value} value={state.value}>
+                            {state.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
                 {/* Price Section */}
                 {selectedFilterSection === 'price' && (
                   <div>

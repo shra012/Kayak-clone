@@ -3,6 +3,7 @@ import { getMongoDB, getPostgresPool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { sendKafkaMessage } from '../config/kafka.js';
 import { invalidateListingCache } from '../utils/cache.js';
+import { searchPayments } from './payments.service.js';
 
 /**
  * Create flight listing
@@ -452,3 +453,178 @@ export const getTopProviders = async (filters = {}) => {
   }
 };
 
+/**
+ * Helper to fetch bookings in a date window for analytics
+ */
+const fetchBookingsForAnalytics = async ({ startDate, endDate, statuses = ['CONFIRMED', 'COMPLETED'] }) => {
+  const pool = getPostgresPool();
+
+  let query = `
+    SELECT id, user_id, booking_type, status, price_amount, price_currency, itinerary, metadata, created_at
+    FROM bookings
+    WHERE status = ANY($1::text[])
+  `;
+  const params = [statuses];
+  let idx = 2;
+
+  if (startDate) {
+    query += ` AND created_at >= $${idx}`;
+    params.push(startDate);
+    idx++;
+  }
+  if (endDate) {
+    query += ` AND created_at <= $${idx}`;
+    params.push(endDate);
+    idx++;
+  }
+
+  const result = await pool.query(query, params);
+
+  const parseItinerary = (raw) => {
+    if (!raw) return null;
+    if (typeof raw === 'object') return raw;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    bookingType: row.booking_type,
+    status: row.status,
+    amount: row.price_amount ? parseFloat(row.price_amount) : 0,
+    currency: row.price_currency || 'USD',
+    itinerary: parseItinerary(row.itinerary),
+    metadata: row.metadata || {},
+    createdAt: row.created_at,
+  }));
+};
+
+export const getTopPropertiesReport = async ({ year, limit = 10 }) => {
+  const startDate = year ? `${year}-01-01` : null;
+  const endDate = year ? `${year}-12-31` : null;
+
+  const bookings = await fetchBookingsForAnalytics({ startDate, endDate });
+
+  const aggregate = new Map();
+
+  const makeKey = (b) => {
+    if (b.bookingType === 'hotel') {
+      return b.itinerary?.hotelId || b.itinerary?.hotelName || 'hotel-unknown';
+    }
+    if (b.bookingType === 'car') {
+      return b.itinerary?.carId || `${b.itinerary?.vendor || 'car-vendor'}-${b.itinerary?.type || ''}`;
+    }
+    return b.itinerary?.outbound?.id || b.itinerary?.flightId || 'flight-unknown';
+  };
+
+  const makeLabel = (b) => {
+    if (b.bookingType === 'hotel') {
+      return b.itinerary?.hotelName || 'Hotel';
+    }
+    if (b.bookingType === 'car') {
+      return `${b.itinerary?.vendor || 'Car'} ${b.itinerary?.type || ''}`.trim();
+    }
+    const from = b.itinerary?.outbound?.from || b.itinerary?.from || '';
+    const to = b.itinerary?.outbound?.to || b.itinerary?.to || '';
+    const airline = b.itinerary?.outbound?.airline || b.itinerary?.airline || 'Flight';
+    return `${airline} ${from}-${to}`.trim();
+  };
+
+  bookings.forEach((b) => {
+    const key = makeKey(b);
+    const entry = aggregate.get(key) || { revenue: 0, count: 0, label: makeLabel(b) };
+    entry.revenue += b.amount || 0;
+    entry.count += 1;
+    aggregate.set(key, entry);
+  });
+
+  const items = Array.from(aggregate.entries())
+    .map(([id, data]) => ({ id, name: data.label, revenue: data.revenue, bookings: data.count }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, limit);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    filters: { year, limit },
+    items,
+  };
+};
+
+export const getCityRevenueReport = async ({ year }) => {
+  const startDate = year ? `${year}-01-01` : null;
+  const endDate = year ? `${year}-12-31` : null;
+
+  const bookings = await fetchBookingsForAnalytics({ startDate, endDate });
+  const aggregate = new Map();
+
+  const getCity = (b) => {
+    if (b.bookingType === 'hotel') return b.itinerary?.city;
+    if (b.bookingType === 'car') return b.itinerary?.city || b.itinerary?.location;
+    return b.itinerary?.to || b.itinerary?.arrivalAirport || b.itinerary?.arrivalCity;
+  };
+
+  bookings.forEach((b) => {
+    const city = getCity(b) || 'Unknown';
+    const entry = aggregate.get(city) || { revenue: 0, count: 0 };
+    entry.revenue += b.amount || 0;
+    entry.count += 1;
+    aggregate.set(city, entry);
+  });
+
+  const items = Array.from(aggregate.entries()).map(([city, data]) => ({
+    city,
+    revenue: data.revenue,
+    bookings: data.count,
+  }));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    filters: { year },
+    items,
+  };
+};
+
+export const getLastMonthTopProviders = async ({ limit = 10 }) => {
+  const now = new Date();
+  const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+  const endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString();
+
+  const bookings = await fetchBookingsForAnalytics({ startDate, endDate });
+  const aggregate = new Map();
+
+  const getProvider = (b) => {
+    if (b.bookingType === 'hotel') return b.itinerary?.hotelName || 'Hotel';
+    if (b.bookingType === 'car') return b.itinerary?.vendor || b.itinerary?.provider || 'Car Provider';
+    return b.itinerary?.outbound?.airline || b.itinerary?.airline || 'Airline';
+  };
+
+  bookings.forEach((b) => {
+    const provider = getProvider(b);
+    const entry = aggregate.get(provider) || { revenue: 0, count: 0, bookings: [] };
+    entry.revenue += b.amount || 0;
+    entry.count += 1;
+    aggregate.set(provider, entry);
+  });
+
+  const providers = Array.from(aggregate.entries())
+    .map(([provider, data]) => ({
+      provider,
+      totalRevenue: data.revenue,
+      bookingCount: data.count,
+    }))
+    .sort((a, b) => b.totalRevenue - a.totalRevenue)
+    .slice(0, limit);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    filters: { limit, startDate, endDate },
+    providers,
+  };
+};
+
+export const searchBills = async (filters = {}) => {
+  return await searchPayments(filters);
+};

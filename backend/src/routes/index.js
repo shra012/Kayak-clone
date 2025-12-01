@@ -12,6 +12,7 @@ import imagesRoutes from './images.routes.js';
 import authRoutes from './auth.routes.js';
 import ownerRoutes from './owner.routes.js';
 import profileRoutes from './profile.routes.js';
+import reviewsRoutes from './reviews.routes.js';
 
 const router = express.Router();
 const API_VERSION = process.env.API_VERSION || 'v1';
@@ -30,5 +31,6 @@ router.use(`/${API_VERSION}/analytics`, analyticsRoutes);
 router.use(`/${API_VERSION}/images`, imagesRoutes);
 router.use(`/${API_VERSION}/owner`, ownerRoutes);
 router.use(`/${API_VERSION}/profile`, profileRoutes);
+router.use(`/${API_VERSION}/reviews`, reviewsRoutes);
 
 export default router;

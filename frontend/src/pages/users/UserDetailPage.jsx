@@ -5,6 +5,7 @@ import { useParams } from 'react-router-dom';
 import { usersApi } from '../../services/api/users';
 import { useAuth } from '../../hooks/useAuth';
 import { updateUser as updateUserAction } from '../../store/slices/authSlice';
+import { getStateName } from '../../constants/usStates';
 
 const UserDetailPage = () => {
   const { userId } = useParams();
@@ -94,7 +95,7 @@ const UserDetailPage = () => {
               <p>Email: {data.email}</p>
               <p>Phone: {data.phone_number}</p>
               <p>
-                Address: {data.address_line1}, {data.address_city}, {data.address_state}{' '}
+                Address: {data.address_line1}, {data.address_city}, {getStateName(data.address_state)}{' '}
                 {data.address_zip_code}
               </p>
               <p>Profile Type: {isPropertyOwner ? 'Property partner' : 'Traveler'}</p>

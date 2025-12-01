@@ -167,3 +167,68 @@ export const getTopProviders = async (req, res, next) => {
   }
 };
 
+export const getTopProperties = async (req, res, next) => {
+  try {
+    const report = await adminService.getTopPropertiesReport({
+      year: req.query.year,
+      limit: parseInt(req.query.limit, 10) || 10,
+    });
+    res.json(report);
+  } catch (error) {
+    logger.error('Error getting top properties report:', error);
+    next(error);
+  }
+};
+
+export const getCityRevenue = async (req, res, next) => {
+  try {
+    const report = await adminService.getCityRevenueReport({
+      year: req.query.year,
+    });
+    res.json(report);
+  } catch (error) {
+    logger.error('Error getting city revenue report:', error);
+    next(error);
+  }
+};
+
+export const getProvidersLastMonth = async (req, res, next) => {
+  try {
+    const report = await adminService.getLastMonthTopProviders({
+      limit: parseInt(req.query.limit, 10) || 10,
+    });
+    res.json(report);
+  } catch (error) {
+    logger.error('Error getting providers last month report:', error);
+    next(error);
+  }
+};
+
+export const searchBills = async (req, res, next) => {
+  try {
+    let { startDate, endDate } = req.query;
+    const { month } = req.query;
+
+    if (month) {
+      const [y, m] = month.split('-').map(Number);
+      if (y && m) {
+        startDate = new Date(y, m - 1, 1).toISOString();
+        endDate = new Date(y, m, 0, 23, 59, 59).toISOString();
+      }
+    }
+
+    const result = await adminService.searchBills({
+      userId: req.query.userId,
+      bookingId: req.query.bookingId,
+      status: req.query.status,
+      startDate,
+      endDate,
+      limit: parseInt(req.query.limit, 10) || 50,
+      offset: parseInt(req.query.offset, 10) || 0,
+    });
+    res.json(result);
+  } catch (error) {
+    logger.error('Error searching bills:', error);
+    next(error);
+  }
+};

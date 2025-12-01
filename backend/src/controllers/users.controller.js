@@ -56,12 +56,13 @@ export const getUser = async (req, res, next) => {
     const { password_hash, ...userWithoutPassword } = user;
     
     // Normalize field names for consistent API response
+    // Ensure firstName, lastName, and email always have values (default to empty string if null/undefined)
     const formattedUser = {
       id: userWithoutPassword.id,
-      email: userWithoutPassword.email,
-      firstName: userWithoutPassword.first_name || userWithoutPassword.firstName,
-      lastName: userWithoutPassword.last_name || userWithoutPassword.lastName,
-      phoneNumber: userWithoutPassword.phone_number || userWithoutPassword.phoneNumber,
+      email: userWithoutPassword.email || userWithoutPassword.email_address || '',
+      firstName: userWithoutPassword.first_name || userWithoutPassword.firstName || '',
+      lastName: userWithoutPassword.last_name || userWithoutPassword.lastName || '',
+      phoneNumber: userWithoutPassword.phone_number || userWithoutPassword.phoneNumber || null,
       address: {
         line1: userWithoutPassword.address_line1 || userWithoutPassword.address?.line1,
         line2: userWithoutPassword.address_line2 || userWithoutPassword.address?.line2,
@@ -103,8 +104,40 @@ export const updateUser = async (req, res, next) => {
     }
 
     const user = await userService.updateUser(userId, req.body);
+    
+    // Format response - handle both PostgreSQL and MongoDB formats
     const { password_hash, ...userWithoutPassword } = user;
-    res.json(userWithoutPassword);
+    
+    // Normalize field names for consistent API response
+    // Ensure firstName, lastName, and email always have values (default to empty string if null/undefined)
+    const formattedUser = {
+      id: userWithoutPassword.id,
+      email: userWithoutPassword.email || userWithoutPassword.email_address || '',
+      firstName: userWithoutPassword.first_name || userWithoutPassword.firstName || '',
+      lastName: userWithoutPassword.last_name || userWithoutPassword.lastName || '',
+      phoneNumber: userWithoutPassword.phone_number || userWithoutPassword.phoneNumber || null,
+      address: {
+        line1: userWithoutPassword.address_line1 || userWithoutPassword.address?.line1,
+        line2: userWithoutPassword.address_line2 || userWithoutPassword.address?.line2,
+        city: userWithoutPassword.address_city || userWithoutPassword.address?.city,
+        state: userWithoutPassword.address_state || userWithoutPassword.address?.state,
+        zipCode: userWithoutPassword.address_zip_code || userWithoutPassword.address?.zipCode,
+      },
+      profileImageUrl: userWithoutPassword.profile_image_url || userWithoutPassword.profileImageUrl,
+      role: userWithoutPassword.role,
+      loyaltyTier: userWithoutPassword.loyalty_tier || userWithoutPassword.loyaltyTier,
+      profileType: userWithoutPassword.profile_type || userWithoutPassword.profileType,
+      ssn: userWithoutPassword.ssn,
+      ssnVerifiedAt: userWithoutPassword.ssn_verified_at || userWithoutPassword.ssnVerifiedAt,
+      partnerDetails: typeof userWithoutPassword.partner_details === 'string' 
+        ? JSON.parse(userWithoutPassword.partner_details) 
+        : userWithoutPassword.partner_details || userWithoutPassword.partnerProfile,
+      createdAt: userWithoutPassword.created_at || userWithoutPassword.createdAt,
+      updatedAt: userWithoutPassword.updated_at || userWithoutPassword.updatedAt,
+      lastLogin: userWithoutPassword.last_login || userWithoutPassword.lastLogin,
+    };
+    
+    res.json(formattedUser);
   } catch (error) {
     next(error);
   }

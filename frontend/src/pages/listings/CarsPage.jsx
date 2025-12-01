@@ -5,9 +5,11 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
 import { FaCar, FaUsers, FaMapMarkerAlt, FaCalendarAlt, FaClock, FaTimes } from 'react-icons/fa';
+import { US_STATES } from '../../constants/usStates';
 
 const defaultFilters = {
   location: '',
+  state: '',
   type: 'any',
   seats: 'any',
   vendors: [],
@@ -111,6 +113,7 @@ const CarsPage = () => {
       };
 
       if (filtersToApply.location) params.location = filtersToApply.location;
+      if (filtersToApply.state) params.state = filtersToApply.state;
       if (filtersToApply.type && filtersToApply.type !== 'any') params.type = filtersToApply.type;
       if (filtersToApply.minPrice) params.minPrice = filtersToApply.minPrice;
       if (filtersToApply.maxPrice) params.maxPrice = filtersToApply.maxPrice;
@@ -173,7 +176,13 @@ const CarsPage = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFilters((prev) => ({ ...prev, [name]: value }));
+    const newFilters = { ...filters, [name]: value };
+    setFilters(newFilters);
+    // Auto-apply state filter immediately
+    if (name === 'state') {
+      setActiveFilters(newFilters);
+      loadCars(1, newFilters);
+    }
   };
 
   const handleVendorToggle = (vendor) => {
@@ -201,6 +210,7 @@ const CarsPage = () => {
     const resetFilters = {
       ...defaultFilters,
       location: searchData?.location || '',
+      state: '',
     };
     setFilters(resetFilters);
     setActiveFilters(resetFilters);
@@ -298,6 +308,24 @@ const CarsPage = () => {
             <div className="card bg-base-100 shadow-xl sticky top-4">
               <div className="card-body p-4">
                 <h2 className="text-lg font-bold mb-4">Filters</h2>
+
+                {/* State Filter */}
+                <div className="form-control mb-4">
+                  <label className="label">
+                    <span className="label-text font-medium">State</span>
+                  </label>
+                  <select
+                    name="state"
+                    value={filters.state}
+                    onChange={handleInputChange}
+                    className="select select-sm select-bordered w-full"
+                  >
+                    <option value="">All States</option>
+                    {US_STATES.map(state => (
+                      <option key={state.value} value={state.value}>{state.label}</option>
+                    ))}
+                  </select>
+                </div>
 
                 {/* Car Type Filter */}
                 <div className="form-control mb-4">

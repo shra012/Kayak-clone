@@ -3,22 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { usersApi } from '../services/api/users';
-import { authApi } from '../services/api/auth';
+import { profileApi } from '../services/api/profile';
 import { useAuth } from '../hooks/useAuth';
 import { updateUser as updateUserAction } from '../store/slices/authSlice';
 import { uploadProfileImage } from '../services/image.service';
 import { useToast } from '../hooks/useToast';
 import { FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaImage, FaSave, FaSpinner } from 'react-icons/fa';
-
-const US_STATES = [
-  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
-  'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
-  'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi',
-  'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',
-  'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania',
-  'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
-  'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
-];
+import { US_STATES, getStateCode } from '../constants/usStates';
 
 const US_CITIES = [
   'New York City', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
@@ -57,36 +48,42 @@ const ProfilePage = () => {
   const [ssnError, setSsnError] = useState('');
   const [ssnSuccess, setSsnSuccess] = useState('');
 
-  // Redirect to login if not authenticated
-  if (!currentUser?.id) {
-    navigate('/login');
-    return null;
-  }
+  useEffect(() => {
+    if (!currentUser?.id) {
+      navigate('/login');
+    }
+  }, [currentUser, navigate]);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['user', currentUser.id],
-    queryFn: () => usersApi.getUser(currentUser.id),
+    queryKey: ['profile'],
+    queryFn: () => profileApi.getProfile(),
     enabled: !!currentUser?.id,
-    onSuccess: (userData) => {
-      if (userData) {
-        setFormData({
-          firstName: userData.firstName || userData.first_name || '',
-          lastName: userData.lastName || userData.last_name || '',
-          email: userData.email || '',
-          phoneNumber: userData.phoneNumber || userData.phone_number || '',
-          address: {
-            line1: userData.address?.line1 || userData.address_line1 || '',
-            line2: userData.address?.line2 || userData.address_line2 || '',
-            city: userData.address?.city || userData.address_city || '',
-            state: userData.address?.state || userData.address_state || '',
-            zipCode: userData.address?.zipCode || userData.address_zip_code || '',
-          },
-          profileImageUrl: userData.profileImageUrl || userData.profile_image_url || '',
-        });
-        setProfileImagePreview(userData.profileImageUrl || userData.profile_image_url || null);
-      }
-    },
   });
+
+  // Update form data when user data is loaded
+  useEffect(() => {
+    if (data) {
+      // Convert state name to state code if needed
+      const stateValue = data.address?.state || data.address_state || '';
+      const stateCode = getStateCode(stateValue);
+      
+      setFormData({
+        firstName: data.firstName || data.first_name || '',
+        lastName: data.lastName || data.last_name || '',
+        email: data.email || '',
+        phoneNumber: data.phoneNumber || data.phone_number || '',
+        address: {
+          line1: data.address?.line1 || data.address_line1 || '',
+          line2: data.address?.line2 || data.address_line2 || '',
+          city: data.address?.city || data.address_city || '',
+          state: stateCode, // Store state code, not full name
+          zipCode: data.address?.zipCode || data.address_zip_code || '',
+        },
+        profileImageUrl: data.profileImageUrl || data.profile_image_url || '',
+      });
+      setProfileImagePreview(data.profileImageUrl || data.profile_image_url || null);
+    }
+  }, [data]);
 
   const isPropertyOwner = data?.profileType === 'property_owner' || data?.profile_type === 'property_owner';
   const partnerDetails = data?.partnerDetails || data?.partner_details || null;
@@ -110,48 +107,43 @@ const ProfilePage = () => {
         }
       }
       
-      // Prepare updates for MongoDB (camelCase)
-      const mongoUpdates = {
+      const response = await profileApi.updateProfile({
         firstName: formDataToUpdate.firstName,
         lastName: formDataToUpdate.lastName,
         phoneNumber: formDataToUpdate.phoneNumber,
         address: formDataToUpdate.address,
-        profileImageUrl: profileImageUrl,
-      };
-      
-      // Update profile via auth API (updates MongoDB)
-      const response = await authApi.updateProfile(mongoUpdates);
-      
-      // Also update PostgreSQL via users API (snake_case fields handled by backend)
-      await usersApi.updateUser(currentUser.id, {
-        firstName: formDataToUpdate.firstName,
-        lastName: formDataToUpdate.lastName,
-        phoneNumber: formDataToUpdate.phoneNumber,
-        address: formDataToUpdate.address,
-        profileImageUrl: profileImageUrl,
+        profileImageUrl,
       });
       
       return { ...response, profileImageUrl };
     },
     onSuccess: (response) => {
       toast.showSuccess('Profile updated successfully');
-      queryClient.invalidateQueries(['user', currentUser.id]);
+      queryClient.invalidateQueries(['profile']);
       
       // Get the updated profile image URL from response or mutation result
-      const updatedProfileImageUrl = response.profileImageUrl || response.data?.profileImageUrl || formData.profileImageUrl;
+      const updatedProfile = response.data || response;
+      const updatedProfileImageUrl = updatedProfile.profileImageUrl || updatedProfile.profile_image_url || formData.profileImageUrl;
       
       // Update Redux store with new user data
       dispatch(updateUserAction({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        phoneNumber: formData.phoneNumber,
-        address: formData.address,
+        firstName: updatedProfile.firstName || updatedProfile.first_name || formData.firstName,
+        lastName: updatedProfile.lastName || updatedProfile.last_name || formData.lastName,
+        phoneNumber: updatedProfile.phoneNumber || updatedProfile.phone_number || formData.phoneNumber,
+        address: updatedProfile.address || formData.address,
         profileImageUrl: updatedProfileImageUrl,
       }));
       
       // Update form data with the new image URL
       if (updatedProfileImageUrl) {
-        setFormData(prev => ({ ...prev, profileImageUrl: updatedProfileImageUrl }));
+        setFormData(prev => ({
+          ...prev,
+          profileImageUrl: updatedProfileImageUrl,
+          firstName: updatedProfile.firstName || updatedProfile.first_name || prev.firstName,
+          lastName: updatedProfile.lastName || updatedProfile.last_name || prev.lastName,
+          phoneNumber: updatedProfile.phoneNumber || updatedProfile.phone_number || prev.phoneNumber,
+          address: updatedProfile.address || prev.address,
+        }));
         setProfileImagePreview(updatedProfileImageUrl);
       }
       
@@ -237,6 +229,29 @@ const ProfilePage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     updateProfileMutation.mutate(formData);
+  };
+
+  const deleteProfileMutation = useMutation({
+    mutationFn: () => profileApi.deleteProfile(),
+    onSuccess: () => {
+      toast.showSuccess('Profile deleted. Signing out...');
+      logout();
+    },
+    onError: (mutationError) => {
+      const message =
+        mutationError.response?.data?.message ||
+        mutationError.userMessage ||
+        'Unable to delete profile';
+      toast.showError(message);
+    },
+  });
+
+  const handleDeleteProfile = () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to delete your profile? This action cannot be undone.'
+    );
+    if (!confirmed) return;
+    deleteProfileMutation.mutate();
   };
 
   const handleSsnSubmit = (event) => {
@@ -451,7 +466,7 @@ const ProfilePage = () => {
                   >
                     <option value="">Select state</option>
                     {US_STATES.map((state) => (
-                      <option key={state} value={state}>{state}</option>
+                      <option key={state.value} value={state.value}>{state.label}</option>
                     ))}
                   </select>
                 </div>
@@ -556,6 +571,24 @@ const ProfilePage = () => {
           </div>
         </div>
       )}
+
+      <div className="mt-6 flex justify-end">
+        <button
+          type="button"
+          className="btn btn-error btn-outline"
+          onClick={handleDeleteProfile}
+          disabled={deleteProfileMutation.isLoading}
+        >
+          {deleteProfileMutation.isLoading ? (
+            <>
+              <FaSpinner className="animate-spin mr-2" />
+              Deleting...
+            </>
+          ) : (
+            'Delete Profile'
+          )}
+        </button>
+      </div>
     </div>
   );
 };

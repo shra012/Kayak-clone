@@ -36,6 +36,11 @@ export const searchFlights = async (query) => {
       class: flightClass = 'economy',
       nonstop,
       maxPrice,
+      departTimeStart,
+      departTimeEnd,
+      arriveTimeStart,
+      arriveTimeEnd,
+      minSeats,
       page = 1,
       limit = 20,
       sort = 'price',
@@ -66,6 +71,18 @@ export const searchFlights = async (query) => {
     if (returnDate) filter.returnDate = returnDate;
     if (nonstop === 'true') filter.nonstop = true;
     if (maxPrice) filter.price = { $lte: parseFloat(maxPrice) };
+    if (flightClass) filter.class = flightClass;
+    if (minSeats) filter.totalAvailableSeats = { $gte: parseInt(minSeats, 10) };
+    if (departTimeStart || departTimeEnd) {
+      filter.departureTime = {};
+      if (departTimeStart) filter.departureTime.$gte = departTimeStart;
+      if (departTimeEnd) filter.departureTime.$lte = departTimeEnd;
+    }
+    if (arriveTimeStart || arriveTimeEnd) {
+      filter.arrivalTime = {};
+      if (arriveTimeStart) filter.arrivalTime.$gte = arriveTimeStart;
+      if (arriveTimeEnd) filter.arrivalTime.$lte = arriveTimeEnd;
+    }
 
     // Build sort
     const sortObj = {};
@@ -300,7 +317,7 @@ export const searchHotels = async (query) => {
 };
 
 /**
- * Get hotel cities for autocomplete
+ * Get hotel locations (cities) and property names for autocomplete
  */
 export const getHotelCities = async (query, limit = 10) => {
   try {
@@ -308,9 +325,41 @@ export const getHotelCities = async (query, limit = 10) => {
     const collection = db.collection('hotels');
     
     const regex = new RegExp(query, 'i');
-    const cities = await collection.distinct('city', { city: regex });
+    const results = [];
     
-    return cities.slice(0, limit);
+    // Get distinct cities matching the query
+    const cities = await collection.distinct('city', { city: regex });
+    cities.slice(0, Math.floor(limit / 2)).forEach(city => {
+      results.push({
+        type: 'location',
+        name: city,
+        displayName: city,
+        country: null, // Will be populated if available
+      });
+    });
+    
+    // Get hotel names matching the query
+    const hotels = await collection.find(
+      { name: regex },
+      { projection: { name: 1, city: 1, state: 1, country: 1 } }
+    ).limit(Math.ceil(limit / 2)).toArray();
+    
+    hotels.forEach(hotel => {
+      // Avoid duplicates if city already added
+      const cityExists = results.some(r => r.type === 'location' && r.name === hotel.city);
+      if (!cityExists && results.length < limit) {
+        results.push({
+          type: 'property',
+          name: hotel.name,
+          displayName: `${hotel.name}, ${hotel.city}`,
+          city: hotel.city,
+          state: hotel.state || null,
+          country: hotel.country || null,
+        });
+      }
+    });
+    
+    return results.slice(0, limit);
   } catch (error) {
     logger.error('Error in getHotelCities service:', error);
     throw error;
@@ -358,6 +407,7 @@ export const searchCars = async (query) => {
       dropoffDate,
       carType,
       transmission,
+      availabilityStatus,
       maxPrice,
       page = 1,
       limit = 20,
@@ -382,6 +432,13 @@ export const searchCars = async (query) => {
     if (carType) filter.type = carType;
     if (transmission) filter.transmission = transmission;
     if (maxPrice) filter.pricePerDay = { $lte: parseFloat(maxPrice) };
+    if (availabilityStatus) {
+      // support either availabilityStatus or status fields in the collection
+      filter.$or = [
+        { availabilityStatus },
+        { status: availabilityStatus },
+      ];
+    }
 
     // Build sort
     const sortObj = {};
@@ -460,4 +517,3 @@ export const getCarLocations = async (query, limit = 10) => {
     throw error;
   }
 };
-
