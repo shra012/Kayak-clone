@@ -142,7 +142,7 @@ app.use(session({
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: NODE_ENV === 'production' ? 100 : 500, // 500 requests per 15 min in dev, 100 in production
+  max: process.env.DISABLE_RATE_LIMIT === 'true' ? 1000000 : (NODE_ENV === 'production' ? 100 : 500), // 500 requests per 15 min in dev, 100 in production, or 1M if disabled
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,

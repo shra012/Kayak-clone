@@ -35,10 +35,26 @@ export const getPostgresPool = () => {
     }
 
     try {
-      // Cloud PostgreSQL (Supabase) configuration
+      // Detect whether to use SSL:
+      // - For cloud databases like Supabase, SSL is required
+      // - For local Docker/Postgres (localhost/127.0.0.1), SSL is typically disabled
+      // - Can be overridden explicitly via POSTGRES_SSL env var
+      let sslConfig;
+      const sslOverride = process.env.POSTGRES_SSL;
+      const isLocalHost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+
+      if (sslOverride === 'false' || isLocalHost) {
+        // Local/Postgres running without SSL
+        sslConfig = false;
+        logger.info('PostgreSQL SSL disabled (local connection detected or POSTGRES_SSL=false)');
+      } else {
+        // Cloud PostgreSQL (Supabase) configuration
+        sslConfig = { rejectUnauthorized: false };
+      }
+
       postgresPool = new Pool({
         connectionString,
-        ssl: { rejectUnauthorized: false }, // Required for Supabase cloud connection
+        ssl: sslConfig,
         max: 10,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 10000, // Increased timeout for cloud connections
