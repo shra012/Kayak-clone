@@ -13,7 +13,7 @@ if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
     set +a
     
-    echo "✓ Environment variables loaded from .env"
+    echo "Environment variables loaded from .env"
     echo "  AWS Profile: $AWS_PROFILE"
     echo "  AWS Region: $AWS_REGION"
     echo "  AWS Account: $AWS_ACCOUNT_ID"

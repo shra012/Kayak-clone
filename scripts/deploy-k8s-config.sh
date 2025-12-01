@@ -9,22 +9,22 @@ cd "$(dirname "$0")/.."
 
 # Load environment variables from backend/.env
 if [ -f backend/.env ]; then
-  echo "📄 Reading backend/.env..."
+  echo "Reading backend/.env..."
   export $(grep -v '^#' backend/.env | xargs)
 else
-  echo "❌ backend/.env not found!"
+  echo "ERROR: backend/.env not found!"
   exit 1
 fi
 
 # Check for localhost in critical variables
 if [[ "$KAFKA_BROKERS" == *"localhost"* ]]; then
-  echo "⚠️  WARNING: KAFKA_BROKERS is set to localhost ($KAFKA_BROKERS)."
+  echo "WARNING: KAFKA_BROKERS is set to localhost ($KAFKA_BROKERS)."
   echo "   This will likely fail in Kubernetes."
   echo "   Please update backend/.env with the production Kafka broker list."
 fi
 
 if [[ "$REDIS_HOST" == *"localhost"* ]]; then
-  echo "⚠️  WARNING: REDIS_HOST is set to localhost ($REDIS_HOST)."
+  echo "WARNING: REDIS_HOST is set to localhost ($REDIS_HOST)."
   echo "   This will likely fail in Kubernetes."
 fi
 
@@ -56,4 +56,4 @@ kubectl create secret generic backend-secrets \
   --from-literal=FIREBASE_SERVICE_ACCOUNT="$FIREBASE_SERVICE_ACCOUNT" \
   --from-literal=FIREBASE_STORAGE_BUCKET="$FIREBASE_STORAGE_BUCKET"
 
-echo "✅ Secrets deployed successfully!"
+echo "Secrets deployed successfully!"

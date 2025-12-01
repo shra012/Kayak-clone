@@ -1,36 +1,59 @@
-output "msk_cluster_arn" {
-  description = "MSK cluster ARN"
-  value       = aws_msk_cluster.this.arn
+# ============================================
+# Outputs
+# ============================================
+
+# EKS Cluster
+output "cluster_name" {
+  description = "EKS cluster name"
+  value       = module.eks.cluster_name
 }
 
-output "msk_cluster_name" {
-  description = "MSK cluster name"
-  value       = aws_msk_cluster.this.cluster_name
+output "cluster_endpoint" {
+  description = "EKS cluster endpoint"
+  value       = module.eks.cluster_endpoint
 }
 
-output "msk_bootstrap_brokers_sasl_iam" {
-  description = "Bootstrap brokers string for IAM-authenticated clients"
-  value       = aws_msk_cluster.this.bootstrap_brokers_sasl_iam
-  sensitive   = true
+# Frontend
+output "frontend_ecr_url" {
+  description = "Frontend ECR repository URL"
+  value       = module.frontend.repository_url
 }
 
-output "msk_zookeeper_connect_string" {
-  description = "Zookeeper connect string"
-  value       = aws_msk_cluster.this.zookeeper_connect_string
-  sensitive   = true
+output "frontend_image" {
+  description = "Frontend full image path"
+  value       = "${module.frontend.repository_url}:${var.frontend_image_tag}"
 }
 
-output "msk_log_group_name" {
-  description = "CloudWatch log group used for broker logs"
-  value       = aws_cloudwatch_log_group.msk.name
+# Backend
+output "backend_ecr_url" {
+  description = "Backend ECR repository URL"
+  value       = module.backend.repository_url
 }
 
-output "bastion_instance_id" {
-  description = "Instance ID of the bastion host for MSK tunnel"
-  value       = aws_instance.bastion.id
+output "backend_image" {
+  description = "Backend full image path"
+  value       = "${module.backend.repository_url}:${var.backend_image_tag}"
 }
 
-output "bastion_security_group_id" {
-  description = "Security group ID of the bastion host"
-  value       = aws_security_group.bastion.id
+# Agent
+output "agent_ecr_url" {
+  description = "Agent ECR repository URL"
+  value       = module.agent.repository_url
 }
+
+output "agent_image" {
+  description = "Agent full image path"
+  value       = "${module.agent.repository_url}:${var.agent_image_tag}"
+}
+
+# Helper Commands
+output "configure_kubectl" {
+  description = "Command to configure kubectl"
+  value       = "aws eks update-kubeconfig --region ${var.region} --name ${module.eks.cluster_name} --profile ${var.aws_profile}"
+}
+
+output "ecr_login" {
+  description = "Command to login to ECR"
+  value       = "aws ecr get-login-password --region ${var.region} --profile ${var.aws_profile} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
+}
+

@@ -1,104 +1,197 @@
-# Basic project configuration
+# Project Configuration
 variable "project" {
-  description = "Project name used for tagging and resource naming"
+  description = "Project name"
   type        = string
   default     = "kayak"
 }
 
 variable "environment" {
-  description = "Environment name (e.g. dev, staging, prod)"
+  description = "Environment (dev/staging/prod)"
   type        = string
   default     = "dev"
 }
 
 variable "region" {
-  description = "AWS region for the MSK cluster"
+  description = "AWS region"
   type        = string
   default     = "us-east-1"
 }
 
-variable "tags" {
-  description = "Additional tags applied to all resources"
-  type        = map(string)
-  default     = {}
+# AWS Profile
+variable "aws_profile" {
+  description = "AWS CLI profile from .env"
+  type        = string
+  default     = "account2"
+}
+
+variable "aws_account_id" {
+  description = "AWS Account ID"
+  type        = string
+  default     = ""
 }
 
 # Networking
-variable "broker_subnet_ids" {
-  description = "Private subnet IDs where MSK brokers will run"
-  type        = list(string)
-
-  validation {
-    condition     = length(var.broker_subnet_ids) > 0
-    error_message = "Provide at least one subnet ID for the MSK brokers."
-  }
-}
-
-variable "broker_security_group_ids" {
-  description = "Security group IDs that allow broker traffic"
-  type        = list(string)
-
-  validation {
-    condition     = length(var.broker_security_group_ids) > 0
-    error_message = "Provide at least one security group ID for the brokers."
-  }
-}
-
-# Cluster sizing
-variable "msk_instance_type" {
-  description = "MSK broker instance type"
+variable "vpc_id" {
+  description = "VPC ID for EKS cluster"
   type        = string
-  default     = "kafka.t3.small"
 }
 
-variable "msk_broker_count" {
-  description = "Number of MSK brokers"
+variable "private_subnet_ids" {
+  description = "Private subnet IDs for EKS nodes"
+  type        = list(string)
+}
+
+variable "public_subnet_ids" {
+  description = "Public subnet IDs for ALB"
+  type        = list(string)
+}
+
+# EKS Configuration
+variable "cluster_version" {
+  description = "Kubernetes version"
+  type        = string
+  default     = "1.28"
+}
+
+variable "cluster_endpoint_public_access" {
+  description = "Enable public access to cluster endpoint"
+  type        = bool
+  default     = true
+}
+
+variable "cluster_endpoint_private_access" {
+  description = "Enable private access to cluster endpoint"
+  type        = bool
+  default     = true
+}
+
+# Node Group
+variable "node_instance_types" {
+  description = "EC2 instance types for nodes"
+  type        = list(string)
+  default     = ["t3.medium"]
+}
+
+variable "node_desired_size" {
+  description = "Desired number of nodes"
   type        = number
   default     = 3
 }
 
-variable "msk_ebs_volume_size" {
-  description = "EBS volume size per broker in GB"
+variable "node_min_size" {
+  description = "Minimum number of nodes"
   type        = number
-  default     = 10
+  default     = 2
 }
 
-variable "msk_kafka_version" {
-  description = "Apache Kafka version for the cluster"
+variable "node_max_size" {
+  description = "Maximum number of nodes"
+  type        = number
+  default     = 6
+}
+
+variable "node_disk_size" {
+  description = "Disk size for nodes (GB)"
+  type        = number
+  default     = 30
+}
+
+# ECR
+variable "ecr_repositories" {
+  description = "ECR repositories to create"
+  type        = list(string)
+  default     = ["kayak-frontend", "kayak-backend", "kayak-agent"]
+}
+
+variable "ecr_image_tag_mutability" {
+  description = "Image tag mutability"
   type        = string
-  default     = "3.6.0"
+  default     = "MUTABLE"
 }
 
-variable "msk_kms_key_arn" {
-  description = "Optional custom KMS key ARN for MSK encryption at rest"
+variable "ecr_scan_on_push" {
+  description = "Enable ECR scanning"
+  type        = bool
+  default     = true
+}
+
+# Application Configuration
+variable "frontend_replicas" {
+  description = "Frontend pod replicas"
+  type        = number
+  default     = 2
+}
+
+variable "backend_replicas" {
+  description = "Backend pod replicas"
+  type        = number
+  default     = 2
+}
+
+variable "agent_replicas" {
+  description = "Agent pod replicas"
+  type        = number
+  default     = 1
+}
+
+variable "frontend_image_tag" {
+  description = "Frontend image tag"
   type        = string
-  default     = ""
+  default     = "latest"
 }
 
-variable "log_retention_in_days" {
-  description = "CloudWatch log retention for broker logs"
+variable "backend_image_tag" {
+  description = "Backend image tag"
+  type        = string
+  default     = "latest"
+}
+
+variable "agent_image_tag" {
+  description = "Agent image tag"
+  type        = string
+  default     = "latest"
+}
+
+# Monitoring
+variable "enable_cloudwatch_logs" {
+  description = "Enable CloudWatch logs"
+  type        = bool
+  default     = true
+}
+
+variable "log_retention_days" {
+  description = "Log retention days"
   type        = number
   default     = 7
 }
 
-variable "vpc_id" {
-  description = "VPC ID where resources will be created"
-  type        = string
-}
-
-variable "bastion_instance_type" {
-  description = "EC2 instance type for bastion host"
-  type        = string
-  default     = "t3.nano"
-}
-
-variable "bastion_subnet_id" {
-  description = "Subnet ID for bastion instance (should be public subnet)"
-  type        = string
-}
-
-variable "bastion_key_name" {
-  description = "Optional EC2 key pair name for SSH access to bastion"
+# Optional
+variable "msk_cluster_arn" {
+  description = "MSK cluster ARN (optional)"
   type        = string
   default     = ""
+}
+
+variable "msk_bootstrap_brokers" {
+  description = "MSK bootstrap brokers (optional)"
+  type        = string
+  default     = ""
+}
+
+variable "domain_name" {
+  description = "Domain name (optional)"
+  type        = string
+  default     = ""
+}
+
+variable "certificate_arn" {
+  description = "ACM certificate ARN (optional)"
+  type        = string
+  default     = ""
+}
+
+variable "tags" {
+  description = "Additional tags"
+  type        = map(string)
+  default     = {}
 }
