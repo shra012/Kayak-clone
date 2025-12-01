@@ -58,9 +58,35 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="hero min-h-screen bg-base-100">
-      <div className="hero-content flex-col lg:flex-row-reverse w-full max-w-7xl">
-        {/* Right side - Image Grid */}
+    <div className="hero min-h-screen bg-base-100 relative overflow-hidden">
+      {/* Background images for all screen sizes */}
+      <div className="absolute inset-0 z-0">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-3 h-full p-2 lg:p-4 opacity-20 lg:opacity-100">
+          <div className="h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-lg">
+            <img
+              src={flightImages.flight1}
+              alt="Travel 1"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="h-full rounded-2xl lg:rounded-3xl overflow-hidden shadow-lg">
+            <img
+              src={flightImages.flight2}
+              alt="Travel 2"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="hidden lg:block h-full rounded-3xl overflow-hidden shadow-lg">
+            <img
+              src={flightImages.flight3}
+              alt="Travel 3"
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </div>
+      </div>
+      <div className="hero-content flex-col lg:flex-row-reverse w-full max-w-7xl relative z-10">
+        {/* Right side - Image Grid (visible on large screens) */}
         <div className="hidden lg:flex lg:w-1/2 gap-3">
           {/* Column 1 */}
           <div className="flex-1 grid grid-cols-1 gap-3">
