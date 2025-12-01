@@ -6,7 +6,7 @@
 
 set -e
 
-echo "🔍 Terraform Infrastructure Status Check"
+echo "Terraform Infrastructure Status Check"
 echo "=========================================="
 echo ""
 
@@ -19,7 +19,7 @@ NC='\033[0m'
 
 # Check Terraform installation
 if ! command -v terraform &> /dev/null; then
-    echo -e "${YELLOW}⚠️  Terraform not found in PATH${NC}"
+    echo -e "${YELLOW}WARNING: Terraform not found in PATH${NC}"
     echo ""
     echo "To install Terraform:"
     echo "  macOS: brew install terraform"
@@ -30,13 +30,13 @@ if ! command -v terraform &> /dev/null; then
     USE_AWS_CLI=true
 else
     TERRAFORM_VERSION=$(terraform version -json 2>/dev/null | grep -o '"terraform_version":"[^"]*"' | cut -d'"' -f4 || terraform version | head -1)
-    echo -e "${GREEN}✅ Terraform installed: $TERRAFORM_VERSION${NC}"
+    echo -e "${GREEN}OK: Terraform installed: $TERRAFORM_VERSION${NC}"
     USE_AWS_CLI=false
 fi
 
 # Check AWS CLI
 if ! command -v aws &> /dev/null; then
-    echo -e "${RED}❌ AWS CLI not found${NC}"
+    echo -e "${RED}ERROR: AWS CLI not found${NC}"
     exit 1
 fi
 
@@ -58,22 +58,22 @@ echo ""
 # Check via Terraform (if available)
 # ============================================
 if [ "$USE_AWS_CLI" = false ]; then
-    cd infra2
+    cd infra/aws
     
     # Check if terraform is initialized
     if [ -d .terraform ]; then
-        echo -e "${GREEN}✅ Terraform initialized${NC}"
+        echo -e "${GREEN}OK: Terraform initialized${NC}"
         
         # Check terraform state
         if [ -f terraform.tfstate ] || [ -f terraform.tfstate.backup ]; then
-            echo -e "${GREEN}✅ Terraform state file exists${NC}"
+            echo -e "${GREEN}OK: Terraform state file exists${NC}"
             
             # Get current state
             echo ""
             echo "Current Terraform State:"
             terraform show -json 2>/dev/null | jq -r '.values.root_module.resources[]? | "\(.type).\(.name): \(.values.id // .values.name // "N/A")"' 2>/dev/null | head -20 || echo "  (Unable to parse state)"
         else
-            echo -e "${YELLOW}⚠️  No Terraform state file found${NC}"
+            echo -e "${YELLOW}WARNING: No Terraform state file found${NC}"
             echo "  This means infrastructure may not be deployed yet."
         fi
         
@@ -84,8 +84,8 @@ if [ "$USE_AWS_CLI" = false ]; then
         
         cd ..
     else
-        echo -e "${YELLOW}⚠️  Terraform not initialized${NC}"
-        echo "  Run: cd infra2 && terraform init"
+        echo -e "${YELLOW}WARNING: Terraform not initialized${NC}"
+        echo "  Run: cd infra/aws && terraform init"
     fi
 fi
 
@@ -104,13 +104,13 @@ if [ -n "$CLUSTER_LIST" ]; then
         STATUS=$(echo "$CLUSTER_INFO" | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
         VERSION=$(echo "$CLUSTER_INFO" | grep -o '"version":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
         if [ "$STATUS" = "ACTIVE" ]; then
-            echo -e "  ${GREEN}✅ $cluster${NC} - Status: $STATUS, Version: $VERSION"
+            echo -e "  ${GREEN}OK: $cluster${NC} - Status: $STATUS, Version: $VERSION"
         else
-            echo -e "  ${YELLOW}⚠️  $cluster${NC} - Status: $STATUS, Version: $VERSION"
+            echo -e "  ${YELLOW}WARNING: $cluster${NC} - Status: $STATUS, Version: $VERSION"
         fi
     done
 else
-    echo -e "  ${RED}❌ No EKS clusters found${NC}"
+    echo -e "  ${RED}ERROR: No EKS clusters found${NC}"
 fi
 
 echo ""
@@ -120,20 +120,20 @@ KAYAK_REPOS=""
 if [ -n "$REPO_LIST" ]; then
     for repo in $REPO_LIST; do
         if echo "$repo" | grep -q "kayak"; then
-            echo -e "  ${GREEN}✅ $repo${NC}"
+            echo -e "  ${GREEN}OK: $repo${NC}"
             KAYAK_REPOS="$KAYAK_REPOS $repo"
         fi
     done
     if [ -z "$KAYAK_REPOS" ]; then
-        echo -e "  ${YELLOW}⚠️  No kayak repositories found${NC}"
+        echo -e "  ${YELLOW}WARNING: No kayak repositories found${NC}"
     fi
 else
-    echo -e "  ${RED}❌ No ECR repositories found${NC}"
+    echo -e "  ${RED}ERROR: No ECR repositories found${NC}"
 fi
 
 echo ""
 echo "=========================================="
-echo "📊 Summary"
+echo "Summary"
 echo "=========================================="
 echo ""
 
@@ -142,18 +142,18 @@ CLUSTER_COUNT=$(echo "$CLUSTER_LIST" | wc -w | tr -d ' ')
 KAYAK_REPO_COUNT=$(echo "$KAYAK_REPOS" | wc -w | tr -d ' ')
 
 if [ "$CLUSTER_COUNT" -gt 0 ] && [ "$KAYAK_REPO_COUNT" -gt 0 ]; then
-    echo -e "${GREEN}✅ Infrastructure appears to be deployed${NC}"
+    echo -e "${GREEN}OK: Infrastructure appears to be deployed${NC}"
     echo "  - EKS Clusters: $CLUSTER_COUNT"
     echo "  - Kayak ECR Repos: $KAYAK_REPO_COUNT"
 else
-    echo -e "${YELLOW}⚠️  Infrastructure may not be fully deployed${NC}"
+    echo -e "${YELLOW}WARNING: Infrastructure may not be fully deployed${NC}"
     echo "  - EKS Clusters: $CLUSTER_COUNT"
     echo "  - Kayak ECR Repos: $KAYAK_REPO_COUNT"
 fi
 
 echo ""
 echo "To redeploy infrastructure:"
-echo "  1. cd infra2"
+echo "  1. cd infra/aws"
 echo "  2. terraform init"
 echo "  3. terraform plan"
 echo "  4. terraform apply"
