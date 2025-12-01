@@ -51,12 +51,19 @@ Redis Cloud offers a free tier with 30MB RAM.
 **Environment Variables:**
 ```env
 REDIS_URL=redis://default:[PASSWORD]@[HOST]:[PORT]
+CACHE_ENABLED=false  # Set to 'true' to enable Redis caching (default: false)
 ```
 
 **Example:**
 ```env
 REDIS_URL=redis://default:mypassword@redis-12345.c1.us-east-1-1.ec2.cloud.redislabs.com:12345
+CACHE_ENABLED=false
 ```
+
+**Note:** 
+- `CACHE_ENABLED=false` disables Redis caching for application data (listings, search results, user profiles)
+- Redis is still used for session storage even when `CACHE_ENABLED=false`
+- Set `CACHE_ENABLED=true` to enable caching for improved performance
 
 ### 4. Local Redis (Development Only)
 
