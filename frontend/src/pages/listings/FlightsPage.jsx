@@ -88,6 +88,7 @@ const FlightsPage = () => {
   const [isRoundTrip, setIsRoundTrip] = useState(false);
   const [roundTripCombos, setRoundTripCombos] = useState([]);
   const [availableAirlines, setAvailableAirlines] = useState([]);
+  const [multiCityResults, setMultiCityResults] = useState([]); // Array of {leg, flights: [...]}
   
   // Autocomplete states
   const [showFromDropdown, setShowFromDropdown] = useState(false);
@@ -281,12 +282,29 @@ const FlightsPage = () => {
 
   const loadAirlines = async (activeFilters) => {
     try {
+      console.log('=== loadAirlines called ===');
+      console.log('activeFilters:', JSON.stringify(activeFilters, null, 2));
+      console.log('date:', activeFilters.date, '(type:', typeof activeFilters.date, ')');
+      console.log('returnDate:', activeFilters.returnDate, '(type:', typeof activeFilters.returnDate, ')');
+      console.log('Are they equal?', activeFilters.returnDate === activeFilters.date);
+      console.log('Is returnDate truthy?', !!activeFilters.returnDate);
+      console.log('Is returnDate null?', activeFilters.returnDate === null);
+      
       const params = {};
       if (activeFilters.from) params.from = extractAirportCode(activeFilters.from);
       if (activeFilters.to) params.to = extractAirportCode(activeFilters.to);
       if (activeFilters.date) params.departDate = activeFilters.date;
-      if (activeFilters.returnDate) params.returnDate = activeFilters.returnDate;
+      // Only send returnDate for round trips (when it exists, is not null, AND is different from departDate)
+      if (activeFilters.returnDate && 
+          activeFilters.returnDate !== null && 
+          activeFilters.returnDate !== activeFilters.date) {
+        console.log('✓ Adding returnDate to params:', activeFilters.returnDate);
+        params.returnDate = activeFilters.returnDate;
+      } else {
+        console.log('✗ NOT adding returnDate to params (returnDate:', activeFilters.returnDate, ', date:', activeFilters.date, ')');
+      }
 
+      console.log('Final Airlines API params being sent:', JSON.stringify(params, null, 2));
       const data = await listingsApi.getAvailableAirlines(params);
       setAvailableAirlines(data.airlines || []);
     } catch (err) {
@@ -300,27 +318,116 @@ const FlightsPage = () => {
       ? filters.airlines.filter(a => a !== airline)
       : [...filters.airlines, airline];
     
+    console.log('=== Airline Filter Toggle ===');
+    console.log('Toggled airline:', airline);
+    console.log('Previous airlines:', filters.airlines);
+    console.log('New airlines:', newAirlines);
+    
     const newFilters = { ...filters, airlines: newAirlines };
     setFilters(newFilters);
-    loadFlights(1, newFilters);
+    
+    // For multi-city, just update the filter state (filtering happens in render)
+    // For regular searches, reload flights
+    if (location.state?.search?.tripType !== 'multi-city') {
+      loadFlights(1, newFilters);
+    }
   };
 
   const handleAllAirlinesToggle = () => {
     const newAirlines = filters.airlines.length === availableAirlines.length ? [] : [...availableAirlines];
     const newFilters = { ...filters, airlines: newAirlines };
     setFilters(newFilters);
-    loadFlights(1, newFilters);
+    
+    // For multi-city, just update the filter state (filtering happens in render)
+    // For regular searches, reload flights
+    if (location.state?.search?.tripType !== 'multi-city') {
+      loadFlights(1, newFilters);
+    }
+  };
+
+  const loadMultiCityFlights = async (legs) => {
+    setLoading(true);
+    setError(null);
+    setMultiCityResults([]);
+    
+    try {
+      console.log('=== Loading Multi-City Flights ===');
+      console.log('Legs:', legs);
+      
+      // Search for each leg in parallel
+      const legSearches = legs.map(async (leg, index) => {
+        console.log(`Searching leg ${index + 1}:`, leg);
+        
+        const params = {
+          from: extractAirportCode(leg.from),
+          to: extractAirportCode(leg.to),
+          departDate: leg.date,
+          page: 1,
+          pageSize: 10,
+          sortBy: 'price',
+          sortOrder: 'asc',
+        };
+        
+        const data = await listingsApi.searchFlights(params);
+        const flights = (data.items || []).filter(isFlightValid);
+        
+        return {
+          legIndex: index,
+          from: leg.from,
+          to: leg.to,
+          date: leg.date,
+          flights: flights,
+        };
+      });
+      
+      const results = await Promise.all(legSearches);
+      console.log('Multi-city results:', results);
+      
+      // Collect all unique airlines across all legs
+      const allAirlines = new Set();
+      results.forEach(legResult => {
+        legResult.flights.forEach(flight => {
+          if (flight.airline) allAirlines.add(flight.airline);
+        });
+      });
+      setAvailableAirlines([...allAirlines].sort());
+      
+      setMultiCityResults(results);
+      setLoading(false);
+    } catch (err) {
+      console.error('Failed to load multi-city flights:', err);
+      setError('Failed to load flights. Please try again.');
+      setLoading(false);
+    }
   };
 
   const loadFlights = async (overridePage, overrideFilters) => {
     const currentPage = overridePage ?? page;
     setLoading(true);
     setError(null);
+    // Clear previous results immediately when starting a new search
+    setResults([]);
+    setRoundTripCombos([]);
+    setSuggestedFlights([]);
 
     try {
       const activeFilters = overrideFilters ?? filters;
-      const isRound = activeFilters.returnDate && activeFilters.returnDate !== activeFilters.date;
+      // Only treat as round trip if returnDate exists, is not null, and is different from departDate
+      const isRound = activeFilters.returnDate && 
+                      activeFilters.returnDate !== null && 
+                      activeFilters.returnDate !== activeFilters.date;
       setIsRoundTrip(isRound);
+      
+      // Debug logging
+      console.log('loadFlights called with:', {
+        from: activeFilters.from,
+        to: activeFilters.to,
+        date: activeFilters.date,
+        returnDate: activeFilters.returnDate,
+        returnDateIsNull: activeFilters.returnDate === null,
+        datesAreEqual: activeFilters.returnDate === activeFilters.date,
+        isRound,
+      });
 
       if (isRound) {
         // For round trips, fetch outbound and return flights separately and create combinations
@@ -440,13 +547,23 @@ const FlightsPage = () => {
         if (activeFilters.from) params.from = extractAirportCode(activeFilters.from);
         if (activeFilters.to) params.to = extractAirportCode(activeFilters.to);
         if (activeFilters.date) params.departDate = activeFilters.date;
-        if (activeFilters.returnDate) params.returnDate = activeFilters.returnDate;
+        // NEVER pass returnDate for one-way flights - this is the one-way branch!
+        // (returnDate should be null here, but even if it isn't, don't send it)
         if (activeFilters.minPrice) params.minPrice = activeFilters.minPrice;
         if (activeFilters.maxPrice) params.maxPrice = activeFilters.maxPrice;
         if (activeFilters.nonstop !== 'any') params.nonstop = activeFilters.nonstop;
         if (activeFilters.airlines && activeFilters.airlines.length > 0) params.airline = activeFilters.airlines.join(',');
 
+        console.log('=== One-way API Request ===');
+        console.log('activeFilters.airlines:', activeFilters.airlines);
+        console.log('params.airline:', params.airline);
+        console.log('Full API params:', params);
         const data = await listingsApi.searchFlights(params);
+        console.log('=== One-way API Response ===');
+        console.log('Total items returned:', data.items?.length);
+        console.log('Airlines in response:', [...new Set(data.items?.map(f => f.airline))]);
+        console.log('Pagination:', data.pagination);
+        
         const allFlights = (data.items || [])
           .filter(isFlightValid)
           .filter(flight => {
@@ -526,19 +643,60 @@ const FlightsPage = () => {
 
   // Load search parameters from HomePage navigation state
   useEffect(() => {
+    console.log('=== FlightsPage useEffect - Initial Load ===');
+    console.log('location.state:', location.state);
+    
     if (location.state?.search) {
       const searchParams = location.state.search;
+      console.log('Received searchParams:', searchParams);
+      
+      // Check if this is a multi-city search
+      if (searchParams.tripType === 'multi-city' && searchParams.flights) {
+        console.log('Multi-city search detected:', searchParams.flights);
+        
+        // Set filters based on first flight leg for display purposes
+        const firstLeg = searchParams.flights[0];
+        const lastLeg = searchParams.flights[searchParams.flights.length - 1];
+        
+        const newFilters = {
+          ...filters,
+          from: firstLeg.from || '',
+          to: lastLeg.to || '',
+          date: firstLeg.date || defaultDates.today,
+          returnDate: null, // Multi-city doesn't have a simple return date
+        };
+        
+        console.log('Setting multi-city filters for display:', newFilters);
+        setFilters(newFilters);
+        
+        // Search for flights for each leg (loadMultiCityFlights will collect all airlines)
+        loadMultiCityFlights(searchParams.flights);
+        return;
+      }
+      
+      const departDate = searchParams.departDate || defaultDates.today;
+      const returnDate = searchParams.returnDate === null 
+        ? null 
+        : (searchParams.returnDate || defaultDates.nextWeek);
+      
+      // IMPORTANT: If returnDate equals departDate, it's actually a one-way trip
+      // (HomePage sets returnDate=null for one-way, but if they're equal, treat as one-way)
+      const finalReturnDate = (returnDate && returnDate === departDate) ? null : returnDate;
+      
       const newFilters = {
         ...filters,
         from: searchParams.from || '',
         to: searchParams.to || '',
-        date: searchParams.departDate || defaultDates.today,
-        returnDate: searchParams.returnDate || defaultDates.nextWeek,
+        date: departDate,
+        returnDate: finalReturnDate,
       };
+      
+      console.log('Setting filters to:', newFilters);
       setFilters(newFilters);
       loadFlights(1, newFilters);
       loadAirlines(newFilters);
     } else {
+      console.log('No search params, using default filters');
       loadFlights(1);
       loadAirlines(filters);
     }
@@ -645,10 +803,25 @@ const FlightsPage = () => {
           
           {/* Search Summary */}
           <div className="mt-3 text-sm opacity-90 flex items-center flex-wrap gap-2">
-            <span className="font-semibold">{filters.from || 'Any location'}</span>
-            <span>→</span>
-            <span className="font-semibold">{filters.to || 'Any destination'}</span>
-            {filters.date && (
+            {location.state?.search?.tripType === 'multi-city' ? (
+              <>
+                <span className="badge badge-primary badge-sm">Multi-City</span>
+                <span className="font-semibold">
+                  {location.state.search.flights.length} flights
+                </span>
+                <span>•</span>
+                <span>
+                  {location.state.search.flights[0].from} → ... → {location.state.search.flights[location.state.search.flights.length - 1].to}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="font-semibold">{filters.from || 'Any location'}</span>
+                <span>→</span>
+                <span className="font-semibold">{filters.to || 'Any destination'}</span>
+              </>
+            )}
+            {filters.date && location.state?.search?.tripType !== 'multi-city' && (
               <>
                 <span>•</span>
                 <button
@@ -681,8 +854,41 @@ const FlightsPage = () => {
             )}
           </div>
 
-          {/* Editable From/To inputs */}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          {/* Trip Type Toggle - Hide for multi-city */}
+          {location.state?.search?.tripType !== 'multi-city' && (
+            <div className="mt-3 flex gap-2">
+              <div className="btn-group">
+                <button
+                  type="button"
+                  className={`btn btn-xs ${!filters.returnDate ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => {
+                    const newFilters = { ...filters, returnDate: null };
+                    setFilters(newFilters);
+                    loadFlights(1, newFilters);
+                  }}
+                >
+                  One-way
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${filters.returnDate ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => {
+                    if (!filters.returnDate) {
+                      const newFilters = { ...filters, returnDate: addDaysToDateString(filters.date, 7) };
+                      setFilters(newFilters);
+                      loadFlights(1, newFilters);
+                    }
+                  }}
+                >
+                  Round-trip
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Editable From/To inputs - Hide for multi-city */}
+          {location.state?.search?.tripType !== 'multi-city' && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
             {/* From input with autocomplete */}
             <div className="relative" ref={fromDropdownRef}>
               <input
@@ -783,6 +989,7 @@ const FlightsPage = () => {
               Update
             </button>
           </div>
+          )}
         </div>
       </div>
 
@@ -806,7 +1013,10 @@ const FlightsPage = () => {
                     onChange={(e) => {
                       const newFilters = { ...filters, nonstop: e.target.value };
                       setFilters(newFilters);
-                      loadFlights(1, newFilters); // Pass new filters immediately
+                      // For multi-city, just update filter (filtering happens in render)
+                      if (location.state?.search?.tripType !== 'multi-city') {
+                        loadFlights(1, newFilters);
+                      }
                     }}
                     className="select select-sm select-bordered w-full"
                   >
@@ -868,13 +1078,17 @@ const FlightsPage = () => {
                         onBlur={(e) => {
                           const newFilters = { ...filters, minPrice: e.target.value };
                           setFilters(newFilters);
-                          loadFlights(1, newFilters);
+                          if (location.state?.search?.tripType !== 'multi-city') {
+                            loadFlights(1, newFilters);
+                          }
                         }}
                         onKeyPress={(e) => {
                           if (e.key === 'Enter') {
                             const newFilters = { ...filters, minPrice: e.target.value };
                             setFilters(newFilters);
-                            loadFlights(1, newFilters);
+                            if (location.state?.search?.tripType !== 'multi-city') {
+                              loadFlights(1, newFilters);
+                            }
                           }
                         }}
                         className="input input-sm input-bordered w-full"
@@ -895,13 +1109,17 @@ const FlightsPage = () => {
                         onBlur={(e) => {
                           const newFilters = { ...filters, maxPrice: e.target.value };
                           setFilters(newFilters);
-                          loadFlights(1, newFilters);
+                          if (location.state?.search?.tripType !== 'multi-city') {
+                            loadFlights(1, newFilters);
+                          }
                         }}
                         onKeyPress={(e) => {
                           if (e.key === 'Enter') {
                             const newFilters = { ...filters, maxPrice: e.target.value };
                             setFilters(newFilters);
-                            loadFlights(1, newFilters);
+                            if (location.state?.search?.tripType !== 'multi-city') {
+                              loadFlights(1, newFilters);
+                            }
                           }
                         }}
                         className="input input-sm input-bordered w-full"
@@ -922,7 +1140,10 @@ const FlightsPage = () => {
                     onChange={(e) => {
                       const newFilters = { ...filters, sort: e.target.value };
                       setFilters(newFilters);
-                      loadFlights(1, newFilters);
+                      // For multi-city, sorting is applied in render via client-side sort
+                      if (location.state?.search?.tripType !== 'multi-city') {
+                        loadFlights(1, newFilters);
+                      }
                     }}
                     className="select select-sm select-bordered w-full"
                   >
@@ -947,20 +1168,22 @@ const FlightsPage = () => {
           {/* Results Section */}
           <main className="flex-1">
             <div className="space-y-4">
-              {/* Results Header */}
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold">
-                  {loading 
-                    ? 'Searching...' 
-                    : isRoundTrip 
-                      ? `${roundTripCombos.length} Round Trip Combo${roundTripCombos.length !== 1 ? 's' : ''} Found`
-                      : `${results.length} Flight${results.length !== 1 ? 's' : ''} Found`
-                  }
-                </h2>
-              </div>
+              {/* Results Header - Hide for multi-city since each leg shows its own count */}
+              {location.state?.search?.tripType !== 'multi-city' && (
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold">
+                    {loading 
+                      ? 'Searching...' 
+                      : isRoundTrip 
+                        ? `${roundTripCombos.length} Round Trip Combo${roundTripCombos.length !== 1 ? 's' : ''} Found`
+                        : `${results.length} Flight${results.length !== 1 ? 's' : ''} Found`
+                    }
+                  </h2>
+                </div>
+              )}
 
-              {/* Suggested Flights - Horizontal Scrollable (only when we have results) */}
-              {!loading && results.length > 0 && suggestedFlights.length > 0 && (
+              {/* Suggested Flights - Horizontal Scrollable (only when we have results, not for multi-city) */}
+              {!loading && results.length > 0 && suggestedFlights.length > 0 && location.state?.search?.tripType !== 'multi-city' && (
                 <div className="mb-6 w-full">
                   <h3 className="text-lg font-semibold mb-3">
                     ✈️ Other available dates:
@@ -1017,6 +1240,172 @@ const FlightsPage = () => {
                 </div>
               )}
 
+              {/* Multi-City Flight Results */}
+              {location.state?.search?.tripType === 'multi-city' && multiCityResults.length > 0 && !loading && (
+                <div className="space-y-6">
+                  {multiCityResults.map((legResult, legIndex) => {
+                    // Apply filters to flights for this leg
+                    let filteredFlights = legResult.flights.filter(flight => {
+                      // Airline filter
+                      if (filters.airlines.length > 0 && !filters.airlines.includes(flight.airline)) {
+                        return false;
+                      }
+                      
+                      // Stops filter
+                      if (filters.nonstop === 'true' && !flight.nonstop) return false;
+                      if (filters.nonstop === 'false' && flight.nonstop) return false;
+                      
+                      // Price filter
+                      if (filters.minPrice && flight.price < parseFloat(filters.minPrice)) return false;
+                      if (filters.maxPrice && flight.price > parseFloat(filters.maxPrice)) return false;
+                      
+                      return true;
+                    });
+                    
+                    // Apply sort
+                    const [sortBy, sortOrder] = filters.sort.split('-');
+                    filteredFlights = [...filteredFlights].sort((a, b) => {
+                      let aVal, bVal;
+                      if (sortBy === 'price') {
+                        aVal = a.price;
+                        bVal = b.price;
+                      } else if (sortBy === 'duration') {
+                        aVal = a.durationMinutes;
+                        bVal = b.durationMinutes;
+                      } else {
+                        return 0;
+                      }
+                      
+                      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+                    });
+                    
+                    return (
+                    <div key={legIndex} className="space-y-4">
+                      {/* Leg Header */}
+                      <div className="flex items-center justify-between py-4 border-b-2 border-primary mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="badge badge-primary badge-lg">Flight {legIndex + 1}</span>
+                          <div className="flex items-center gap-2 text-lg font-semibold">
+                            <span>{legResult.from}</span>
+                            <span className="text-primary">→</span>
+                            <span>{legResult.to}</span>
+                          </div>
+                          <span className="text-base-content/70">•</span>
+                          <span className="text-base-content/70">
+                            {parseLocalDate(legResult.date).toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </span>
+                        </div>
+                        <div className="text-lg font-semibold">
+                          {filteredFlights.length} {filteredFlights.length === 1 ? 'flight' : 'flights'} found
+                        </div>
+                      </div>
+
+                      {/* Flights for this leg */}
+                      {filteredFlights.length > 0 ? (
+                        <div className="space-y-3">
+                          {filteredFlights.map((flight) => (
+                            <div
+                              key={flight.id}
+                              className="card bg-base-100 shadow-md hover:shadow-xl transition-shadow cursor-pointer"
+                              onClick={() => navigate(`/flights/${flight.id}`)}
+                            >
+                              <div className="card-body p-4">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                  {/* Flight Info */}
+                                  <div className="flex-1 space-y-2 w-full md:w-auto">
+                                    {/* Airline */}
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-lg">{flight.airline}</span>
+                                      <span className="text-sm text-base-content/60">{flight.flightNumber}</span>
+                                      {flight.isDeal && (
+                                        <span className="badge badge-success badge-sm">Deal</span>
+                                      )}
+                                    </div>
+
+                                    {/* Route and Time */}
+                                    <div className="flex items-center gap-3">
+                                      <div className="text-center">
+                                        <div className="text-2xl font-bold">{flight.from}</div>
+                                        <div className="text-xs text-base-content/60">
+                                          {parseLocalDate(flight.departDate).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                          })}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex-1 flex flex-col items-center px-2">
+                                        <div className="flex items-center gap-1 text-xs text-base-content/60">
+                                          <FaClock className="w-3 h-3" />
+                                          <span>
+                                            {Math.floor(flight.durationMinutes / 60)}h{' '}
+                                            {flight.durationMinutes % 60}m
+                                          </span>
+                                        </div>
+                                        <div className="w-full h-0.5 bg-base-300 my-1 relative">
+                                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                                            <FaPlane className="w-3 h-3 text-primary" />
+                                          </div>
+                                        </div>
+                                        <span className="text-xs text-base-content/60">
+                                          {flight.nonstop ? 'Direct' : '1+ stops'}
+                                        </span>
+                                      </div>
+
+                                      <div className="text-center">
+                                        <div className="text-2xl font-bold">{flight.to}</div>
+                                        <div className="text-xs text-base-content/60">
+                                          {parseLocalDate(flight.departDate).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                          })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Price and Book Button */}
+                                  <div className="flex flex-row md:flex-col items-center md:items-end gap-2 justify-between w-full md:w-auto">
+                                    <div className="text-right">
+                                      <div className="text-3xl font-bold text-primary">
+                                        ${flight.price}
+                                      </div>
+                                      <div className="text-xs text-base-content/60">{flight.class}</div>
+                                    </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigate(`/flights/${flight.id}`);
+                                      }}
+                                      className="btn btn-primary btn-sm"
+                                    >
+                                      Select
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="card bg-base-100 shadow-md">
+                          <div className="card-body text-center py-8">
+                            <div className="text-4xl mb-2">✈️</div>
+                            <p className="text-base-content/70">No flights found for this leg</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Loading State */}
               {loading && (
                 <div className="flex justify-center py-12">
@@ -1024,8 +1413,8 @@ const FlightsPage = () => {
                 </div>
               )}
 
-              {/* No Results */}
-              {!loading && results.length === 0 && roundTripCombos.length === 0 && !error && (
+              {/* No Results - Only show for non-multi-city searches */}
+              {!loading && results.length === 0 && roundTripCombos.length === 0 && multiCityResults.length === 0 && !error && location.state?.search?.tripType !== 'multi-city' && (
                 <>
                   {/* Suggested Flights - Horizontal Scrollable (when 0 exact matches) */}
                   {suggestedFlights.length > 0 && (
@@ -1272,7 +1661,7 @@ const FlightsPage = () => {
                               <div className="text-center">
                                 <div className="text-2xl font-bold">{flight.from}</div>
                                 <div className="text-xs text-base-content/60">
-                                  {new Date(flight.departDate).toLocaleDateString('en-US', {
+                                  {parseLocalDate(flight.departDate).toLocaleDateString('en-US', {
                                     month: 'short',
                                     day: 'numeric',
                                   })}
@@ -1300,7 +1689,7 @@ const FlightsPage = () => {
                               <div className="text-center">
                                 <div className="text-2xl font-bold">{flight.to}</div>
                                 <div className="text-xs text-base-content/60">
-                                  {new Date(flight.departDate).toLocaleDateString('en-US', {
+                                  {parseLocalDate(flight.departDate).toLocaleDateString('en-US', {
                                     month: 'short',
                                     day: 'numeric',
                                   })}
@@ -1387,8 +1776,8 @@ const FlightsPage = () => {
                 setShowDepartCalendar(false);
                 loadFlights(1, newFilters);
               }}
-              from={filters.from || ''}
-              to={filters.to || ''}
+              from={extractAirportCode(filters.from) || ''}
+              to={extractAirportCode(filters.to) || ''}
               minDate={new Date().toISOString().split('T')[0]}
             />
           </div>
@@ -1416,8 +1805,8 @@ const FlightsPage = () => {
                 setShowReturnCalendar(false);
                 loadFlights(1, newFilters);
               }}
-              from={filters.to} // Reverse for return flight
-              to={filters.from}
+              from={extractAirportCode(filters.to) || ''} // Reverse for return flight
+              to={extractAirportCode(filters.from) || ''}
               minDate={filters.date || new Date().toISOString().split('T')[0]}
             />
           </div>

@@ -9,8 +9,6 @@ import {
   getCachedListing,
   cacheListing,
   generateCacheKey,
-  getCachedAvailableAirlines,
-  cacheAvailableAirlines,
 } from '../utils/cache.js';
 
 /**
@@ -148,11 +146,17 @@ export const searchFlights = async (query) => {
       limit: limitParam,
       pageSize,
       sort = 'price',
+      sortBy,
       order = 'asc',
+      sortOrder,
     } = query;
     
     // Support both 'limit' and 'pageSize' query parameters
     const limit = limitParam || pageSize || 20;
+    
+    // Support both 'sort'/'order' and 'sortBy'/'sortOrder'
+    const sortField = sortBy || sort;
+    const sortDirection = sortOrder || order;
 
     // Try to get cached results
     const cached = await getCachedSearchResults('flight', query);
@@ -177,7 +181,10 @@ export const searchFlights = async (query) => {
     if (departDate) {
       filter.departDate = departDate;
     }
-    if (returnDate) filter.returnDate = returnDate;
+    // NOTE: We do NOT filter by returnDate here.
+    // Individual flights are one-way - they don't have a returnDate that matches search params.
+    // Round trips are composed of two separate one-way flight searches.
+    
     // Only filter by nonstop if explicitly set to 'true' (ignore 'any' or 'false')
     if (nonstop === 'true') filter.nonstop = true;
     if (maxPrice) filter.price = { $lte: parseFloat(maxPrice) };
@@ -207,9 +214,12 @@ export const searchFlights = async (query) => {
 
     // Build sort
     const sortObj = {};
-    sortObj[sort] = order === 'desc' ? -1 : 1;
+    sortObj[sortField] = sortDirection === 'desc' ? -1 : 1;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    logger.debug('searchFlights query filter:', filter);
+    logger.debug('searchFlights sort:', sortObj);
     
     // Execute query
     const [items, totalItems] = await Promise.all([
@@ -237,25 +247,22 @@ export const searchFlights = async (query) => {
   }
 };
 
+/**
+ * Get available airlines filtered by route and dates
+ */
 export const getAvailableAirlines = async (query) => {
   try {
-    const cached = await getCachedAvailableAirlines(query);
-    if (cached) {
-      logger.debug('Returning cached available airlines');
-      return cached;
-    }
-
     const { from, to, departDate, returnDate } = query;
     
     const db = await getMongoDB();
     const collection = db.collection('flights');
     
-    let result;
-    
     if (returnDate) {
+      // For round trips, find airlines that exist for both outbound and return flights
       const fromCode = extractAirportCode(from);
       const toCode = extractAirportCode(to);
       
+      // Get airlines for outbound flight
       const outboundFilter = {
         from: fromCode,
         to: toCode,
@@ -263,6 +270,7 @@ export const getAvailableAirlines = async (query) => {
       };
       const outboundAirlines = await collection.distinct('airline', outboundFilter);
       
+      // Get airlines for return flight (reversed route)
       const returnFilter = {
         from: toCode,
         to: fromCode,
@@ -270,10 +278,12 @@ export const getAvailableAirlines = async (query) => {
       };
       const returnAirlines = await collection.distinct('airline', returnFilter);
       
+      // Return airlines that exist in both directions
       const commonAirlines = outboundAirlines.filter(airline => returnAirlines.includes(airline));
       
-      result = { airlines: commonAirlines.sort() };
+      return { airlines: commonAirlines.sort() };
     } else {
+      // For one-way trips, just get airlines for the route
       const filter = {};
       
       if (from) {
@@ -290,14 +300,11 @@ export const getAvailableAirlines = async (query) => {
         filter.departDate = departDate;
       }
       
+      // Get distinct airlines that match the filter
       const airlines = await collection.distinct('airline', filter);
       
-      result = { airlines: airlines.sort() };
+      return { airlines: airlines.sort() };
     }
-
-    await cacheAvailableAirlines(query, result);
-    
-    return result;
   } catch (error) {
     logger.error('Error in getAvailableAirlines service:', error);
     throw error;

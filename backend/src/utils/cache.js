@@ -2,31 +2,44 @@ import { getRedisClient } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import crypto from 'crypto';
 
+// Cache configuration from environment
+// Default: disabled (CACHE_ENABLED=false)
+// Set CACHE_ENABLED=true to enable caching
 const CACHE_ENABLED = process.env.CACHE_ENABLED === 'true';
-const CACHE_TTL_LISTING = parseInt(process.env.CACHE_TTL_LISTING || '300', 10);
-const CACHE_TTL_SEARCH = parseInt(process.env.CACHE_TTL_SEARCH || '60', 10);
-const CACHE_TTL_USER = parseInt(process.env.CACHE_TTL_USER || '600', 10);
-const CACHE_TTL_AIRLINES = parseInt(process.env.CACHE_TTL_AIRLINES || '900', 10);
+const CACHE_TTL_LISTING = parseInt(process.env.CACHE_TTL_LISTING || '300', 10); // 5 minutes
+const CACHE_TTL_SEARCH = parseInt(process.env.CACHE_TTL_SEARCH || '60', 10); // 1 minute
+const CACHE_TTL_USER = parseInt(process.env.CACHE_TTL_USER || '600', 10); // 10 minutes
 
 const DEFAULT_TTL = {
   LISTING: CACHE_TTL_LISTING,
   SEARCH_RESULT: CACHE_TTL_SEARCH,
   USER_PROFILE: CACHE_TTL_USER,
-  AIRLINES: CACHE_TTL_AIRLINES,
 };
 
+/**
+ * Check if caching is enabled
+ */
 export const isCacheEnabled = () => CACHE_ENABLED;
 
+/**
+ * Generate cache key
+ */
 export const generateCacheKey = (prefix, ...parts) => {
   const key = parts.join(':');
   return `${prefix}:${key}`;
 };
 
+/**
+ * Generate hash for search criteria
+ */
 export const hashSearchCriteria = (criteria) => {
   const str = JSON.stringify(criteria);
   return crypto.createHash('md5').update(str).digest('hex');
 };
 
+/**
+ * Get cached value
+ */
 export const getCached = async (key) => {
   if (!CACHE_ENABLED) {
     logger.debug('Cache disabled, skipping get');
@@ -34,7 +47,7 @@ export const getCached = async (key) => {
   }
 
   try {
-    const redis = await getRedisClient(true);
+    const redis = await getRedisClient(true); // true = for cache operations
     if (!redis) {
       logger.debug('Redis client not available (cache disabled or connection failed)');
       return null;
@@ -55,6 +68,9 @@ export const getCached = async (key) => {
   }
 };
 
+/**
+ * Set cached value with TTL
+ */
 export const setCached = async (key, value, ttlSeconds = DEFAULT_TTL.LISTING) => {
   if (!CACHE_ENABLED) {
     logger.debug('Cache disabled, skipping set');
@@ -62,7 +78,7 @@ export const setCached = async (key, value, ttlSeconds = DEFAULT_TTL.LISTING) =>
   }
 
   try {
-    const redis = await getRedisClient(true);
+    const redis = await getRedisClient(true); // true = for cache operations
     if (!redis) {
       logger.debug('Redis client not available (cache disabled or connection failed)');
       return;
@@ -75,6 +91,9 @@ export const setCached = async (key, value, ttlSeconds = DEFAULT_TTL.LISTING) =>
   }
 };
 
+/**
+ * Delete cached value
+ */
 export const deleteCached = async (key) => {
   if (!CACHE_ENABLED) {
     logger.debug('Cache disabled, skipping delete');
@@ -82,7 +101,7 @@ export const deleteCached = async (key) => {
   }
 
   try {
-    const redis = await getRedisClient(true);
+    const redis = await getRedisClient(true); // true = for cache operations
     if (!redis) {
       logger.debug('Redis client not available (cache disabled or connection failed)');
       return;
@@ -95,6 +114,9 @@ export const deleteCached = async (key) => {
   }
 };
 
+/**
+ * Delete cached values by pattern
+ */
 export const deleteCachedByPattern = async (pattern) => {
   if (!CACHE_ENABLED) {
     logger.debug('Cache disabled, skipping pattern delete');
@@ -102,7 +124,7 @@ export const deleteCachedByPattern = async (pattern) => {
   }
 
   try {
-    const redis = await getRedisClient(true);
+    const redis = await getRedisClient(true); // true = for cache operations
     if (!redis) {
       logger.debug('Redis client not available (cache disabled or connection failed)');
       return;
@@ -119,6 +141,9 @@ export const deleteCachedByPattern = async (pattern) => {
   }
 };
 
+/**
+ * Get or set cached value
+ */
 export const getOrSetCached = async (key, fetchFn, ttlSeconds = DEFAULT_TTL.LISTING) => {
   const cached = await getCached(key);
 
@@ -131,28 +156,43 @@ export const getOrSetCached = async (key, fetchFn, ttlSeconds = DEFAULT_TTL.LIST
   return value;
 };
 
+/**
+ * Cache listing by type and ID
+ */
 export const cacheListing = async (type, id, listing, ttlSeconds = DEFAULT_TTL.LISTING) => {
   const key = generateCacheKey('listing', type, id);
   await setCached(key, listing, ttlSeconds);
 };
 
+/**
+ * Get cached listing
+ */
 export const getCachedListing = async (type, id) => {
   const key = generateCacheKey('listing', type, id);
   return await getCached(key);
 };
 
+/**
+ * Cache search results
+ */
 export const cacheSearchResults = async (type, criteria, results, ttlSeconds = DEFAULT_TTL.SEARCH_RESULT) => {
   const hash = hashSearchCriteria(criteria);
   const key = generateCacheKey('search', type, hash);
   await setCached(key, results, ttlSeconds);
 };
 
+/**
+ * Get cached search results
+ */
 export const getCachedSearchResults = async (type, criteria) => {
   const hash = hashSearchCriteria(criteria);
   const key = generateCacheKey('search', type, hash);
   return await getCached(key);
 };
 
+/**
+ * Invalidate listing cache
+ */
 export const invalidateListingCache = async (type, id) => {
   const key = generateCacheKey('listing', type, id);
   await deleteCached(key);
@@ -161,34 +201,27 @@ export const invalidateListingCache = async (type, id) => {
   await deleteCachedByPattern(searchPattern);
 };
 
+/**
+ * Cache user profile
+ */
 export const cacheUserProfile = async (userId, profile, ttlSeconds = DEFAULT_TTL.USER_PROFILE) => {
   const key = generateCacheKey('user', 'profile', userId);
   await setCached(key, profile, ttlSeconds);
 };
 
+/**
+ * Get cached user profile
+ */
 export const getCachedUserProfile = async (userId) => {
   const key = generateCacheKey('user', 'profile', userId);
   return await getCached(key);
 };
 
+/**
+ * Invalidate user profile cache
+ */
 export const invalidateUserProfileCache = async (userId) => {
   const key = generateCacheKey('user', 'profile', userId);
   await deleteCached(key);
 };
 
-export const cacheAvailableAirlines = async (query, airlines, ttlSeconds = DEFAULT_TTL.AIRLINES) => {
-  const hash = hashSearchCriteria(query);
-  const key = generateCacheKey('airlines', hash);
-  await setCached(key, airlines, ttlSeconds);
-};
-
-export const getCachedAvailableAirlines = async (query) => {
-  const hash = hashSearchCriteria(query);
-  const key = generateCacheKey('airlines', hash);
-  return await getCached(key);
-};
-
-export const invalidateAirlinesCache = async (pattern = '*') => {
-  const cachePattern = generateCacheKey('airlines', pattern);
-  await deleteCachedByPattern(cachePattern);
-};

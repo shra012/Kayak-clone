@@ -227,21 +227,21 @@ const loadAirports = async () => {
  */
 const getDefaultAirports = () => {
   return [
-    { code: 'LAX', city: 'Los Angeles', state: 'CA', lat: 33.9425, lng: -118.4081 },
-    { code: 'JFK', city: 'New York', state: 'NY', lat: 40.6413, lng: -73.7781 },
-    { code: 'SFO', city: 'San Francisco', state: 'CA', lat: 37.6213, lng: -122.3790 },
-    { code: 'ORD', city: 'Chicago', state: 'IL', lat: 41.9742, lng: -87.9073 },
-    { code: 'DFW', city: 'Dallas', state: 'TX', lat: 32.8998, lng: -97.0403 },
-    { code: 'DEN', city: 'Denver', state: 'CO', lat: 39.8561, lng: -104.6737 },
-    { code: 'ATL', city: 'Atlanta', state: 'GA', lat: 33.6407, lng: -84.4277 },
-    { code: 'LAS', city: 'Las Vegas', state: 'NV', lat: 36.0840, lng: -115.1537 },
-    { code: 'SEA', city: 'Seattle', state: 'WA', lat: 47.4502, lng: -122.3088 },
-    { code: 'MIA', city: 'Miami', state: 'FL', lat: 25.7959, lng: -80.2870 },
-    { code: 'BOS', city: 'Boston', state: 'MA', lat: 42.3656, lng: -71.0096 },
-    { code: 'PHX', city: 'Phoenix', state: 'AZ', lat: 33.4342, lng: -112.0116 },
-    { code: 'IAH', city: 'Houston', state: 'TX', lat: 29.9902, lng: -95.3368 },
-    { code: 'MCO', city: 'Orlando', state: 'FL', lat: 28.4312, lng: -81.3083 },
-    { code: 'EWR', city: 'Newark', state: 'NJ', lat: 40.6895, lng: -74.1745 },
+    { code: 'LAX', city: 'Los Angeles', name: 'Los Angeles International', state: 'CA', lat: 33.9425, lng: -118.4081 },
+    { code: 'JFK', city: 'New York', name: 'John F. Kennedy International', state: 'NY', lat: 40.6413, lng: -73.7781 },
+    { code: 'SFO', city: 'San Francisco', name: 'San Francisco International', state: 'CA', lat: 37.6213, lng: -122.3790 },
+    { code: 'ORD', city: 'Chicago', name: 'O\'Hare International', state: 'IL', lat: 41.9742, lng: -87.9073 },
+    { code: 'DFW', city: 'Dallas', name: 'Dallas/Fort Worth International', state: 'TX', lat: 32.8998, lng: -97.0403 },
+    { code: 'DEN', city: 'Denver', name: 'Denver International', state: 'CO', lat: 39.8561, lng: -104.6737 },
+    { code: 'ATL', city: 'Atlanta', name: 'Hartsfield-Jackson Atlanta International', state: 'GA', lat: 33.6407, lng: -84.4277 },
+    { code: 'LAS', city: 'Las Vegas', name: 'Harry Reid International', state: 'NV', lat: 36.0840, lng: -115.1537 },
+    { code: 'SEA', city: 'Seattle', name: 'Seattle-Tacoma International', state: 'WA', lat: 47.4502, lng: -122.3088 },
+    { code: 'MIA', city: 'Miami', name: 'Miami International', state: 'FL', lat: 25.7959, lng: -80.2870 },
+    { code: 'BOS', city: 'Boston', name: 'Logan International', state: 'MA', lat: 42.3656, lng: -71.0096 },
+    { code: 'PHX', city: 'Phoenix', name: 'Phoenix Sky Harbor International', state: 'AZ', lat: 33.4342, lng: -112.0116 },
+    { code: 'IAH', city: 'Houston', name: 'George Bush Intercontinental', state: 'TX', lat: 29.9902, lng: -95.3368 },
+    { code: 'MCO', city: 'Orlando', name: 'Orlando International', state: 'FL', lat: 28.4312, lng: -81.3083 },
+    { code: 'EWR', city: 'Newark', name: 'Newark Liberty International', state: 'NJ', lat: 40.6895, lng: -74.1745 },
   ];
 };
 
