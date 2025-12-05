@@ -17,6 +17,28 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Clean up params: remove null, undefined, and empty string values
+    if (config.params) {
+      const cleanedParams = {};
+      Object.keys(config.params).forEach(key => {
+        const value = config.params[key];
+        // Only include param if it has a real value
+        if (value !== null && value !== undefined && value !== '') {
+          cleanedParams[key] = value;
+        }
+      });
+      config.params = cleanedParams;
+    }
+    
+    // Debug logging for flights/airlines API calls
+    if (config.url && config.url.includes('flights')) {
+      console.log('=== AXIOS REQUEST ===');
+      console.log('URL:', config.url);
+      console.log('Cleaned Params:', config.params);
+      console.log('Full URL will be:', `${config.baseURL}${config.url}?${new URLSearchParams(config.params || {}).toString()}`);
+    }
+    
     return config;
   },
   (error) => {

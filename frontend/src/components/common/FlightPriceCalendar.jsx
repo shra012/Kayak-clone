@@ -42,6 +42,17 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
           startDate,
           endDate,
         });
+        
+        // Backend returns array format: [{date, price}, ...]
+        // Convert to object format: {date: price, ...}
+        if (Array.isArray(data)) {
+          const pricesMap = {};
+          data.forEach(item => {
+            pricesMap[item.date] = Math.round(item.price);
+          });
+          return { prices: pricesMap };
+        }
+        
         return data || { prices: {} };
       } catch (error) {
         console.error('Failed to load flight prices:', error);
@@ -52,6 +63,27 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
   });
 
   const prices = priceData?.prices || {};
+
+  // Calculate price range for color coding
+  const getPriceColorClass = (price) => {
+    if (!price || Object.keys(prices).length === 0) return '';
+    
+    const priceValues = Object.values(prices).filter(p => p !== undefined && p !== null);
+    if (priceValues.length === 0) return '';
+    
+    const minPrice = Math.min(...priceValues);
+    const maxPrice = Math.max(...priceValues);
+    const priceRange = maxPrice - minPrice;
+    
+    if (priceRange === 0) return 'text-success'; // All same price
+    
+    const normalizedPrice = (price - minPrice) / priceRange;
+    
+    // Color scale: green (low) -> yellow (medium) -> red (high)
+    if (normalizedPrice <= 0.33) return 'text-success'; // Low prices - green
+    if (normalizedPrice <= 0.66) return 'text-warning'; // Medium prices - orange
+    return 'text-error'; // High prices - red
+  };
 
   const getDaysInMonth = (date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -131,7 +163,7 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
         >
           <div className="text-sm font-medium">{day}</div>
           {price !== undefined && price !== null && (
-            <div className={`text-xs mt-0.5 font-semibold ${selected ? 'text-primary-content' : 'text-primary'}`}>
+            <div className={`text-xs mt-0.5 font-bold ${selected ? 'text-primary-content' : getPriceColorClass(price)}`}>
               ${price}
             </div>
           )}
@@ -190,6 +222,26 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
       {(!from || !to) && (
         <div className="mt-4 text-sm text-base-content/70 text-center">
           Select origin and destination to see prices
+        </div>
+      )}
+
+      {/* Price color legend */}
+      {from && to && Object.keys(prices).length > 0 && (
+        <div className="mt-4 pt-4 border-t border-base-300">
+          <div className="flex items-center justify-center gap-4 text-xs">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-full bg-success"></div>
+              <span className="text-base-content/70">Low</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-full bg-warning"></div>
+              <span className="text-base-content/70">Medium</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-full bg-error"></div>
+              <span className="text-base-content/70">High</span>
+            </div>
+          </div>
         </div>
       )}
     </div>

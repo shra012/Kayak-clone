@@ -456,17 +456,51 @@ const HomePage = () => {
 
   const handleSearch = () => {
     if (activeTab === 'flights') {
-      // Check for multi-city validation errors
-      if (tripType === 'multi-city' && Object.keys(multiCityErrors).length > 0) {
-        setErrors(prev => ({ ...prev, flights: 'Please fix invalid locations before searching' }));
+      // Handle multi-city flights
+      if (tripType === 'multi-city') {
+        // Check for multi-city validation errors
+        if (Object.keys(multiCityErrors).length > 0) {
+          setErrors(prev => ({ ...prev, flights: 'Please fix invalid locations before searching' }));
+          return;
+        }
+        
+        // Validate multi-city flights
+        if (!validateFlightSearch()) {
+          return;
+        }
+        
+        // Navigate with multi-city data
+        console.log('=== HomePage navigating to /flights (multi-city) ===');
+        console.log('multiCityFlights:', multiCityFlights);
+        
+        navigate('/flights', { 
+          state: { 
+            search: {
+              tripType: 'multi-city',
+              flights: multiCityFlights
+            }
+          } 
+        });
         return;
       }
       
-      // Validate before search
+      // Validate before search (for one-way/round-trip)
       if (!validateFlightSearch()) {
         return;
       }
-      navigate('/flights', { state: { search: searchData.flights } });
+      
+      // For one-way trips, don't pass returnDate so FlightsPage knows it's one-way
+      const flightSearchData = tripType === 'one-way' 
+        ? { ...searchData.flights, returnDate: null }
+        : searchData.flights;
+      
+      console.log('=== HomePage navigating to /flights ===');
+      console.log('tripType:', tripType);
+      console.log('searchData.flights:', searchData.flights);
+      console.log('flightSearchData being sent:', flightSearchData);
+      console.log('returnDate:', flightSearchData.returnDate);
+      
+      navigate('/flights', { state: { search: flightSearchData } });
     } else if (activeTab === 'hotels') {
       navigate('/hotels', { state: { search: searchData.hotels } });
     } else if (activeTab === 'cars') {
@@ -958,13 +992,31 @@ const HomePage = () => {
                         className="select select-xs select-bordered text-xs"
                       value={tripType}
                       onChange={(e) => {
-                        setTripType(e.target.value);
+                        const newTripType = e.target.value;
+                        setTripType(newTripType);
+                        
                         // Reset multi-city flights when switching away
-                        if (e.target.value !== 'multi-city') {
+                        if (newTripType !== 'multi-city') {
                           setMultiCityFlights([
                             { from: '', to: '', date: new Date().toISOString().split('T')[0] },
                             { from: '', to: '', date: new Date(Date.now() + 86400000).toISOString().split('T')[0] }
                           ]);
+                        }
+                        
+                        // When switching to one-way, clear returnDate
+                        if (newTripType === 'one-way') {
+                          setSearchData(prev => ({
+                            ...prev,
+                            flights: { ...prev.flights, returnDate: null }
+                          }));
+                        }
+                        // When switching to round-trip, ensure returnDate exists
+                        else if (newTripType === 'round-trip' && !searchData.flights.returnDate) {
+                          const defaultDates = getDefaultDates();
+                          setSearchData(prev => ({
+                            ...prev,
+                            flights: { ...prev.flights, returnDate: defaultDates.nextWeek }
+                          }));
                         }
                       }}
                     >

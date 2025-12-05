@@ -78,6 +78,8 @@ const HotelsPage = () => {
   
   const location = useLocation();
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+  const toast = useToast();
   const searchData = location.state?.search;
   
   // Initialize filters with search data from HomePage if available
@@ -251,8 +253,14 @@ const HotelsPage = () => {
   };
 
   const handleViewDeal = (hotel) => {
+    console.log('=== View Deal clicked ===');
+    console.log('Hotel:', hotel);
+    console.log('isAuthenticated:', isAuthenticated);
+    console.log('searchData:', searchData);
+    
     // Check if user is authenticated
     if (!isAuthenticated) {
+      console.log('User not authenticated, redirecting to login');
       toast.showError('Please log in to continue with booking');
       // Save booking data to sessionStorage to restore after login
       const checkIn = searchData?.checkIn || new Date().toISOString().split('T')[0];
@@ -292,6 +300,7 @@ const HotelsPage = () => {
       guests: searchData?.guests || 1,
     };
 
+    console.log('Navigating to /bookings with bookingData:', bookingData);
     navigate('/bookings', { state: { bookingData } });
   };
 
@@ -828,7 +837,7 @@ const HotelsPage = () => {
                     icon={createPriceIcon(hotel.pricePerNight.toFixed(0))}
                   >
                     <Popup>
-                      <div className="p-2">
+                      <div className="p-2" style={{ minWidth: '180px' }}>
                         <h3 className="font-bold text-sm">{hotel.name}</h3>
                         <p className="text-xs text-base-content/70">{hotel.city}</p>
                         <p className="text-sm font-semibold text-primary mt-1">
@@ -837,6 +846,12 @@ const HotelsPage = () => {
                         <div className="flex items-center gap-1 mt-1">
                           <span className="badge badge-success badge-xs text-white">{hotel.rating.toFixed(1)}</span>
                         </div>
+                        <button 
+                          className="btn btn-primary btn-xs w-full mt-2"
+                          onClick={() => handleViewDeal(hotel)}
+                        >
+                          View Deal
+                        </button>
                       </div>
                     </Popup>
                   </Marker>
