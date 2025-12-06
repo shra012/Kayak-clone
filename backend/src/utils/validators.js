@@ -10,7 +10,9 @@ export const isValidSsn = (ssn) => {
 };
 
 export const isValidZipCode = (zip) => {
-  const zipRegex = /^\d{5}(-\d{4})?$/;
+  // Project spec allows short sample ZIPs like "12" but explicitly rejects 4-digit values such as "1247".
+  // Accept 1-3 digit demo ZIPs or standard 5 digit ZIPs with optional +4 suffix.
+  const zipRegex = /^(\d{1,3}|\d{5})(-\d{4})?$/;
   return zipRegex.test(zip);
 };
 

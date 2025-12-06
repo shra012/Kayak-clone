@@ -1,6 +1,6 @@
 # Kayak Simulation Platform
 
-Travel booking platform with Express.js backend, React frontend, and AI-agent service.
+Travel booking platform with Express.js backend, React frontend, and AI-agent service, organized as a Kafka-backed microservice pub/sub architecture (domain modules communicate via Kafka events and Socket.IO fan-out).
 
 ## Quick Start
 
@@ -141,4 +141,5 @@ Test users are auto-created via `globalSetup` in `playwright.config.js`
 - [Database Setup](./backend/docs/DATABASE_SETUP.md) - Cloud database configuration
 - [Firebase Setup](./docs/FIREBASE_SETUP.md) - Image storage setup
 - [Kafka Setup](./backend/kafka/README.md) - Event streaming
+- [Sample Deals Feed](./docs/SAMPLE_DEALS_FEED.md) - Hourly rotating flight/hotel/car deals for the concierge AI
 - [API Docs](./api-docs/README.md) - OpenAPI specification

@@ -7,12 +7,14 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depe
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Set
-from datetime import datetime
+from datetime import datetime, timedelta
 import uvicorn
 import os
 import json
 import asyncio
 from contextlib import asynccontextmanager
+import random
+from collections import defaultdict
 
 # Health check imports
 import psutil
@@ -25,9 +27,10 @@ from bundle_builder import BundleBuilder
 from intent_parser import IntentParser
 from mock_data import generate_mock_deals
 from mcp_client import MCPClient
+from deal_ingestor import DealIngestor
 
 # SQLModel setup
-from sqlmodel import SQLModel, create_engine, Session, select
+from sqlmodel import SQLModel, create_engine, Session, select, delete
 
 # Database setup - Use Supabase PostgreSQL
 DATABASE_URL = os.getenv("DATABASE_URL", os.getenv("SUPABASE_DATABASE_URL", "sqlite:///./data/concierge.db"))
@@ -97,6 +100,15 @@ manager = ConnectionManager()
 
 # Initialize MCP client for query generation
 mcp_client = MCPClient()
+
+# Deals feed ingestion
+deal_ingestor = DealIngestor()
+DEAL_REFRESH_SECONDS = int(os.getenv("DEAL_REFRESH_SECONDS", "3600"))
+DEAL_LIMITS = {
+    DealType.FLIGHT: int(os.getenv("DEALS_PER_FLIGHT", "6")),
+    DealType.HOTEL: int(os.getenv("DEALS_PER_HOTEL", "6")),
+    DealType.CAR: int(os.getenv("DEALS_PER_CAR", "6")),
+}
 
 # In-memory deal cache (in production, use Redis)
 deal_cache: Dict[str, Deal] = {}
@@ -193,21 +205,22 @@ start_time = time.time()
 async def lifespan(app: FastAPI):
     print("Concierge AI Service starting up...")
     print("Initializing deal cache...")
-    with Session(engine) as session:
-        deals = session.exec(select(Deal).where(Deal.status == DealStatus.ACTIVE)).all()
-        if not deals:
-            print("Generating mock deals...")
-            mock_deals = generate_mock_deals()
-            for deal in mock_deals:
-                session.add(deal)
-                deal_cache[deal.deal_id] = deal
-            session.commit()
-        else:
-            for deal in deals:
-                deal_cache[deal.deal_id] = deal
+    refreshed = refresh_deals_from_feed(reason="startup")
+    if not refreshed:
+        with Session(engine) as session:
+            deals = session.exec(select(Deal).where(Deal.status == DealStatus.ACTIVE)).all()
+            if not deals:
+                print("Generating mock deals...")
+                mock_deals = generate_mock_deals()
+                for deal in mock_deals:
+                    session.add(deal)
+                session.commit()
+                deals = session.exec(select(Deal)).all()
+            update_deal_cache(deals)
     print(f"Loaded {len(deal_cache)} deals into cache")
     
     asyncio.create_task(watch_monitor_task())
+    asyncio.create_task(deal_feed_refresh_task())
     
     yield
     
@@ -547,6 +560,72 @@ async def readiness_check():
 async def liveness_check():
     """Liveness probe"""
     return {"status": "alive", "timestamp": datetime.now().isoformat()}
+
+def update_deal_cache(deals: List[Deal]) -> None:
+    """Replace in-memory cache with latest deals."""
+    deal_cache.clear()
+    for deal in deals:
+        deal_cache[deal.deal_id] = deal
+
+def select_rotating_deals(deals: List[Deal]) -> List[Deal]:
+    """Pick randomized subsets per deal type for the next rotation window."""
+    grouped: Dict[DealType, List[Deal]] = defaultdict(list)
+    for deal in deals:
+        grouped[deal.deal_type].append(deal)
+    
+    selected: List[Deal] = []
+    for deal_type, limit in DEAL_LIMITS.items():
+        pool = grouped.get(deal_type, [])
+        if not pool:
+            continue
+        random.shuffle(pool)
+        if limit <= 0 or limit >= len(pool):
+            selected.extend(pool)
+        else:
+            selected.extend(pool[:limit])
+    
+    return selected
+
+def refresh_deals_from_feed(reason: str = "manual") -> int:
+    """Reload deals from CSV feed, randomize, and persist to DB/cache."""
+    tagged_deals = deal_ingestor.detect_and_tag_deals()
+    if not tagged_deals:
+        return 0
+    
+    selected = select_rotating_deals(tagged_deals)
+    if not selected:
+        return 0
+    
+    now = datetime.now()
+    expiry = now + timedelta(seconds=DEAL_REFRESH_SECONDS)
+    for deal in selected:
+        deal.deal_metadata = deal.deal_metadata or {}
+        deal.deal_metadata["promo_end"] = expiry.isoformat()
+        deal.status = DealStatus.ACTIVE
+        deal.created_at = now
+        deal.updated_at = now
+    
+    with Session(engine) as db_session:
+        db_session.exec(delete(Deal))
+        for deal in selected:
+            db_session.add(deal)
+        db_session.commit()
+        persisted = db_session.exec(select(Deal)).all()
+    
+    update_deal_cache(persisted)
+    print(f"[{reason}] refreshed {len(persisted)} rotating deals from feed")
+    return len(persisted)
+
+async def deal_feed_refresh_task():
+    """Background task to rotate deals based on the CSV feed."""
+    while True:
+        await asyncio.sleep(DEAL_REFRESH_SECONDS)
+        try:
+            refreshed = refresh_deals_from_feed(reason="scheduled")
+            if not refreshed:
+                print("[scheduled] No deals loaded from feed; retaining current cache")
+        except Exception as exc:
+            print(f"Error refreshing deals from feed: {exc}")
 
 async def build_bundles_from_constraints(
     constraints: Dict[str, Any],

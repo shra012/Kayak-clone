@@ -12,6 +12,7 @@ from enum import Enum
 class DealType(str, Enum):
     FLIGHT = "flight"
     HOTEL = "hotel"
+    CAR = "car"
 
 
 class DealStatus(str, Enum):
@@ -76,4 +77,3 @@ class ChatSession(SQLModel, table=True):
     context: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
-

@@ -5,6 +5,8 @@ This document outlines the implementation plan for building a Kayak-style distri
 
 **Note**: This plan was originally written for Python/FastAPI, but the project has been implemented using **Node.js/Express** instead. The architecture and features remain the same, only the technology stack differs.
 
+**Architecture**: We operate a **Kafka-backed microservice pub/sub topology** where domain services communicate asynchronously through Kafka topics, while HTTP-facing modules act as gateways into those services.
+
 **Last Updated**: Based on current implementation status
 
 ## Implementation Status Summary
@@ -52,7 +54,7 @@ This document outlines the implementation plan for building a Kayak-style distri
 ## Architecture Overview
 
 ### System Components
-1. **API Gateway** - Routes requests to microservices
+1. **API Gateway** - Routes requests to microservices and publishes/consumes Kafka events
 2. **User Service** - User management and authentication
 3. **Listings Service** - Flight, hotel, and car search
 4. **Bookings Service** - Booking creation and management
@@ -60,7 +62,7 @@ This document outlines the implementation plan for building a Kayak-style distri
 6. **Admin Service** - Inventory and user management
 7. **Concierge Service** - AI-powered recommendations and watches
 8. **Analytics Service** - User behavior tracking and insights
-9. **Kafka Event Bus** - Asynchronous event processing
+9. **Kafka Event Bus** - Pub/sub backbone for cross-service workflows
 10. **WebSocket Service** - Real-time notifications
 
 ### Technology Stack (Implemented)
