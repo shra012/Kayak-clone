@@ -18,9 +18,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copy application code (this layer will be rebuilt only when code changes)
 COPY *.py ./
 
-# Create directory for SQLite database
-RUN mkdir -p /app/data
-
 # Expose port
 EXPOSE 8000
 
@@ -30,4 +27,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 
 # Run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-

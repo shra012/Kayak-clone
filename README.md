@@ -39,9 +39,16 @@ VITE_FIREBASE_STORAGE_BUCKET=...
 **AI-Agent** (`ai-agent/.env`):
 ```env
 PORT=8000
-DATABASE_URL=sqlite:///./data/concierge.db
+DATABASE_URL=postgresql://<supabase-user>:<password>@<host>:6543/postgres
+REDIS_URL=redis://:<password>@<host>:6379/0
 OPENAI_API_KEY=...
+SUPABASE_MCP_URL=https://mcp.supabase.com/mcp?project_ref=...
+SUPABASE_ACCESS_TOKEN=sbp_...
+TAVILY_ENABLED=true
+TAVILY_API_KEY=tvly-...
+WEATHER_API_KEY=<openweathermap_or_weatherapi_key>
 ```
+If your frontend passes authenticated user info, you can drop the `user_id` entirely. When no user context is provided, the concierge now prompts “Please log in to see your account data” before running Supabase queries.
 
 ### 2. Start with Docker
 
@@ -108,7 +115,7 @@ uvicorn main:app --reload  # http://localhost:8000
 
 **Backend:** Node.js 20, Express.js, PostgreSQL (Supabase), MongoDB Atlas, Redis Cloud, Kafka (Aiven), Firebase Storage  
 **Frontend:** React 18, Vite, Redux Toolkit, Tailwind CSS + DaisyUI  
-**AI-Agent:** Python 3.12, FastAPI, SQLite/Supabase
+**AI-Agent:** Python 3.12, FastAPI, Supabase Postgres, Redis Cache
 
 ## Features
 
@@ -116,7 +123,7 @@ uvicorn main:app --reload  # http://localhost:8000
 - Flight, hotel, car search and booking
 - Payment processing
 - Admin inventory management
-- AI concierge service
+- AI concierge service (Supabase MCP + LangChain/LangGraph tools for reviews/bookings/deals/payments, Tavily web search, Weather lookup)
 - Kafka event streaming
 - Redis caching (optional, disabled by default)
 - Firebase image storage

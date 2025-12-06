@@ -3,6 +3,9 @@ Concierge AI & Health Monitoring Service
 Multi-agent travel concierge with deal detection, bundle building, and WebSocket updates
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -16,6 +19,9 @@ from contextlib import asynccontextmanager
 import random
 from collections import defaultdict
 
+from redis import Redis
+from copy import deepcopy
+
 # Health check imports
 import psutil
 import time
@@ -26,25 +32,23 @@ from deal_processor import DealProcessor
 from bundle_builder import BundleBuilder
 from intent_parser import IntentParser
 from mock_data import generate_mock_deals
-from mcp_client import MCPClient
+from langchain_agent import (
+    SupabaseLangGraph,
+    is_supabase_question,
+    is_weather_question,
+    is_mongo_question,
+)
 from deal_ingestor import DealIngestor
 
 # SQLModel setup
 from sqlmodel import SQLModel, create_engine, Session, select, delete
 
-# Database setup - Use Supabase PostgreSQL
-DATABASE_URL = os.getenv("DATABASE_URL", os.getenv("SUPABASE_DATABASE_URL", "sqlite:///./data/concierge.db"))
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+# Database setup - Supabase/PostgreSQL only
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL")
+if not DATABASE_URL or "postgres" not in DATABASE_URL.lower():
+    raise RuntimeError("DATABASE_URL must be set to a Supabase/PostgreSQL connection string")
 
-# Use PostgreSQL if Supabase URL is provided, otherwise fallback to SQLite
-if SUPABASE_URL and "postgresql" in DATABASE_URL.lower():
-    # PostgreSQL/Supabase connection
-    engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
-else:
-    # SQLite fallback for local dev
-    os.makedirs("./data", exist_ok=True)
-    engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
 
 # Create tables
 SQLModel.metadata.create_all(engine)
@@ -98,8 +102,8 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# Initialize MCP client for query generation
-mcp_client = MCPClient()
+# Initialize LangGraph agent for Supabase/Tavily/Weather routing
+supabase_langgraph_agent = SupabaseLangGraph()
 
 # Deals feed ingestion
 deal_ingestor = DealIngestor()
@@ -112,6 +116,132 @@ DEAL_LIMITS = {
 
 # In-memory deal cache (in production, use Redis)
 deal_cache: Dict[str, Deal] = {}
+
+REDIS_URL = os.getenv("AI_AGENT_REDIS_URL") or os.getenv("REDIS_URL")
+DEAL_CACHE_KEY = os.getenv("DEAL_CACHE_KEY", "concierge:deals")
+redis_client: Optional[Redis] = None
+
+if REDIS_URL:
+    try:
+        redis_client = Redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
+        redis_client.ping()
+        print("Connected to Redis cache for AI agent")
+    except Exception as exc:
+        print(f"Redis connection failed: {exc}")
+        redis_client = None
+
+DB_QUERY_KEYWORDS = [
+    "how many",
+    "count",
+    "list",
+    "show me",
+    "find all",
+    "what are",
+    "which",
+    "when did",
+    "who booked",
+    "total",
+    "average",
+    "price",
+]
+
+SEARCH_KEYWORDS = [
+    "news",
+    "trending",
+    "what's happening",
+    "latest update",
+    "ideas",
+    "where should",
+    "suggest",
+    "things to do",
+    "top places",
+]
+
+
+def looks_like_db_question(message: str) -> bool:
+    lower = message.lower()
+    return any(keyword in lower for keyword in DB_QUERY_KEYWORDS)
+
+
+def is_search_question(message: str) -> bool:
+    lower = message.lower()
+    return any(keyword in lower for keyword in SEARCH_KEYWORDS)
+
+
+def context_ready_for_mongo(context: Optional[Dict[str, Any]]) -> bool:
+    if not context:
+        return False
+    destination = context.get("destination") or context.get("city") or context.get("to")
+    has_dates = bool(context.get("check_in") and context.get("check_out"))
+    has_budget = bool(context.get("budget"))
+    return bool(destination and has_dates and has_budget)
+
+
+def should_use_langgraph(message: str, context: Optional[Dict[str, Any]] = None) -> bool:
+    return (
+        is_supabase_question(message)
+        or looks_like_db_question(message)
+        or is_weather_question(message)
+        or is_search_question(message)
+        or is_mongo_question(message)
+        or context_ready_for_mongo(context)
+    )
+
+
+def format_supabase_response(response: Dict[str, Any]) -> str:
+    """Return conversational answer for Supabase results, preferring LLM summaries."""
+    rows = response.get("result")
+    if rows is None:
+        rows = response.get("rows") or response.get("data")
+
+    if rows is None:
+        result_text = "No rows were returned."
+    else:
+        try:
+            result_text = json.dumps(rows, indent=2)
+        except Exception:
+            result_text = str(rows)
+
+    llm_answer = response.get("llm_answer")
+    explanation = response.get("explanation") or "Here are the latest results I found."
+    leading_text = llm_answer or explanation
+
+    detail_sections = []
+    if llm_answer:
+        detail_sections.append("Raw data:\n" + result_text)
+    else:
+        detail_sections.append(result_text)
+
+    query = response.get("query")
+    if query:
+        detail_sections.append(f"SQL: {query}")
+
+    warnings = response.get("warnings")
+    if warnings:
+        detail_sections.append("Warnings: " + "; ".join(warnings))
+
+    detail_block = "\n\n".join(section for section in detail_sections if section)
+    return f"{leading_text}\n\n{detail_block}" if detail_block else leading_text
+
+
+def format_generic_agent_response(response: Dict[str, Any]) -> str:
+    """Return readable answer for weather/search tool calls."""
+    explanation = response.get("explanation") or response.get("llm_answer") or "Here is what I found."
+    result = response.get("result") or response.get("rows") or response.get("raw")
+
+    if result is None:
+        return explanation
+
+    if isinstance(result, (dict, list)):
+        try:
+            result_text = json.dumps(result, indent=2)
+        except Exception:
+            result_text = str(result)
+    else:
+        result_text = str(result)
+
+    return f"{explanation}\n\n{result_text}"
+
 
 # Request/Response Models (Pydantic v2)
 class ChatMessage(BaseModel):
@@ -205,18 +335,22 @@ start_time = time.time()
 async def lifespan(app: FastAPI):
     print("Concierge AI Service starting up...")
     print("Initializing deal cache...")
-    refreshed = refresh_deals_from_feed(reason="startup")
-    if not refreshed:
-        with Session(engine) as session:
-            deals = session.exec(select(Deal).where(Deal.status == DealStatus.ACTIVE)).all()
-            if not deals:
-                print("Generating mock deals...")
-                mock_deals = generate_mock_deals()
-                for deal in mock_deals:
-                    session.add(deal)
-                session.commit()
-                deals = session.exec(select(Deal)).all()
-            update_deal_cache(deals)
+    cached_deals = load_deals_from_redis()
+    if cached_deals:
+        update_deal_cache(cached_deals)
+    else:
+        refreshed = refresh_deals_from_feed(reason="startup")
+        if not refreshed:
+            with Session(engine) as session:
+                deals = session.exec(select(Deal).where(Deal.status == DealStatus.ACTIVE)).all()
+                if not deals:
+                    print("Generating mock deals...")
+                    mock_deals = generate_mock_deals()
+                    for deal in mock_deals:
+                        session.add(deal)
+                    session.commit()
+                    deals = session.exec(select(Deal)).all()
+                update_deal_cache(deals)
     print(f"Loaded {len(deal_cache)} deals into cache")
     
     asyncio.create_task(watch_monitor_task())
@@ -253,35 +387,41 @@ async def create_chat_session(request: ChatSessionRequest):
     """
     Create a new AI chat session for a user
     """
-    session_id = f"session_{request.user_id}_{int(time.time())}"
+    user_identifier = request.user_id
+    session_id = f"session_{user_identifier or 'anonymous'}_{int(time.time())}"
     
     messages = []
-    context = {}
+    context: Dict[str, Any] = {}
+    if user_identifier:
+        context["user_id"] = user_identifier
+        if "@" in user_identifier:
+            context.setdefault("user_email", user_identifier)
     
     if request.initial_message:
         messages.append(ChatMessage(role="user", content=request.initial_message))
         # Parse intent
         constraints = IntentParser.parse_travel_request(request.initial_message)
         context.update(constraints)
-        
-        # Check if we need clarification
-        clarification = IntentParser.needs_clarification(constraints)
-        if clarification:
-            ai_response = clarification
+
+        if should_use_langgraph(request.initial_message, context):
+            ai_response = await generate_ai_response(request.initial_message, context)
         else:
-            # Generate bundles
-            bundles = await build_bundles_from_constraints(constraints)
-            if bundles:
-                ai_response = format_bundle_recommendation(bundles)
+            clarification = IntentParser.needs_clarification(constraints)
+            if clarification:
+                ai_response = clarification
             else:
-                ai_response = await generate_ai_response(request.initial_message, constraints)
-        
+                bundles = await build_bundles_from_constraints(constraints)
+                if bundles:
+                    ai_response = format_bundle_recommendation(bundles)
+                else:
+                    ai_response = await generate_ai_response(request.initial_message, constraints)
+
         messages.append(ChatMessage(role="assistant", content=ai_response))
     
     # Save session to database
     session = ChatSession(
         session_id=session_id,
-        user_id=request.user_id,
+        user_id=user_identifier or "anonymous",
         context=context
     )
     with Session(engine) as db_session:
@@ -311,7 +451,11 @@ async def send_message(session_id: str, request: ChatMessageRequest):
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        context = session.context.copy()
+        context = session.context.copy() if session.context else {}
+        if session.user_id:
+            context.setdefault("user_id", session.user_id)
+            if "@" in session.user_id:
+                context.setdefault("user_email", session.user_id)
         
         # Parse new constraints (refinement)
         new_constraints = IntentParser.parse_travel_request(request.message, context)
@@ -324,17 +468,19 @@ async def send_message(session_id: str, request: ChatMessageRequest):
         db_session.commit()
     
     # Generate response
-    clarification = IntentParser.needs_clarification(context)
-    if clarification:
-        ai_response = clarification
-        bundles = None
+    bundles = None
+    if should_use_langgraph(request.message, context):
+        ai_response = await generate_ai_response(request.message, context)
     else:
-        # Build bundles with updated constraints
-        bundles = await build_bundles_from_constraints(context)
-        if bundles:
-            ai_response = format_bundle_recommendation(bundles, is_refinement=True)
+        clarification = IntentParser.needs_clarification(context)
+        if clarification:
+            ai_response = clarification
         else:
-            ai_response = await generate_ai_response(request.message, context)
+            bundles = await build_bundles_from_constraints(context)
+            if bundles:
+                ai_response = format_bundle_recommendation(bundles, is_refinement=True)
+            else:
+                ai_response = await generate_ai_response(request.message, context)
     
     # Format bundles for response
     bundle_data = None
@@ -472,30 +618,27 @@ async def execute_database_query(request: Dict[str, Any]):
     if not user_question:
         raise HTTPException(status_code=400, detail="Question is required")
     
-    # Generate query using MCP
-    query_result = await mcp_client.generate_query(
-        user_question=user_question,
-        context=context
-    )
-    
-    if query_result.get("error"):
+    if request.get("userId"):
+        context.setdefault("user_id", request["userId"])
+        if "@" in request["userId"]:
+            context.setdefault("user_email", request["userId"])
+    if request.get("userEmail"):
+        context.setdefault("user_email", request["userEmail"])
+
+    response = await supabase_langgraph_agent.ainvoke(user_question, context)
+
+    if response.get("error"):
         raise HTTPException(
-            status_code=500, 
-            detail=f"Query generation failed: {query_result.get('error')}"
+            status_code=500,
+            detail=response.get("error"),
         )
-    
-    # Execute query (in production, this would execute via Supabase PostgREST)
-    execution_result = await mcp_client.execute_query(
-        query=query_result.get("query"),
-        parameters=query_result.get("parameters", {})
-    )
-    
+
     return {
         "question": user_question,
-        "query": query_result.get("query"),
-        "explanation": query_result.get("explanation"),
-        "result": execution_result,
-        "timestamp": datetime.now().isoformat()
+        "query": response.get("query"),
+        "explanation": response.get("explanation"),
+        "result": response.get("result"),
+        "timestamp": datetime.now().isoformat(),
     }
 
 @app.post("/api/v1/concierge/policy", response_model=PolicyAnswerResponse, tags=["Policy Q&A"])
@@ -561,11 +704,55 @@ async def liveness_check():
     """Liveness probe"""
     return {"status": "alive", "timestamp": datetime.now().isoformat()}
 
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    value = value.replace("Z", "+00:00")
+    return datetime.fromisoformat(value)
+
+def serialize_deal_for_cache(deal: Deal) -> Dict[str, Any]:
+    data = deal.model_dump()
+    for field in ("created_at", "updated_at"):
+        if isinstance(data.get(field), datetime):
+            data[field] = data[field].isoformat()
+    return data
+
+def deserialize_deal_from_cache(payload: Dict[str, Any]) -> Deal:
+    for field in ("created_at", "updated_at"):
+        if payload.get(field):
+            payload[field] = _parse_datetime(payload[field])
+    return Deal(**payload)
+
+def cache_deals_in_redis(deals: List[Deal]) -> None:
+    if not redis_client:
+        return
+    try:
+        serialized = [serialize_deal_for_cache(deal) for deal in deals]
+        redis_client.setex(DEAL_CACHE_KEY, DEAL_REFRESH_SECONDS + 60, json.dumps(serialized))
+    except Exception as exc:
+        print(f"Failed to cache deals in Redis: {exc}")
+
+def load_deals_from_redis() -> Optional[List[Deal]]:
+    if not redis_client:
+        return None
+    try:
+        cached = redis_client.get(DEAL_CACHE_KEY)
+        if not cached:
+            return None
+        raw = json.loads(cached)
+        return [deserialize_deal_from_cache(item) for item in raw]
+    except Exception as exc:
+        print(f"Failed to load deals from Redis: {exc}")
+        return None
+
 def update_deal_cache(deals: List[Deal]) -> None:
-    """Replace in-memory cache with latest deals."""
+    """Replace in-memory cache with latest deals and push to Redis."""
     deal_cache.clear()
     for deal in deals:
         deal_cache[deal.deal_id] = deal
+    cache_deals_in_redis(deals)
 
 def select_rotating_deals(deals: List[Deal]) -> List[Deal]:
     """Pick randomized subsets per deal type for the next rotation window."""
@@ -737,36 +924,36 @@ def extract_policy_answer(deal: Deal, question_type: str) -> str:
     return "Policy information not available."
 
 async def generate_ai_response(user_message: str, context: Dict[str, Any]) -> str:
-    """Generate AI response using MCP for database queries or fallback to simple responses"""
+    """Generate AI response using the LangGraph agent or fallback prompts."""
     message_lower = user_message.lower()
-    
-    # Check if user is asking a database query question
-    db_query_keywords = [
-        "how many", "count", "list", "show me", "find all", "what are",
-        "which", "when did", "who booked", "total", "average", "price"
-    ]
-    
-    is_db_query = any(keyword in message_lower for keyword in db_query_keywords)
-    
-    if is_db_query:
-        # Use MCP to generate and execute query
+
+    is_db_query = looks_like_db_question(user_message)
+    needs_supabase = is_supabase_question(user_message) or is_db_query
+    needs_weather = is_weather_question(user_message)
+    needs_search = is_search_question(user_message)
+    needs_mongo = is_mongo_question(user_message) or context_ready_for_mongo(context)
+    needs_langgraph = needs_supabase or needs_weather or needs_search or needs_mongo
+
+    if needs_langgraph:
+        if needs_supabase and not context.get("user_id"):
+            return "Please log in to view personal bookings, payments, reviews, or deals."
         try:
-            query_result = await mcp_client.generate_query(
-                user_question=user_message,
-                context=context
+            agent_response = await supabase_langgraph_agent.ainvoke(
+                user_message,
+                context or {},
             )
-            
-            if query_result.get("query"):
-                # Format response with query explanation
-                explanation = query_result.get("explanation", "Query generated")
-                return f"I'll help you with that! {explanation}. Let me check the database for you."
-            else:
-                # Fallback if query generation fails
-                error = query_result.get("error", "Unable to generate query")
-                return f"I understand your question, but I'm having trouble generating a database query right now. {error}"
-        except Exception as e:
-            return f"I encountered an error while processing your database query: {str(e)}"
-    
+            if not agent_response:
+                return "I'm having trouble fetching that information right now."
+            if agent_response.get("error"):
+                return agent_response.get("error") or "I'm having trouble fetching that information right now."
+
+            source = agent_response.get("source")
+            if source == "supabase":
+                return format_supabase_response(agent_response)
+            return format_generic_agent_response(agent_response)
+        except Exception as exc:
+            return f"I ran into an error while answering that: {exc}"
+
     # Simple conversational responses for non-database queries
     if any(word in message_lower for word in ["flight", "fly"]):
         return "I can help you find flights! What's your destination and travel dates?"

@@ -89,13 +89,9 @@ services:
       - ./ai-agent/.env
     environment:
       PORT: 8000
-      DATABASE_URL: ${DATABASE_URL:-${SUPABASE_DATABASE_URL:-sqlite:///./data/concierge.db}}
-      SUPABASE_URL: ${SUPABASE_URL:-}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
-      SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL:-${DATABASE_URL:-}}
+      DATABASE_URL: ${SUPABASE_DATABASE_URL:-${DATABASE_URL:-}}
+      REDIS_URL: ${REDIS_URL:-${AI_AGENT_REDIS_URL:-}}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    volumes:
-      - ./ai-agent/data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
