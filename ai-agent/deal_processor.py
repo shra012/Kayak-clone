@@ -128,6 +128,19 @@ class DealProcessor:
             if metadata.get("duration_hours", 0) < 6:
                 tags.append("Short flight")
         
+        # Car rental tags
+        elif deal.deal_type == DealType.CAR:
+            car_type = metadata.get("car_type")
+            if car_type:
+                tags.append(car_type.title())
+            if metadata.get("fuel") == "electric":
+                tags.append("EV")
+            if metadata.get("transmission") == "automatic":
+                tags.append("Automatic")
+            if metadata.get("refundable"):
+                tags.append("Refundable")
+            if metadata.get("limited_mileage"):
+                tags.append("Limited mileage")
+
         deal.tags = tags
         return deal
-

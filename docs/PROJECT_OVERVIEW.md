@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This is a **Kayak-style distributed travel booking platform** built with **Node.js/Express backend** and **React frontend**. The project uses **cloud services exclusively** (no local dependencies) and is fully containerized with Docker. The architecture follows a microservices pattern with event-driven communication via Kafka.
+This is a **Kayak-style distributed travel booking platform** built with **Node.js/Express backend** and **React frontend**. The project uses **cloud services exclusively** (no local dependencies) and is fully containerized with Docker. The backend follows a **microservice, Kafka-backed pub/sub architecture**, where domain modules own their bounded contexts while communicating through Kafka producers/consumers and Socket.IO for real-time fan-out.
 
 ---
 
@@ -570,4 +570,3 @@ All routes prefixed with `/api/v1`:
 **Last Updated**: Based on current codebase inspection
 **Status**: Active Development
 **Version**: 1.0.0
-
