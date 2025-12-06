@@ -5,7 +5,7 @@ The concierge AI service reads rotating “happy-hour” style deals from `ai-ag
 1. Loads the CSV.
 2. Detects rows that qualify as deals based on price drop/availability/promo rules.
 3. Randomly selects a limited number of deals per type (defaults: 6 flights, 6 stays, 6 cars).
-4. Stamps a new `promo_end` one hour in the future, persists the rows in Supabase/SQLite, and refreshes the in-memory cache + WebSocket watchers.
+4. Stamps a new `promo_end` one hour in the future, persists the rows in Supabase Postgres, and refreshes the Redis/in-memory cache + WebSocket watchers.
 
 ## CSV Columns
 
