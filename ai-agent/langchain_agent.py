@@ -15,6 +15,7 @@ from tavily import TavilyClient
 from mcp_client import MCPClient, MCPClientError
 from sql_generator import SQLGenerator, SQLGeneratorError
 from mongo_query_generator import MongoQueryGenerator, MongoQueryGeneratorError
+from mongo_service import MongoService
 
 
 SUPABASE_KEYWORDS = {
@@ -102,19 +103,11 @@ class SupabaseLangGraph:
         if self.tavily_enabled and tavily_key:
             self.tavily_client = TavilyClient(api_key=tavily_key)
 
-        mongo_url = os.getenv("MONGO_MCP_URL")
-        mongo_token = os.getenv("MONGO_MCP_ACCESS_TOKEN")
-        mongo_timeout = float(os.getenv("MONGO_MCP_TIMEOUT", "30"))
-        self.mongo_tool_name = os.getenv("MONGO_MCP_TOOL", "execute_mongo_query")
-        self.mongo_client: Optional[MCPClient] = None
-        if mongo_url and mongo_token:
-            self.mongo_client = MCPClient(
-                base_url=mongo_url,
-                access_token=mongo_token,
-                timeout=mongo_timeout,
-                client_name=os.getenv("MONGO_MCP_CLIENT_NAME", "kayak-concierge"),
-                client_version=os.getenv("MONGO_MCP_CLIENT_VERSION", "2.0.0"),
-            )
+        # Direct MongoDB connection using motor
+        self.mongo_service: Optional[MongoService] = None
+        mongo_uri = os.getenv("MONGODB_URI")
+        if mongo_uri:
+            self.mongo_service = MongoService()
         self.mongo_generator = MongoQueryGenerator()
 
         self.llm: Optional[ChatOpenAI] = None
@@ -219,10 +212,10 @@ class SupabaseLangGraph:
         question = state["question"]
         context = state.get("context") or {}
 
-        if not self.mongo_client:
+        if not self.mongo_service:
             responses.append(
                 {
-                    "error": "MongoDB MCP server is not configured. Set MONGO_MCP_URL and MONGO_MCP_ACCESS_TOKEN.",
+                    "error": "MongoDB is not configured. Set MONGODB_URI in environment.",
                     "source": "mongo",
                 }
             )
@@ -234,28 +227,21 @@ class SupabaseLangGraph:
             responses.append({"error": str(exc), "source": "mongo"})
             return {"responses": responses}
 
-        payload = {
-            "collection": spec.get("collection"),
-            "filters": spec.get("filters"),
-            "filter": spec.get("filters"),
-            "query": spec.get("filters"),
-            "projection": spec.get("projection"),
-            "sort": spec.get("sort"),
-            "limit": spec.get("limit"),
-        }
-        payload = {k: v for k, v in payload.items() if v not in (None, [], {})}
-
         try:
-            text = await self.mongo_client.call_tool(self.mongo_tool_name, payload)
-            rows = MCPClient._extract_rows(text)
-        except MCPClientError as exc:
-            responses.append({"error": str(exc), "source": "mongo"})
+            rows = await self.mongo_service.query(
+                collection=spec.get("collection"),
+                filters=spec.get("filters"),
+                projection=spec.get("projection"),
+                sort=spec.get("sort"),
+                limit=spec.get("limit", 20),
+            )
+        except Exception as exc:
+            responses.append({"error": f"MongoDB query failed: {exc}", "source": "mongo"})
             return {"responses": responses}
 
         response = {
             "query": spec,
             "result": rows,
-            "raw": text,
             "explanation": f"Fetched {len(rows)} {spec.get('collection')} record(s).",
             "source": "mongo",
         }

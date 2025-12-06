@@ -106,6 +106,17 @@ class MongoQueryGenerator:
         text = raw.strip()
         if text == "__UNSUPPORTED__":
             raise MongoQueryGeneratorError("This question cannot be answered with MongoDB listings.")
+        
+        # Remove markdown code blocks if present
+        if text.startswith("```"):
+            lines = text.split("\n")
+            # Remove first line (```json or ```)
+            lines = lines[1:]
+            # Remove last line (```)
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+        
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
