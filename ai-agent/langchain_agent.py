@@ -262,13 +262,13 @@ class SupabaseLangGraph:
             )
             
             # DEBUG: Log query results
-            print(f"✅ MongoDB Query Result: {len(rows)} documents found")
+            print(f"MongoDB Query Result: {len(rows)} documents found")
             if len(rows) == 0:
-                print(f"   ⚠️  Zero results for collection: {spec.get('collection')}")
-                print(f"   ⚠️  Filters used: {spec.get('filters')}")
+                print(f"   Zero results for collection: {spec.get('collection')}")
+                print(f"   Filters used: {spec.get('filters')}")
                 
         except Exception as exc:
-            print(f"❌ MongoDB query failed: {exc}")
+            print(f"MongoDB query failed: {exc}")
             responses.append({"error": f"MongoDB query failed: {exc}", "source": "mongo"})
             return {"responses": responses}
 

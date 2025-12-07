@@ -11,6 +11,7 @@ const AgentInlineChat = ({
   initialPrompt,
   promptSuggestions = [],
   contextSummary = null,
+  onAssistantResponse,
 }) => {
   const { isAuthenticated, user } = useAuth();
   const [sessionId, setSessionId] = useState(null);
@@ -35,7 +36,7 @@ const AgentInlineChat = ({
     }
   }, [messages, loading]);
 
-  const persistState = (nextMessages, nextSessionId = sessionId) => {
+  const persistState = (nextMessages, nextSessionId = sessionId, promptId = lastPromptIdRef.current) => {
     if (!nextSessionId) return;
     try {
       sessionStorage.setItem(
@@ -43,6 +44,7 @@ const AgentInlineChat = ({
         JSON.stringify({
           sessionId: nextSessionId,
           messages: nextMessages,
+          lastPromptId: promptId,
         })
       );
     } catch (err) {
@@ -60,6 +62,9 @@ const AgentInlineChat = ({
           if (parsed.sessionId) {
             setSessionId(parsed.sessionId);
             setMessages(parsed.messages || []);
+            if (parsed.lastPromptId) {
+              lastPromptIdRef.current = parsed.lastPromptId;
+            }
             setRestoredFromCache(true);
             return;
           }
@@ -107,8 +112,6 @@ const AgentInlineChat = ({
   // Fire initial prompt when provided
   useEffect(() => {
     if (!initialPrompt?.text) return;
-    // If we already have messages (restored or ongoing), do not auto-send another initial prompt
-    if (messages.length > 0 || restoredFromCache) return;
     // Queue until session is ready
     if (!sessionId) {
       pendingPromptRef.current = initialPrompt;
@@ -116,7 +119,7 @@ const AgentInlineChat = ({
     }
 
     if (initialPrompt.id && initialPrompt.id === lastPromptIdRef.current) return;
-    lastPromptIdRef.current = initialPrompt.id;
+    lastPromptIdRef.current = initialPrompt.id || Date.now();
     sendMessage(initialPrompt.text, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPrompt, sessionId]);
@@ -126,7 +129,7 @@ const AgentInlineChat = ({
     if (sessionId && pendingPromptRef.current?.text) {
       const queued = pendingPromptRef.current;
       pendingPromptRef.current = null;
-      lastPromptIdRef.current = queued.id;
+      lastPromptIdRef.current = queued.id || Date.now();
       sendMessage(queued.text, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,6 +175,20 @@ const AgentInlineChat = ({
 
     try {
       const response = await aiAgentApi.sendMessage(sessionId, content.trim());
+
+      // Allow parent components to intercept/override assistant handling
+      if (onAssistantResponse) {
+        const handled = onAssistantResponse(response, content.trim());
+        if (handled) {
+          if (typeof handled === 'string') {
+            appendAssistant({ response: handled });
+          } else if (handled.message) {
+            appendAssistant({ response: handled.message });
+          }
+          return;
+        }
+      }
+
       appendAssistant(response);
     } catch (err) {
       console.error('Agent send error', err);
