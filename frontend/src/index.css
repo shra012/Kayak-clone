@@ -217,58 +217,13 @@
   }
 }
 
-/* Custom Scrollbar Styles - Force Always Visible */
-.overflow-y-auto::-webkit-scrollbar,
-.overflow-y-scroll::-webkit-scrollbar {
-  width: 8px !important;
-  display: block !important;
-}
-
-.overflow-y-auto::-webkit-scrollbar-track,
-.overflow-y-scroll::-webkit-scrollbar-track {
-  background: #f1f1f1 !important;
-  border-radius: 4px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-thumb,
-.overflow-y-scroll::-webkit-scrollbar-thumb {
-  background: #888 !important;
-  border-radius: 4px;
-  min-height: 40px !important;
-}
-
-.overflow-y-auto::-webkit-scrollbar-thumb:hover,
-.overflow-y-scroll::-webkit-scrollbar-thumb:hover {
-  background: #555 !important;
-}
-
-/* Force scrollbar to always show on desktop for chat area */
-@media (min-width: 1024px) {
-  .lg\:flex {
-    display: flex !important;
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
   }
-  .lg\:block {
-    display: block !important;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
-}
-
-/* Force scrollbar to always be visible globally */
-::-webkit-scrollbar {
-  -webkit-appearance: none !important;
-}
-
-::-webkit-scrollbar:vertical {
-  width: 8px !important;
-}
-
-::-webkit-scrollbar:horizontal {
-  height: 8px !important;
-}
-
-/* Ensure overflow-y-scroll always shows scrollbar */
-.overflow-y-scroll {
-  overflow-y: scroll !important;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin !important;
-  scrollbar-color: #888 #f1f1f1 !important;
 }
