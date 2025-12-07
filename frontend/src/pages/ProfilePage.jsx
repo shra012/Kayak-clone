@@ -10,6 +10,7 @@ import { uploadProfileImage } from '../services/image.service';
 import { useToast } from '../hooks/useToast';
 import { FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaImage, FaSave, FaSpinner } from 'react-icons/fa';
 import { US_STATES, getStateCode } from '../constants/usStates';
+import { formatPhoneForDisplay, formatUsPhoneInput, getE164UsPhone, isValidUsPhone } from '../utils/phone';
 
 const US_CITIES = [
   'New York City', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
@@ -47,6 +48,7 @@ const ProfilePage = () => {
   const [ssnValue, setSsnValue] = useState('');
   const [ssnError, setSsnError] = useState('');
   const [ssnSuccess, setSsnSuccess] = useState('');
+  const [phoneError, setPhoneError] = useState('');
 
   useEffect(() => {
     if (!currentUser?.id) {
@@ -71,7 +73,7 @@ const ProfilePage = () => {
         firstName: data.firstName || data.first_name || '',
         lastName: data.lastName || data.last_name || '',
         email: data.email || '',
-        phoneNumber: data.phoneNumber || data.phone_number || '',
+        phoneNumber: formatPhoneForDisplay(data.phoneNumber || data.phone_number || ''),
         address: {
           line1: data.address?.line1 || data.address_line1 || '',
           line2: data.address?.line2 || data.address_line2 || '',
@@ -141,7 +143,7 @@ const ProfilePage = () => {
           profileImageUrl: updatedProfileImageUrl,
           firstName: updatedProfile.firstName || updatedProfile.first_name || prev.firstName,
           lastName: updatedProfile.lastName || updatedProfile.last_name || prev.lastName,
-          phoneNumber: updatedProfile.phoneNumber || updatedProfile.phone_number || prev.phoneNumber,
+          phoneNumber: formatPhoneForDisplay(updatedProfile.phoneNumber || updatedProfile.phone_number || prev.phoneNumber),
           address: updatedProfile.address || prev.address,
         }));
         setProfileImagePreview(updatedProfileImageUrl);
@@ -183,6 +185,18 @@ const ProfilePage = () => {
   });
 
   const handleInputChange = (field, value) => {
+    if (field === 'phoneNumber') {
+      const formatted = value ? formatUsPhoneInput(value) : '';
+      setFormData((prev) => ({
+        ...prev,
+        phoneNumber: formatted,
+      }));
+      if (phoneError) {
+        setPhoneError('');
+      }
+      return;
+    }
+
     if (field.includes('.')) {
       const [parent, child] = field.split('.');
       setFormData(prev => ({
@@ -228,7 +242,15 @@ const ProfilePage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    updateProfileMutation.mutate(formData);
+    if (!formData.phoneNumber.trim() || !isValidUsPhone(formData.phoneNumber)) {
+      setPhoneError('Enter a valid US phone number (+1 123 456 7890)');
+      return;
+    }
+    const payload = {
+      ...formData,
+      phoneNumber: getE164UsPhone(formData.phoneNumber) || formData.phoneNumber,
+    };
+    updateProfileMutation.mutate(payload);
   };
 
   const deleteProfileMutation = useMutation({
@@ -392,11 +414,17 @@ const ProfilePage = () => {
                 </label>
                 <input
                   type="tel"
-                  className="input input-bordered"
+                  className={`input input-bordered ${phoneError ? 'input-error' : ''}`}
                   value={formData.phoneNumber}
                   onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
-                  placeholder="+1-555-123-4567"
+                  placeholder="+1 555 123 4567"
+                  inputMode="numeric"
                 />
+                {phoneError && (
+                  <div className="label">
+                    <span className="label-text-alt text-error">{phoneError}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
