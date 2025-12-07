@@ -1,75 +1,75 @@
 flowchart TB
-    subgraph Client["🌐 Client Layer"]
-        Browser["🖥️ Web Browser<br/>Chrome / Safari / Firefox"]
+    subgraph Client[" Client Layer"]
+        Browser[" Web Browser<br/>Chrome / Safari / Firefox"]
     end
 
     subgraph AWS["<img src='https://cdn.jsdelivr.net/gh/devicons/devicon/icons/amazonwebservices/amazonwebservices-original-wordmark.svg' width='20' height='20' /> AWS Cloud (us-east-1)"]
         subgraph EKS["<img src='https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kubernetes/kubernetes-plain.svg' width='16' height='16' /> Amazon EKS Cluster"]
-            subgraph Namespace["📦 Namespace: kayak"]
-                subgraph FrontendPod["⚛️ Frontend Pods (x2)"]
+            subgraph Namespace[" Namespace: kayak"]
+                subgraph FrontendPod[" Frontend Pods (x2)"]
                     FE_Container["<img src='https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg' width='16' height='16' /> React + Vite<br/>Port: 5173"]
                 end
-                subgraph BackendPod["🟢 Backend Pods (x2)"]
+                subgraph BackendPod[" Backend Pods (x2)"]
                     BE_Container["<img src='https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nodejs/nodejs-original.svg' width='16' height='16' /> Express.js<br/>Port: 3000"]
                 end
-                subgraph AgentPod["🤖 AI Agent Pods"]
+                subgraph AgentPod[" AI Agent Pods"]
                     AI_Container["<img src='https://cdn.jsdelivr.net/gh/devicons/devicon/icons/fastapi/fastapi-original.svg' width='16' height='16' /> FastAPI + Python<br/>Port: 8000"]
                 end
                 
-                FE_SVC["🔀 Frontend LB"]
-                BE_SVC["🔀 Backend LB"]
+                FE_SVC[" Frontend LB"]
+                BE_SVC[" Backend LB"]
             end
             
-            subgraph NodeGroup["🖥️ EKS Node Group"]
+            subgraph NodeGroup[" EKS Node Group"]
                 Nodes["<img src='https://cdn.jsdelivr.net/gh/devicons/devicon/icons/amazonwebservices/amazonwebservices-original-wordmark.svg' width='16' height='16' /> EC2 (t3.medium)<br/>Auto-scaling: 1-4"]
             end
         end
         
-        subgraph ECR["📦 Amazon ECR"]
-            ECR_FE["🏷️ kayak-dev-frontend"]
-            ECR_BE["🏷️ kayak-dev-backend"]
-            ECR_AI["🏷️ kayak-dev-agent"]
+        subgraph ECR[" Amazon ECR"]
+            ECR_FE[" kayak-dev-frontend"]
+            ECR_BE[" kayak-dev-backend"]
+            ECR_AI[" kayak-dev-agent"]
         end
         
-        ALB["⚖️ Application Load Balancer"]
+        ALB[" Application Load Balancer"]
     end
 
-    subgraph LocalDev["🐳 Local Development"]
+    subgraph LocalDev[" Local Development"]
         direction LR
         subgraph DockerCompose["Docker Compose"]
-            DC_FE["⚛️ Frontend :5173"]
-            DC_BE["🟢 Backend :3000"]
-            DC_AI["🤖 AI Agent :8000"]
-            DC_MONGO["🍃 MongoDB :27017"]
+            DC_FE[" Frontend :5173"]
+            DC_BE[" Backend :3000"]
+            DC_AI[" AI Agent :8000"]
+            DC_MONGO[" MongoDB :27017"]
         end
     end
 
-    subgraph CloudDB["🗄️ Managed Databases"]
-        subgraph Supabase["🐘 Supabase (PostgreSQL)"]
-            PG_Tables["📋 Users<br/>📋 Bookings<br/>📋 Payments<br/>📋 Reviews"]
+    subgraph CloudDB[" Managed Databases"]
+        subgraph Supabase[" Supabase (PostgreSQL)"]
+            PG_Tables[" Users<br/> Bookings<br/> Payments<br/> Reviews"]
         end
-        subgraph MongoAtlas["🍃 MongoDB Atlas"]
-            MONGO_Collections["📁 Flights<br/>📁 Hotels<br/>📁 Cars<br/>📁 Analytics"]
+        subgraph MongoAtlas[" MongoDB Atlas"]
+            MONGO_Collections[" Flights<br/> Hotels<br/> Cars<br/> Analytics"]
         end
-        subgraph RedisCloud["⚡ Redis Cloud"]
-            Redis_Data["💾 Cache<br/>🔐 Sessions"]
+        subgraph RedisCloud[" Redis Cloud"]
+            Redis_Data[" Cache<br/> Sessions"]
         end
     end
 
-    subgraph ExtServices["🔌 External Services"]
-        Firebase["🔥 Firebase Storage<br/>📸 Image Hosting"]
-        Kafka["📨 Aiven Kafka<br/>📡 Event Streaming"]
-        OpenAI["🧠 OpenAI API<br/>💬 AI Concierge"]
+    subgraph ExtServices[" External Services"]
+        Firebase[" Firebase Storage<br/> Image Hosting"]
+        Kafka[" Aiven Kafka<br/> Event Streaming"]
+        OpenAI[" OpenAI API<br/> AI Concierge"]
     end
 
-    subgraph IaC["🏗️ Infrastructure as Code"]
+    subgraph IaC[" Infrastructure as Code"]
         subgraph Terraform["<img src='https://cdn.jsdelivr.net/gh/devicons/devicon/icons/terraform/terraform-original.svg' width='16' height='16' /> Terraform"]
-            TF_EKS["📄 main.tf → EKS"]
-            TF_ECR["📄 modules/* → ECR"]
+            TF_EKS[" main.tf → EKS"]
+            TF_ECR[" modules/* → ECR"]
         end
         subgraph K8s["<img src='https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kubernetes/kubernetes-plain.svg' width='16' height='16' /> Kubernetes Manifests"]
-            K8s_Deploy["📄 *-deployment.yaml"]
-            K8s_NS["📄 namespace.yaml"]
+            K8s_Deploy[" *-deployment.yaml"]
+            K8s_NS[" namespace.yaml"]
         end
     end
 

@@ -408,7 +408,7 @@ const HotelsPage = () => {
                       className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-start gap-3 border-b border-base-200 last:border-b-0 transition-colors"
                       onClick={() => handleCitySelect(city)}
                     >
-                      <span className="text-primary text-lg mt-0.5">📍</span>
+                      <span className="text-primary text-lg mt-0.5"></span>
                       <div className="flex-1">
                         <div className="text-sm font-semibold text-base-content">{city.fullName}</div>
                         <div className="text-xs text-base-content/60 mt-0.5">
@@ -448,7 +448,7 @@ const HotelsPage = () => {
               className="btn btn-primary btn-sm btn-circle"
               disabled={loading}
             >
-              🔍
+              
             </button>
           </form>
         </div>
@@ -746,7 +746,7 @@ const HotelsPage = () => {
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-4xl">
-                          🏨
+                          
                         </div>
                       )}
                     </div>
@@ -762,7 +762,7 @@ const HotelsPage = () => {
                             <span className="text-sm text-base-content/60">Very good</span>
                             <div className="flex gap-0.5">
                               {[...Array(Math.floor(hotel.rating))].map((_, i) => (
-                                <span key={i} className="text-warning">★</span>
+                                <span key={i} className="text-warning"></span>
                               ))}
                             </div>
                           </div>
@@ -861,7 +861,7 @@ const HotelsPage = () => {
           ) : (
             <div className="h-full flex items-center justify-center bg-base-200">
               <div className="text-center">
-                <div className="text-6xl mb-4">🗺️</div>
+                <div className="text-6xl mb-4"></div>
                 <p className="text-lg font-semibold">Map View</p>
                 <p className="text-sm text-base-content/60">
                   {loading ? 'Loading map...' : 'No hotels to display on map'}
@@ -883,7 +883,7 @@ const HotelsPage = () => {
                 className="btn btn-ghost btn-sm btn-circle"
                 onClick={() => setShowAllFilters(false)}
               >
-                ✕
+                
               </button>
             </div>
 
@@ -1134,7 +1134,7 @@ const HotelsPage = () => {
                 className="btn btn-ghost btn-sm btn-circle"
                 onClick={() => setShowHotelModal(false)}
               >
-                ✕
+                
               </button>
             </div>
 
@@ -1152,7 +1152,7 @@ const HotelsPage = () => {
                     }}
                   />
                 ) : (
-                  <span className="text-8xl">🏨</span>
+                  <span className="text-8xl"></span>
                 )}
               </div>
 
@@ -1168,7 +1168,7 @@ const HotelsPage = () => {
                     <span className="badge badge-success text-white font-bold text-lg p-3">{selectedHotel.rating.toFixed(1)}</span>
                     <div className="flex gap-0.5">
                       {[...Array(Math.floor(selectedHotel.rating))].map((_, i) => (
-                        <span key={i} className="text-warning text-xl">★</span>
+                        <span key={i} className="text-warning text-xl"></span>
                       ))}
                     </div>
                   </div>

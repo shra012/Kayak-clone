@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FaPlane, FaBed, FaCar, FaClock, FaCalendar, FaTimes } from 'react-icons/fa';
 import { listingsApi } from '../../services/api/listings';
@@ -128,12 +128,32 @@ const FlightsPage = () => {
     filters.returnDate ? `Returning around ${filters.returnDate}.` : 'Say one-way to skip a return date.',
   ].join(' ');
 
-  const initialAgentPrompt = agentMode
-    ? {
-        text: 'Let’s find flights. Tell me your origin, destination, and dates (one-way or round-trip) and I’ll start searching.',
-        id: `flight_agent_prompt_${filters.from || 'any'}_${filters.to || 'any'}`,
-      }
-    : null;
+  const initialAgentPrompt = useMemo(() => {
+    if (!agentMode) return null;
+
+    const safe = (value, fallback = 'any') =>
+      (value || fallback).toString().trim().replace(/\s+/g, '-').toLowerCase();
+
+    const searchState = location.state?.search || {};
+    const providedText = location.state?.agentInitialPrompt;
+    const providedId = location.state?.agentInitialPromptId;
+
+    if (providedText) {
+      return {
+        text: providedText,
+        id: providedId || `flight_agent_prompt_${safe(searchState.from)}_${safe(searchState.to)}_${safe(searchState.departDate, 'anydate')}`,
+      };
+    }
+
+    const fromLabel = searchState.from || 'any origin';
+    const toLabel = searchState.to || 'any destination';
+    const departLabel = searchState.departDate || 'your preferred dates';
+
+    return {
+      text: `Let’s find flights from ${fromLabel} to ${toLabel} around ${departLabel}. Tell me if it’s one-way or round-trip and I’ll start searching.`,
+      id: `flight_agent_prompt_${safe(fromLabel)}_${safe(toLabel)}_${safe(departLabel)}`,
+    };
+  }, [agentMode, location.state]);
 
   initialAgentPromptRef.current = initialAgentPrompt;
 
@@ -324,10 +344,10 @@ const FlightsPage = () => {
       if (activeFilters.returnDate && 
           activeFilters.returnDate !== null && 
           activeFilters.returnDate !== activeFilters.date) {
-        console.log('✓ Adding returnDate to params:', activeFilters.returnDate);
+        console.log(' Adding returnDate to params:', activeFilters.returnDate);
         params.returnDate = activeFilters.returnDate;
       } else {
-        console.log('✗ NOT adding returnDate to params (returnDate:', activeFilters.returnDate, ', date:', activeFilters.date, ')');
+        console.log(' NOT adding returnDate to params (returnDate:', activeFilters.returnDate, ', date:', activeFilters.date, ')');
       }
 
       console.log('Final Airlines API params being sent:', JSON.stringify(params, null, 2));
@@ -773,6 +793,36 @@ const FlightsPage = () => {
     { label: 'Bags included', text: 'List options that include a carry-on and checked bag without extra fees.' },
   ];
 
+  const handleAgentAssistantResponse = (agentReply) => {
+    if (!agentMode) return false;
+
+    const content = (agentReply?.response || '').toLowerCase();
+    const mentionsZeroFlights =
+      /\bfetched\s*0\s+flights?/.test(content) ||
+      content.includes('no flights found');
+
+    if (!mentionsZeroFlights) return false;
+
+    // Force UI into the empty-state view and refresh the search with current filters
+    setResults([]);
+    setRoundTripCombos([]);
+    setMultiCityResults([]);
+    setSuggestedFlights([]);
+    setAlternativeDates([]);
+    setPagination(null);
+    setError(null);
+    setLoading(false);
+
+    if (ensureRouteSet(filters)) {
+      loadFlights(1, filters);
+    }
+
+    return {
+      handled: true,
+      message: 'I could not find flights for that search. I refreshed the results so you can adjust filters.',
+    };
+  };
+
   return (
     <div className="min-h-screen bg-base-100">
       {/* Compact Sticky Header */}
@@ -784,7 +834,7 @@ const FlightsPage = () => {
               onClick={() => navigate('/')}
               className="btn btn-sm btn-outline gap-2"
             >
-              <span className="text-xl">✈️</span>
+              <span className="text-xl"></span>
               <span className="font-semibold">New Search</span>
             </button>
             
@@ -1033,6 +1083,7 @@ const FlightsPage = () => {
               initialPrompt={initialAgentPromptRef.current}
               promptSuggestions={agentPromptSuggestions}
               contextSummary={flightContextSummary}
+              onAssistantResponse={handleAgentAssistantResponse}
             />
           </div>
         )}
@@ -1228,7 +1279,7 @@ const FlightsPage = () => {
               {!loading && results.length > 0 && suggestedFlights.length > 0 && location.state?.search?.tripType !== 'multi-city' && (
                 <div className="mb-6 w-full">
                   <h3 className="text-lg font-semibold mb-3">
-                    ✈️ Other available dates:
+                     Other available dates:
                   </h3>
                   <div className="overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-base-300 scrollbar-track-base-200">
                     <div className="flex gap-3 pb-2 w-max">
@@ -1437,7 +1488,7 @@ const FlightsPage = () => {
                       ) : (
                         <div className="card bg-base-100 shadow-md">
                           <div className="card-body text-center py-8">
-                            <div className="text-4xl mb-2">✈️</div>
+                            <div className="text-4xl mb-2"></div>
                             <p className="text-base-content/70">No flights found for this leg</p>
                           </div>
                         </div>
@@ -1462,7 +1513,7 @@ const FlightsPage = () => {
                   {suggestedFlights.length > 0 && (
                     <div className="mb-6 w-full">
                       <h3 className="text-lg font-semibold mb-3">
-                        ✈️ Other available dates:
+                         Other available dates:
                       </h3>
                       <div className="overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                         <div className="flex gap-3 pb-2 w-max">
@@ -1511,7 +1562,7 @@ const FlightsPage = () => {
 
                   <div className="card bg-base-100 shadow-md">
                     <div className="card-body text-center py-12">
-                      <div className="text-6xl mb-4">✈️</div>
+                      <div className="text-6xl mb-4"></div>
                       <h3 className="text-xl font-semibold mb-2">No flights found</h3>
                       <p className="text-base-content/60">
                         {suggestedFlights.length > 0 
@@ -1544,7 +1595,7 @@ const FlightsPage = () => {
                           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div className="flex-1 space-y-3 w-full md:w-auto">
                               <div className="flex items-center gap-2">
-                                <span className="text-xl">✈️</span>
+                                <span className="text-xl"></span>
                                 <span className="font-semibold text-lg">{combo.outbound.airline}</span>
                                 {combo.outbound.nonstop && (
                                   <span className="badge badge-success badge-sm">Non-stop</span>
@@ -1603,7 +1654,7 @@ const FlightsPage = () => {
                           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div className="flex-1 space-y-3 w-full md:w-auto">
                               <div className="flex items-center gap-2">
-                                <span className="text-xl">✈️</span>
+                                <span className="text-xl"></span>
                                 <span className="font-semibold text-lg">{combo.return.airline}</span>
                                 {combo.return.nonstop && (
                                   <span className="badge badge-success badge-sm">Non-stop</span>
@@ -1691,7 +1742,7 @@ const FlightsPage = () => {
                           {/* Airline and Route Info */}
                           <div className="flex-1 space-y-3 w-full md:w-auto">
                             <div className="flex items-center gap-2">
-                              <span className="text-xl">✈️</span>
+                              <span className="text-xl"></span>
                               <span className="font-semibold text-lg">{flight.airline}</span>
                               {flight.nonstop && (
                                 <span className="badge badge-success badge-sm">Non-stop</span>
