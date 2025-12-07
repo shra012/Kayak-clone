@@ -38,23 +38,6 @@ Routes between major US airports. All routes available in both directions for ro
 
 **Note:** seed-us-data.js generates ~50 routes between these 20 airports, with 1-2 flights per day for each route across all dates.
 
-## Sample One-Way Routes (live MongoDB)
-
-Pulled via `node backend/scripts/list-oneway-flights.js` (runs an aggregation against the `flights` collection to find unique one-way routes and their date spans).
-
-| From | To | Earliest Depart | Latest Depart | Airlines (sample) |
-|------|-----|-----------------|---------------|-------------------|
-| ATL | LAS | 2025-11-30 | 2026-02-28 | JetBlue, Frontier, Delta, Southwest |
-| ATL | SEA | 2025-11-30 | 2026-02-28 | Delta, United, Southwest, Alaska |
-| BOS | LAX | 2025-11-30 | 2026-02-28 | Alaska, Delta, Southwest, American |
-| BOS | JFK | 2025-11-30 | 2026-02-28 | JetBlue, Frontier, Delta, United |
-| BWI | DEN | 2025-11-30 | 2026-02-28 | JetBlue, Frontier, Delta, United |
-| CLT | LAX | 2025-11-30 | 2026-02-28 | JetBlue, Frontier, Delta, Southwest |
-| BED | PTU | 2025-11-30 | 2026-02-28 | Vistara, GO_FIRST, SpiceJet |
-| BMX | ITO | 2025-11-30 | 2026-02-28 | AirAsia, SpiceJet, GO_FIRST |
-| BTI | BTT | 2025-11-30 | 2026-02-28 | Vistara, SpiceJet, Air_India |
-| CZF | ILI | 2025-11-30 | 2026-02-28 | SpiceJet, Indigo, Air_India |
-
 ## API Examples
 
 One-way: `GET /api/v1/flights/search?from=OSC&to=ORL&departDate=2025-12-01`  
