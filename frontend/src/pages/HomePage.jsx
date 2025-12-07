@@ -543,6 +543,30 @@ const navigate = useNavigate();
     return 'Plan my trip end-to-end.';
   };
 
+  const buildAgentFlightPrompt = ({ from, to, departDate, returnDate, tripType }) => {
+    const origin = from?.trim() || 'any origin airport';
+    const destination = to?.trim() || 'any destination';
+    const depart = departDate || 'your ideal date';
+    const isOneWay = tripType === 'one-way';
+    const returnPart = isOneWay || !returnDate ? '' : ` and returning ${returnDate}`;
+    const tripLabel = isOneWay ? 'one-way' : 'round-trip';
+
+    return `Plan a ${tripLabel} flight from ${origin} to ${destination}, departing ${depart}${returnPart}. Show live fares and set a price watch if it helps.`;
+  };
+
+  const buildAgentFlightPromptId = ({ from, to, departDate, returnDate, tripType }) => {
+    const safe = (value, fallback = 'any') =>
+      (value || fallback).toString().trim().replace(/\s+/g, '-').toLowerCase();
+
+    const origin = safe(from);
+    const destination = safe(to);
+    const depart = safe(departDate, 'any-date');
+    const tripLabel = tripType === 'one-way' ? 'oneway' : 'round';
+    const ret = tripLabel === 'oneway' ? 'na' : safe(returnDate, 'flex');
+
+    return `agent-flight-${origin}-${destination}-${depart}-${ret}-${tripLabel}`;
+  };
+
   const handleAgentPrompt = (flowType) => {
     setSelectedAgentFlow(flowType);
     setActiveTab('agent');
@@ -632,12 +656,15 @@ const navigate = useNavigate();
       returnDate: isOneWay ? null : returnDate,
       tripType: isOneWay ? 'one-way' : 'round-trip',
     };
+    const promptText = buildAgentFlightPrompt(searchPayload);
+    const promptId = buildAgentFlightPromptId(searchPayload);
 
     navigate('/flights', {
       state: {
         search: searchPayload,
         agentMode: true,
-        agentInitialPrompt: agentPrompt?.text,
+        agentInitialPrompt: promptText,
+        agentInitialPromptId: promptId,
       },
     });
   };
@@ -1222,7 +1249,7 @@ const navigate = useNavigate();
                         className="btn btn-ghost btn-sm"
                         onClick={() => setShowAgentFlightModal(false)}
                       >
-                        ✕
+                        
                       </button>
                     </div>
                     <div className="grid grid-cols-1 gap-3">
@@ -1443,7 +1470,7 @@ const navigate = useNavigate();
                             {/* Carry-on bag */}
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-lg">🎒</span>
+                                <span className="text-lg"></span>
                                 <div className="text-sm font-medium">Carry-on bag</div>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1469,7 +1496,7 @@ const navigate = useNavigate();
                             {/* Checked bag */}
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-lg">💼</span>
+                                <span className="text-lg"></span>
                                 <div className="text-sm font-medium">Checked bag</div>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1995,7 +2022,7 @@ const navigate = useNavigate();
                               onClick={() => removeMultiCityFlight(index)}
                               className="btn btn-ghost btn-sm btn-circle mb-1"
                             >
-                              ✕
+                              
                             </button>
                           )}
                         </div>
@@ -2726,11 +2753,14 @@ const navigate = useNavigate();
                 setShowDepartCalendar(false);
 
                 if (agentPendingFlow === 'flights' && agentSearchPayload) {
+                  const promptText = buildAgentFlightPrompt(agentSearchPayload);
+                  const promptId = buildAgentFlightPromptId(agentSearchPayload);
                   navigate('/flights', {
                     state: {
                       search: agentSearchPayload,
                       agentMode: true,
-                      agentInitialPrompt: agentPrompt?.text || buildAgentPrompt('flights'),
+                      agentInitialPrompt: promptText,
+                      agentInitialPromptId: promptId,
                     },
                   });
                   setAgentPendingFlow(null);

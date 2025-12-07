@@ -21,8 +21,8 @@ MONGO_SCHEMA_SUMMARY = dedent(
        - airline (string)
        - from (IATA code)
        - to (IATA code)
-       - departDate (YYYY-MM-DD)
-       - returnDate (YYYY-MM-DD or None)
+       - departDate (YYYY-MM-DD) - Filter outbound flights by this field
+       - returnDate (YYYY-MM-DD or null) - Most flights are ONE-WAY (returnDate is null). Only filter by returnDate if explicitly searching for round-trip flights.
        - departureTime (HH:MM)
        - arrivalTime (HH:MM)
        - durationMinutes (int)
@@ -63,6 +63,10 @@ MONGO_SCHEMA_SUMMARY = dedent(
     - Prefer case-insensitive regex for fuzzy text fields.
     - Include sort order when user asks for "cheapest", "top", or "latest".
     - Respect context (destination city, budget, dates, traveler count).
+    - CRITICAL FOR FLIGHTS: ALL flights are ONE-WAY only (returnDate is always null). NEVER add a returnDate filter.
+      * For one-way requests: filter by departDate matching the desired date
+      * For round-trip requests: search for outbound flights only using departDate (the system will handle return flights separately)
+      * When user provides date range: use $gte/$lte on departDate to find all departing flights in that window
     """
 ).strip()
 
@@ -92,6 +96,16 @@ class MongoQueryGenerator:
                 "limit": <int <= 20>
             }}
 
+            CRITICAL FOR FLIGHTS - READ CAREFULLY:
+            - ALL flights in the database are ONE-WAY only. The returnDate field is ALWAYS null.
+            - NEVER add a returnDate filter to your query. It will return zero results.
+            - For round-trip requests: Only search for OUTBOUND flights using departDate
+            - For date ranges: Use $gte/$lte on departDate to find all flights departing in that window
+            - Examples:
+              * "departing 2025-12-06 returning 2025-12-09" → {{"departDate": "2025-12-06"}} (outbound only)
+              * "flights from Dec 9 to Dec 13" → {{"departDate": {{"$gte": "2025-12-09", "$lte": "2025-12-13"}}}}
+              * "round-trip Dec 10 to Dec 15" → {{"departDate": "2025-12-10"}} (outbound only)
+
             Use ISO date strings for dates. If the request cannot be satisfied, reply with __UNSUPPORTED__.
             """
         ).strip()
@@ -100,7 +114,7 @@ class MongoQueryGenerator:
         spec = self._parse_spec(response.content)
         
         # DEBUG: Log the generated MongoDB query
-        print(f"\n🔍 MongoDB Query Generated:")
+        print("\nMongoDB Query Generated:")
         print(f"   Question: {question}")
         print(f"   Context: {context_payload}")
         print(f"   Spec: {json.dumps(spec, indent=2)}")
