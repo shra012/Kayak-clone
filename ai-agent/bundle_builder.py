@@ -2,7 +2,7 @@
 Bundle building logic with Fit Score calculation
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from models import Deal, Bundle, DealType
 from datetime import datetime
 import statistics
@@ -225,3 +225,4 @@ class BundleBuilder:
         # Sort by fit score and return top results
         bundles.sort(key=lambda b: b.fit_score, reverse=True)
         return bundles[:max_results]
+
