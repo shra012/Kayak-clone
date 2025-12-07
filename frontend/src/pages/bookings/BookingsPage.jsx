@@ -7,6 +7,7 @@ import { useToast } from '../../hooks/useToast';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { FaPlane, FaBed, FaCar, FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaCreditCard, FaArrowRight } from 'react-icons/fa';
 import { US_STATES, getStateCode } from '../../constants/usStates';
+import { formatPhoneForDisplay, formatUsPhoneInput, getE164UsPhone, isValidUsPhone } from '../../utils/phone';
 
 const US_CITIES = [
   'New York City', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
@@ -31,7 +32,7 @@ const BookingsPage = () => {
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     email: user?.email || '',
-    phone: '',
+    phone: formatPhoneForDisplay(user?.phoneNumber || ''),
     address: {
       line1: '',
       line2: '',
@@ -70,6 +71,15 @@ const BookingsPage = () => {
     }
   }, [location.state, user]);
 
+    useEffect(() => {
+      if (user?.phoneNumber) {
+        setBillingInfo((prev) => ({
+          ...prev,
+          phone: formatPhoneForDisplay(user.phoneNumber),
+        }));
+      }
+    }, [user?.phoneNumber]);
+
   const loadBookings = async () => {
     if (!user?.id) return;
     try {
@@ -102,6 +112,8 @@ const BookingsPage = () => {
     }
     if (!billingInfo.phone.trim()) {
       newErrors.phone = 'Phone number is required';
+    } else if (!isValidUsPhone(billingInfo.phone)) {
+      newErrors.phone = 'Enter a valid US phone number (+1 XXX XXX XXXX)';
     }
     if (!billingInfo.address.line1.trim()) {
       newErrors['address.line1'] = 'Address line 1 is required';
@@ -121,19 +133,24 @@ const BookingsPage = () => {
   };
 
   const handleBillingChange = (field, value) => {
+    let nextValue = value;
+    if (field === 'phone') {
+      nextValue = value ? formatUsPhoneInput(value) : '';
+    }
+
     if (field.includes('.')) {
       const [parent, child] = field.split('.');
       setBillingInfo(prev => ({
         ...prev,
         [parent]: {
           ...prev[parent],
-          [child]: value,
+          [child]: nextValue,
         },
       }));
     } else {
       setBillingInfo(prev => ({
         ...prev,
-        [field]: value,
+        [field]: nextValue,
       }));
     }
     // Clear error when user types
@@ -163,6 +180,11 @@ const BookingsPage = () => {
       // Prepare booking data based on type
       let bookingPayload = {};
       let totalPrice = 0;
+      const normalizedPhone = getE164UsPhone(billingInfo.phone);
+      const billingInfoForPayload = {
+        ...billingInfo,
+        phone: normalizedPhone || billingInfo.phone,
+      };
 
       if (bookingData.type === 'round-trip' || bookingData.type === 'one-way') {
         // Flight booking
@@ -241,7 +263,7 @@ const BookingsPage = () => {
               lat: hotel.lat,
               lng: hotel.lng,
             },
-            billingInfo,
+            billingInfo: billingInfoForPayload,
           },
         };
       } else if (bookingData.type === 'car') {
@@ -272,7 +294,7 @@ const BookingsPage = () => {
             car: {
               seats: car.seats,
             },
-            billingInfo,
+            billingInfo: billingInfoForPayload,
           },
         };
       }
@@ -587,10 +609,12 @@ const BookingsPage = () => {
                       </label>
                       <input
                         type="tel"
+                        inputMode="numeric"
+                        maxLength={16}
                         className={`input input-bordered ${errors.phone ? 'input-error' : ''}`}
                         value={billingInfo.phone}
                         onChange={(e) => handleBillingChange('phone', e.target.value)}
-                        placeholder="+1 (555) 123-4567"
+                        placeholder="+1 555 123 4567"
                       />
                       {errors.phone && <label className="label"><span className="label-text-alt text-error">{errors.phone}</span></label>}
                     </div>

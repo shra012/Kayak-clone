@@ -17,6 +17,34 @@ import {
 const isUsersTableMissing = (error) =>
   error?.code === '42P01' || error?.message?.includes('relation "users" does not exist');
 
+const POSTGRES_UNAVAILABLE_CODES = new Set([
+  '57P01', // admin shutdown
+  '57P02', // crash shutdown
+  '57P03', // cannot connect now
+  '57P04', // database dropped
+  '08000', // connection exception
+  '08003', // connection does not exist
+  '08006', // connection failure
+  '08001', // SQL client unable to establish SQL connection
+  '08004', // SQL server rejected establishment of SQL connection
+  '08007', // transaction resolution unknown
+  '08P01', // protocol violation
+  'XX000', // internal error (e.g. db termination)
+]);
+
+const isPostgresUnavailable = (error) => {
+  if (!error) {
+    return false;
+  }
+
+  if (error.code && POSTGRES_UNAVAILABLE_CODES.has(error.code)) {
+    return true;
+  }
+
+  const message = error.message?.toLowerCase?.();
+  return message ? message.includes('db_termination') : false;
+};
+
 const syncMongoUser = async (userId, updates) => {
   if (!updates || Object.keys(updates).length === 0) {
     return;
@@ -155,16 +183,27 @@ export const getUserById = async (userId) => {
 
   // Try PostgreSQL first
   const pool = getPostgresPool();
-  const result = await pool.query(
-    `SELECT id, ssn, first_name, last_name, email, phone_number,
-     address_line1, address_line2, address_city, address_state, address_zip_code,
-     profile_image_url, role, loyalty_tier, profile_type, ssn_verified_at,
-     partner_details, created_at, updated_at, last_login
-     FROM users WHERE id = $1`,
-    [userId]
-  );
+  let user = null;
+  try {
+    const result = await pool.query(
+      `SELECT id, ssn, first_name, last_name, email, phone_number,
+       address_line1, address_line2, address_city, address_state, address_zip_code,
+       profile_image_url, role, loyalty_tier, profile_type, ssn_verified_at,
+       partner_details, created_at, updated_at, last_login
+       FROM users WHERE id = $1`,
+      [userId]
+    );
 
-  let user = result.rows[0] ? { ...result.rows[0], data_source: 'postgres' } : null;
+    user = result.rows[0] ? { ...result.rows[0], data_source: 'postgres' } : null;
+  } catch (error) {
+    if (isUsersTableMissing(error) || isPostgresUnavailable(error)) {
+      logger.warn(
+        `PostgreSQL unavailable for user ${userId}, falling back to MongoDB: ${error.message}`
+      );
+    } else {
+      throw error;
+    }
+  }
 
   // If not found in PostgreSQL, fall back to MongoDB
   if (!user) {
