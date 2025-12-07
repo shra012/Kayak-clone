@@ -1,19 +1,19 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { FaHotel, FaArrowLeft, FaImage, FaTrash } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { uploadImage } from '../../services/image.service';
 import { ownerApi } from '../../services/api/owner';
 
-const AddHotelPage = () => {
-  useDocumentTitle('Add New Hotel');
+const EditHotelPage = () => {
+  const { hotelId } = useParams();
+  useDocumentTitle('Edit Hotel');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [imagePreview, setImagePreview] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     city: '',
@@ -26,6 +26,33 @@ const AddHotelPage = () => {
     lng: '',
     images: [],
   });
+
+  // Fetch hotel data
+  const { data: hotelData, isLoading } = useQuery({
+    queryKey: ['hotel', hotelId],
+    queryFn: async () => {
+      const result = await ownerApi.getHotel(hotelId);
+      return result.data || result;
+    },
+  });
+
+  // Populate form when hotel data loads
+  useEffect(() => {
+    if (hotelData) {
+      setFormData({
+        name: hotelData.name || '',
+        city: hotelData.city || '',
+        address: hotelData.address || '',
+        description: hotelData.description || '',
+        pricePerNight: hotelData.pricePerNight || '',
+        rating: hotelData.rating || '',
+        amenities: hotelData.amenities || [],
+        lat: hotelData.lat || '',
+        lng: hotelData.lng || '',
+        images: hotelData.images || [],
+      });
+    }
+  }, [hotelData]);
 
   const availableAmenities = [
     'wifi',
@@ -53,7 +80,6 @@ const AddHotelPage = () => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
-    // Validate all files
     for (const file of files) {
       if (!file.type.startsWith('image/')) {
         toast.error(`${file.name} is not an image file`);
@@ -67,7 +93,6 @@ const AddHotelPage = () => {
 
     setUploadingImage(true);
     try {
-      // Upload all images in parallel
       const uploadPromises = files.map(file => uploadImage(file, 'hotels'));
       const results = await Promise.all(uploadPromises);
       
@@ -77,7 +102,7 @@ const AddHotelPage = () => {
       }));
       
       toast.success(`${files.length} image(s) uploaded successfully!`);
-      e.target.value = ''; // Clear input
+      e.target.value = '';
     } catch (error) {
       toast.error(error.message || 'Failed to upload images');
     } finally {
@@ -94,16 +119,16 @@ const AddHotelPage = () => {
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      return await ownerApi.createHotel(data);
+      return await ownerApi.updateHotel(hotelId, data);
     },
     onSuccess: (response) => {
-      // Invalidate and refetch hotels list
       queryClient.invalidateQueries({ queryKey: ['owner-hotels'] });
-      toast.success('Hotel created successfully!');
+      queryClient.invalidateQueries({ queryKey: ['hotel', hotelId] });
+      toast.success('Hotel updated successfully!');
       navigate('/owner/hotels');
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || 'Failed to create hotel');
+      toast.error(error.response?.data?.message || 'Failed to update hotel');
     },
   });
 
@@ -121,11 +146,19 @@ const AddHotelPage = () => {
       };
       await mutation.mutateAsync(submitData);
     } catch (error) {
-      console.error('Error submitting hotel:', error);
+      console.error('Error updating hotel:', error);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <span className="loading loading-spinner loading-lg"></span>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -137,8 +170,8 @@ const AddHotelPage = () => {
           <FaArrowLeft className="mr-2" />
           Back to Hotels
         </button>
-        <h1 className="text-4xl font-bold mb-2">Add New Hotel</h1>
-        <p className="text-base-content/70">Create a new hotel listing</p>
+        <h1 className="text-4xl font-bold mb-2">Edit Hotel</h1>
+        <p className="text-base-content/70">Update your hotel listing</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -374,10 +407,10 @@ const AddHotelPage = () => {
             {isSubmitting || mutation.isLoading ? (
               <>
                 <span className="loading loading-spinner loading-sm"></span>
-                Creating Hotel...
+                Updating...
               </>
             ) : (
-              'Create Hotel'
+              'Update Hotel'
             )}
           </button>
         </div>
@@ -386,5 +419,5 @@ const AddHotelPage = () => {
   );
 };
 
-export default AddHotelPage;
+export default EditHotelPage;
 

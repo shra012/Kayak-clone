@@ -1,59 +1,59 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
-import { FaHotel, FaArrowLeft, FaImage, FaTrash } from 'react-icons/fa';
+import { FaCar, FaArrowLeft, FaImage, FaTrash } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { uploadImage } from '../../services/image.service';
 import { ownerApi } from '../../services/api/owner';
 
-const AddHotelPage = () => {
-  useDocumentTitle('Add New Hotel');
+const EditCarPage = () => {
+  const { carId } = useParams();
+  useDocumentTitle('Edit Car');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [imagePreview, setImagePreview] = useState(null);
   const [formData, setFormData] = useState({
-    name: '',
-    city: '',
-    address: '',
+    vendor: '',
+    type: '',
+    location: '',
+    seats: '',
+    pricePerDay: '',
     description: '',
-    pricePerNight: '',
-    rating: '',
-    amenities: [],
-    lat: '',
-    lng: '',
     images: [],
   });
 
-  const availableAmenities = [
-    'wifi',
-    'breakfast',
-    'pool',
-    'spa',
-    'restaurant',
-    'gym',
-    'parking',
-    'concierge',
-    'room_service',
-    'bar',
-  ];
+  const carTypes = ['Sedan', 'SUV', 'Hatchback', 'Convertible', 'Coupe', 'Wagon', 'Van', 'Truck'];
+  const vendors = ['Hertz', 'Avis', 'Enterprise', 'Budget', 'National', 'Alamo', 'Local Rentals'];
 
-  const handleAmenityChange = (amenity) => {
-    setFormData((prev) => ({
-      ...prev,
-      amenities: prev.amenities.includes(amenity)
-        ? prev.amenities.filter((a) => a !== amenity)
-        : [...prev.amenities, amenity],
-    }));
-  };
+  // Fetch car data
+  const { data: carData, isLoading } = useQuery({
+    queryKey: ['car', carId],
+    queryFn: async () => {
+      const result = await ownerApi.getCar(carId);
+      return result.data || result;
+    },
+  });
+
+  useEffect(() => {
+    if (carData) {
+      setFormData({
+        vendor: carData.vendor || '',
+        type: carData.type || '',
+        location: carData.location || '',
+        seats: carData.seats || '',
+        pricePerDay: carData.pricePerDay || '',
+        description: carData.description || '',
+        images: carData.images || [],
+      });
+    }
+  }, [carData]);
 
   const handleImageSelect = async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
-    // Validate all files
     for (const file of files) {
       if (!file.type.startsWith('image/')) {
         toast.error(`${file.name} is not an image file`);
@@ -67,8 +67,7 @@ const AddHotelPage = () => {
 
     setUploadingImage(true);
     try {
-      // Upload all images in parallel
-      const uploadPromises = files.map(file => uploadImage(file, 'hotels'));
+      const uploadPromises = files.map(file => uploadImage(file, 'cars'));
       const results = await Promise.all(uploadPromises);
       
       setFormData((prev) => ({
@@ -77,7 +76,7 @@ const AddHotelPage = () => {
       }));
       
       toast.success(`${files.length} image(s) uploaded successfully!`);
-      e.target.value = ''; // Clear input
+      e.target.value = '';
     } catch (error) {
       toast.error(error.message || 'Failed to upload images');
     } finally {
@@ -94,16 +93,16 @@ const AddHotelPage = () => {
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      return await ownerApi.createHotel(data);
+      return await ownerApi.updateCar(carId, data);
     },
     onSuccess: (response) => {
-      // Invalidate and refetch hotels list
-      queryClient.invalidateQueries({ queryKey: ['owner-hotels'] });
-      toast.success('Hotel created successfully!');
-      navigate('/owner/hotels');
+      queryClient.invalidateQueries({ queryKey: ['owner-cars'] });
+      queryClient.invalidateQueries({ queryKey: ['car', carId] });
+      toast.success('Car updated successfully!');
+      navigate('/owner/cars');
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || 'Failed to create hotel');
+      toast.error(error.response?.data?.message || 'Failed to update car');
     },
   });
 
@@ -114,76 +113,124 @@ const AddHotelPage = () => {
     try {
       const submitData = {
         ...formData,
-        pricePerNight: parseFloat(formData.pricePerNight),
-        rating: formData.rating ? parseFloat(formData.rating) : null,
-        lat: formData.lat ? parseFloat(formData.lat) : null,
-        lng: formData.lng ? parseFloat(formData.lng) : null,
+        seats: parseInt(formData.seats, 10),
+        pricePerDay: parseFloat(formData.pricePerDay),
       };
       await mutation.mutateAsync(submitData);
     } catch (error) {
-      console.error('Error submitting hotel:', error);
+      console.error('Error updating car:', error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <span className="loading loading-spinner loading-lg"></span>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="mb-8">
         <button
-          onClick={() => navigate('/owner/hotels')}
+          onClick={() => navigate('/owner/cars')}
           className="btn btn-ghost mb-4"
         >
           <FaArrowLeft className="mr-2" />
-          Back to Hotels
+          Back to Cars
         </button>
-        <h1 className="text-4xl font-bold mb-2">Add New Hotel</h1>
-        <p className="text-base-content/70">Create a new hotel listing</p>
+        <h1 className="text-4xl font-bold mb-2">Edit Car</h1>
+        <p className="text-base-content/70">Update your car rental listing</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body">
             <h2 className="card-title mb-4">
-              <FaHotel className="text-primary" />
+              <FaCar className="text-primary" />
               Basic Information
             </h2>
 
             <div className="form-control">
               <label className="label">
-                <span className="label-text">Hotel Name *</span>
+                <span className="label-text">Vendor *</span>
+              </label>
+              <select
+                className="select select-bordered"
+                value={formData.vendor}
+                onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
+                required
+              >
+                <option value="">Select a vendor</option>
+                {vendors.map((vendor) => (
+                  <option key={vendor} value={vendor}>
+                    {vendor}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Car Type *</span>
+              </label>
+              <select
+                className="select select-bordered"
+                value={formData.type}
+                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                required
+              >
+                <option value="">Select a type</option>
+                {carTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Location *</span>
               </label>
               <input
                 type="text"
                 className="input input-bordered"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                placeholder="e.g., San Francisco, New York"
                 required
               />
             </div>
 
             <div className="form-control">
               <label className="label">
-                <span className="label-text">City *</span>
+                <span className="label-text">Number of Seats *</span>
               </label>
               <input
-                type="text"
+                type="number"
+                min="2"
+                max="15"
                 className="input input-bordered"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                value={formData.seats}
+                onChange={(e) => setFormData({ ...formData, seats: e.target.value })}
                 required
               />
             </div>
 
             <div className="form-control">
               <label className="label">
-                <span className="label-text">Address *</span>
+                <span className="label-text">Price per Day (USD) *</span>
               </label>
               <input
-                type="text"
+                type="number"
+                step="0.01"
                 className="input input-bordered"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                value={formData.pricePerDay}
+                onChange={(e) => setFormData({ ...formData, pricePerDay: e.target.value })}
                 required
               />
             </div>
@@ -196,63 +243,8 @@ const AddHotelPage = () => {
                 className="textarea textarea-bordered h-24"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Additional details about the car..."
               />
-            </div>
-          </div>
-        </div>
-
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title mb-4">Pricing & Rating</h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Price per Night (USD) *</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input input-bordered"
-                  value={formData.pricePerNight}
-                  onChange={(e) => setFormData({ ...formData, pricePerNight: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Rating (1-5)</span>
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="5"
-                  step="0.1"
-                  className="input input-bordered"
-                  value={formData.rating}
-                  onChange={(e) => setFormData({ ...formData, rating: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title mb-4">Amenities</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {availableAmenities.map((amenity) => (
-                <label key={amenity} className="label cursor-pointer">
-                  <span className="label-text capitalize">{amenity.replace('_', ' ')}</span>
-                  <input
-                    type="checkbox"
-                    className="checkbox checkbox-primary"
-                    checked={formData.amenities.includes(amenity)}
-                    onChange={() => handleAmenityChange(amenity)}
-                  />
-                </label>
-              ))}
             </div>
           </div>
         </div>
@@ -261,10 +253,10 @@ const AddHotelPage = () => {
           <div className="card-body">
             <h2 className="card-title mb-4">
               <FaImage className="text-primary" />
-              Hotel Images
+              Car Images
             </h2>
             <p className="text-sm text-base-content/70 mb-4">
-              Upload images of your hotel (max 5MB per image, JPG/PNG/WebP)
+              Upload images of your car (max 5MB per image, JPG/PNG/WebP)
             </p>
 
             <div className="form-control">
@@ -272,7 +264,7 @@ const AddHotelPage = () => {
                 <span className="label-text">Select Images (Multiple)</span>
               </label>
               <input
-                id="hotel-image-input"
+                id="car-image-input"
                 type="file"
                 accept="image/*"
                 multiple
@@ -302,7 +294,7 @@ const AddHotelPage = () => {
                     <div key={index} className="relative group">
                       <img
                         src={imageUrl}
-                        alt={`Hotel ${index + 1}`}
+                        alt={`Car ${index + 1}`}
                         className="w-full h-32 object-cover rounded-lg border border-base-300"
                       />
                       <button
@@ -326,43 +318,11 @@ const AddHotelPage = () => {
           </div>
         </div>
 
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title mb-4">Location (Optional)</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Latitude</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  className="input input-bordered"
-                  value={formData.lat}
-                  onChange={(e) => setFormData({ ...formData, lat: e.target.value })}
-                />
-              </div>
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Longitude</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  className="input input-bordered"
-                  value={formData.lng}
-                  onChange={(e) => setFormData({ ...formData, lng: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div className="flex justify-end gap-4">
           <button
             type="button"
             className="btn btn-ghost"
-            onClick={() => navigate('/owner/hotels')}
+            onClick={() => navigate('/owner/cars')}
           >
             Cancel
           </button>
@@ -374,10 +334,10 @@ const AddHotelPage = () => {
             {isSubmitting || mutation.isLoading ? (
               <>
                 <span className="loading loading-spinner loading-sm"></span>
-                Creating Hotel...
+                Updating...
               </>
             ) : (
-              'Create Hotel'
+              'Update Car'
             )}
           </button>
         </div>
@@ -386,5 +346,5 @@ const AddHotelPage = () => {
   );
 };
 
-export default AddHotelPage;
+export default EditCarPage;
 
