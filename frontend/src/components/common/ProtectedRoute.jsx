@@ -1,4 +1,4 @@
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
 const ProtectedRoute = ({ 
@@ -8,25 +8,25 @@ const ProtectedRoute = ({
   requireOwner = false 
 }) => {
   const { isAuthenticated, isAdmin, isModerator, user } = useAuth();
-  const location = useLocation();
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} />;
+    return <Navigate to="/login" replace />;
   }
 
   if (requireAdmin && !isAdmin()) {
-    return <Navigate to="/" />;
+    return <Navigate to="/" replace />;
   }
 
   if (requireModerator && !isModerator()) {
-    return <Navigate to="/" />;
+    return <Navigate to="/" replace />;
   }
 
   if (requireOwner && user?.profileType !== 'owner') {
-    return <Navigate to="/" />;
+    return <Navigate to="/" replace />;
   }
 
   return children;
 };
 
 export default ProtectedRoute;
+

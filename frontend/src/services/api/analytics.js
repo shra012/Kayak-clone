@@ -35,5 +35,16 @@ export const analyticsApi = {
     const { data } = await apiClient.get('/analytics/bidding', { params });
     return data;
   },
+
+  // Track click/view events
+  trackClick: async (clickData) => {
+    try {
+      const { data } = await apiClient.post('/tracking/click', clickData);
+      return data;
+    } catch (error) {
+      console.warn('Failed to track click:', error);
+      return null;
+    }
+  },
 };
 

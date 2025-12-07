@@ -5,7 +5,17 @@ import { useAuth } from '../hooks/useAuth';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { getHomePageFlightImages } from '../services/backgroundImages.service.js';
 import { ALL_STATES } from '../constants/internationalStates';
-import { formatUsPhoneInput, getE164UsPhone, isValidUsPhone } from '../utils/phone';
+
+const formatPhoneInput = (value) => {
+  // Allow plus, digits, spaces, hyphens, parentheses
+  return value.replace(/[^\d+\-\s()]/g, '');
+};
+
+// Validate phone number has only digits
+const isValidPhoneInput = (value) => {
+  // Allow empty, digits, and formatting characters
+  return /^[\d\s\-+()]*$/.test(value);
+};
 
 const RegisterPage = () => {
   useDocumentTitle('Create Account');
@@ -66,14 +76,26 @@ const RegisterPage = () => {
         partnerPortfolioSize: undefined,
       }));
     } else if (name === 'phoneNumber') {
-      const formatted = value ? formatUsPhoneInput(value) : '';
-      setFormData({
-        ...formData,
-        phoneNumber: formatted,
-      });
-      if (errors.phoneNumber) {
-        setErrors((prev) => ({ ...prev, phoneNumber: undefined }));
+      // Only allow numeric input for phone number
+      if (isValidPhoneInput(value)) {
+        const formatted = formatPhoneInput(value);
+        // Count only digits and limit to 15 digits (E.164 standard)
+        const phoneDigits = formatted.replace(/\D/g, '');
+        if (phoneDigits.length <= 15) {
+          setFormData({
+            ...formData,
+            phoneNumber: formatted,
+          });
+          // Clear phone error if user is typing valid input
+          if (errors.phoneNumber) {
+            setErrors((prev) => ({ ...prev, phoneNumber: undefined }));
+          }
+        } else {
+          // If exceeds 15 digits, show error
+          setErrors((prev) => ({ ...prev, phoneNumber: 'Phone number must be between 7 and 15 digits' }));
+        }
       }
+      // If invalid characters, don't update the field (silently reject)
     } else if (name.startsWith('address.')) {
       const field = name.split('.')[1];
       // Validate zip code length in real-time
@@ -132,8 +154,12 @@ const RegisterPage = () => {
       newErrors.password = 'Password must be at least 8 characters';
     }
 
-    if (!formData.phoneNumber.trim() || !isValidUsPhone(formData.phoneNumber)) {
-      newErrors.phoneNumber = 'Enter a valid US phone number (+1 123 456 7890)';
+    // Validate phone number: count only digits, should be 7-15 digits (E.164 standard)
+    const phoneDigits = formData.phoneNumber.replace(/\D/g, '');
+    if (!phoneDigits || phoneDigits.length < 7 || phoneDigits.length > 15) {
+      newErrors.phoneNumber = 'Phone number must be between 7 and 15 digits';
+    } else if (!/^[\d+\-\s()]+$/.test(formData.phoneNumber)) {
+      newErrors.phoneNumber = 'Phone number contains invalid characters';
     }
 
     // Validate zip code: 3-12 characters (accommodates various international formats)
@@ -176,10 +202,8 @@ const RegisterPage = () => {
 
     try {
       const { confirmPassword, partnerProfile, ...userData } = formData;
-      const normalizedPhone = getE164UsPhone(formData.phoneNumber) || formData.phoneNumber;
       const payload = {
         ...userData,
-        phoneNumber: normalizedPhone,
         partnerProfile:
           formData.profileType === 'owner'
             ? {
@@ -316,7 +340,7 @@ const RegisterPage = () => {
                     value={formData.phoneNumber}
                     onChange={handleChange}
                     inputMode="numeric"
-                    pattern="\+1\s\d{3}\s\d{3}\s\d{4}"
+                    pattern="[0-9\-+]*"
                     required
                     disabled={loading}
                   />

@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { logger } from '../src/config/logger.js';
-import { deleteCachedByPattern } from '../src/utils/cache.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,9 +32,6 @@ const MAJOR_US_AIRPORTS = [
   { code: 'BWI', city: 'Baltimore', state: 'MD' },
 ];
 
-// We treat these as our hub airports to keep the route graph dense without exploding combinations
-const HUB_AIRPORT_CODES = ['LAX', 'JFK', 'SFO', 'ORD', 'DFW', 'ATL', 'DEN', 'MIA', 'SEA', 'BOS', 'PHX', 'IAH', 'LAS', 'CLT'];
-
 const AIRLINES = [
   { name: 'American Airlines', code: 'AA' },
   { name: 'Delta Air Lines', code: 'DL' },
@@ -59,19 +55,6 @@ const generateDates = (startDate, endDate) => {
   }
   
   return dates;
-};
-
-const getDateRangeToDec11 = () => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dec11 = new Date(today.getFullYear(), 11, 11); // months are 0-indexed
-  
-  // If we're already past Dec 11, seed for next year's window
-  if (today > dec11) {
-    dec11.setFullYear(dec11.getFullYear() + 1);
-  }
-  
-  return { startDate: today, endDate: dec11 };
 };
 
 const generateTime = () => {
@@ -115,65 +98,52 @@ const calculateDuration = (from, to) => {
   return Math.round(baseDuration);
 };
 
-const buildRoutesFromAirports = (airports) => {
-  const codes = airports
-    .map(a => a.code)
-    .filter(code => code && typeof code === 'string' && code.trim().length > 0);
+const generateFlights = (airports, dates, flightIdCounter) => {
+  const flights = [];
+  const routes = [];
   
-  const codeSet = new Set(codes);
-  const hubs = HUB_AIRPORT_CODES.filter(code => codeSet.has(code));
-  if (hubs.length === 0) {
-    hubs.push(...codes.slice(0, Math.min(5, codes.length)));
+  // Popular routes to always include
+  const popularRoutes = [
+    ['LAX', 'JFK'], ['JFK', 'LAX'],
+    ['LAX', 'SFO'], ['SFO', 'LAX'],
+    ['JFK', 'SFO'], ['SFO', 'JFK'],
+    ['ORD', 'LAX'], ['LAX', 'ORD'],
+    ['ORD', 'JFK'], ['JFK', 'ORD'],
+    ['ATL', 'LAX'], ['LAX', 'ATL'],
+    ['DFW', 'LAX'], ['LAX', 'DFW'],
+    ['DEN', 'LAX'], ['LAX', 'DEN'],
+    ['MIA', 'JFK'], ['JFK', 'MIA'],
+    ['SEA', 'LAX'], ['LAX', 'SEA'],
+  ];
+  
+  for (let i = 0; i < airports.length; i++) {
+    for (let j = 0; j < airports.length; j++) {
+      if (i !== j) {
+        routes.push([airports[i].code, airports[j].code]);
+      }
+    }
   }
   
-  const routeSet = new Set();
-  const addRoute = (from, to) => {
-    if (!from || !to || from === to) return;
-    routeSet.add(`${from}-${to}`);
-  };
+  // Remove duplicates and ensure popular routes are included
+  const routeSet = new Set(popularRoutes.map(r => `${r[0]}-${r[1]}`));
+  const otherRoutes = routes
+    .filter(r => !routeSet.has(`${r[0]}-${r[1]}`))
+    .sort(() => 0.5 - Math.random())
+    .slice(0, 50 - popularRoutes.length);
   
-  // Connect every airport to hubs (both directions)
-  codes.forEach(code => {
-    hubs.forEach(hub => {
-      addRoute(code, hub);
-      addRoute(hub, code);
-    });
-  });
+  const selectedRoutes = [...popularRoutes, ...otherRoutes];
   
-  // Fully connect hubs to one another
-  hubs.forEach((from, idx) => {
-    for (let j = idx + 1; j < hubs.length; j++) {
-      const to = hubs[j];
-      addRoute(from, to);
-      addRoute(to, from);
-    }
-  });
-  
-  // Give each airport a few peer connections for better coverage without a full cross product
-  const peersPerAirport = Math.min(3, codes.length - 1);
-  codes.forEach((code, idx) => {
-    for (let i = 1; i <= peersPerAirport; i++) {
-      const peer = codes[(idx + i) % codes.length];
-      addRoute(code, peer);
-      addRoute(peer, code);
-    }
-  });
-  
-  return Array.from(routeSet).map(route => {
-    const [from, to] = route.split('-');
-    return { from, to };
-  });
-};
-
-const generateFlights = (routes, dates, flightIdCounter) => {
-  const flights = [];
-  
-  routes.forEach(({ from, to }) => {
-    const basePrice = 150 + Math.random() * 250;
+  selectedRoutes.forEach(([from, to]) => {
+    const basePrice = 150 + Math.random() * 300;
     const baseDuration = calculateDuration(from, to);
     
+    // LAX-SFO is a high-traffic route, ensure multiple flights per day
+    const isHighTrafficRoute = (from === 'LAX' && to === 'SFO') || (from === 'SFO' && to === 'LAX');
+    const minFlightsPerDay = isHighTrafficRoute ? 3 : 1;
+    const maxFlightsPerDay = isHighTrafficRoute ? 5 : 2;
+    
     dates.forEach(date => {
-      const flightsPerDay = 1 + Math.floor(Math.random() * 2); // 1–2 flights/day
+      const flightsPerDay = minFlightsPerDay + Math.floor(Math.random() * (maxFlightsPerDay - minFlightsPerDay + 1));
       
       for (let i = 0; i < flightsPerDay; i++) {
         const airline = AIRLINES[Math.floor(Math.random() * AIRLINES.length)];
@@ -181,17 +151,18 @@ const generateFlights = (routes, dates, flightIdCounter) => {
         const classMultiplier = getClassPriceMultiplier(flightClass);
         const flightNumber = generateFlightNumber(airline.code);
         const totalSeats = getTotalSeats();
-        const availableSeats = Math.floor(totalSeats * (0.35 + Math.random() * 0.55));
+        // Ensure varied seat availability (10% to 95%)
+        const availableSeats = Math.floor(totalSeats * (0.1 + Math.random() * 0.85));
         
-        const nonstop = Math.random() > 0.2;
+        const nonstop = Math.random() > 0.3;
         const stops = nonstop ? 0 : 1;
         
-        const priceVariation = 0.9 + Math.random() * 0.2;
+        const priceVariation = 0.8 + Math.random() * 0.4;
         const classAdjustedPrice = basePrice * classMultiplier;
         const finalPrice = Math.round(classAdjustedPrice * priceVariation * 100) / 100;
         
-        const isDeal = Math.random() < 0.2;
-        const dealPrice = isDeal ? Math.round(classAdjustedPrice * 0.8 * 100) / 100 : finalPrice;
+        const isDeal = Math.random() < 0.15;
+        const dealPrice = isDeal ? Math.round(classAdjustedPrice * 0.75 * 100) / 100 : finalPrice;
         
         flights.push({
           _id: `FL-US-${flightIdCounter.count++}`,
@@ -364,27 +335,10 @@ const seedUSData = async () => {
     
     logger.info(`Starting IDs: Flights=${flightIdCounter.count}, Hotels=${hotelIdCounter.count}, Cars=${carIdCounter.count}`);
     
-    const { startDate, endDate } = getDateRangeToDec11();
-    const dates = generateDates(startDate, endDate);
-    const startDateStr = startDate.toISOString().split('T')[0];
-    const endDateStr = endDate.toISOString().split('T')[0];
-    logger.info(`Generating data for dates between ${startDateStr} and ${endDateStr}`);
-    
-    // Load all airports in the database so every destination gets coverage
-    const airportDocs = await db.collection('airports')
-      .find({ code: { $exists: true, $ne: '' } })
-      .project({ code: 1, city: 1, state: 1 })
-      .toArray();
-    
-    const airports = airportDocs.length > 0
-      ? airportDocs.map(a => ({ code: a.code, city: a.city || 'Unknown', state: a.state || 'Unknown' }))
-      : MAJOR_US_AIRPORTS;
-    
-    const routes = buildRoutesFromAirports(airports);
-    logger.info(`Prepared ${routes.length} routes across ${airports.length} airports`);
+    const dates = generateDates('2025-11-30', '2026-02-28');
     
     logger.info('Generating US flight data...');
-    const flights = generateFlights(routes, dates, flightIdCounter);
+    const flights = generateFlights(MAJOR_US_AIRPORTS, dates, flightIdCounter);
     logger.info(`Generated ${flights.length} flights`);
     
     logger.info('Generating US hotel data...');
@@ -394,53 +348,51 @@ const seedUSData = async () => {
     logger.info('Generating US car data...');
     const cars = generateCars(MAJOR_US_AIRPORTS, carIdCounter);
     logger.info(`Generated ${cars.length} cars`);
-
-    // Refresh the date window we just generated so the calendar uses seeded rates
-    if (dates.length > 0) {
-      logger.info(`Clearing existing flights in range ${startDateStr} to ${endDateStr}...`);
-      await db.collection('flights').deleteMany({
-        departDate: { $gte: startDateStr, $lte: endDateStr },
-      });
-
-      // Invalidate cached flight search results so the UI sees the new data immediately
+    
+    logger.info('Inserting flights into database...');
+    if (flights.length > 0) {
       try {
-        await deleteCachedByPattern('search:flight:*');
-        logger.info('Cleared cached flight search results');
-      } catch (cacheError) {
-        logger.warn('Failed to clear cached flight search results:', cacheError);
+        const result = await db.collection('flights').insertMany(flights, { ordered: false });
+        logger.info(`Inserted ${result.insertedCount} flights (${flights.length - result.insertedCount} duplicates skipped)`);
+      } catch (error) {
+        if (error.code === 11000) {
+          const inserted = error.result?.insertedCount || 0;
+          logger.info(`Inserted ${inserted} flights (${flights.length - inserted} duplicates skipped)`);
+        } else {
+          throw error;
+        }
       }
     }
     
-    const bulkUpsert = async (collectionName, docs, label) => {
-      if (!docs.length) return;
-      const collection = db.collection(collectionName);
-      const chunkSize = 5000;
-      let inserted = 0;
-      let matched = 0;
-      for (let i = 0; i < docs.length; i += chunkSize) {
-        const slice = docs.slice(i, i + chunkSize);
-        const ops = slice.map(doc => ({
-          updateOne: {
-            filter: { _id: doc._id },
-            update: { $set: doc },
-            upsert: true,
-          },
-        }));
-        const res = await collection.bulkWrite(ops, { ordered: false });
-        inserted += res.upsertedCount || 0;
-        matched += (res.matchedCount || 0);
+    logger.info('Inserting hotels into database...');
+    if (hotels.length > 0) {
+      try {
+        const result = await db.collection('hotels').insertMany(hotels, { ordered: false });
+        logger.info(`Inserted ${result.insertedCount} hotels (${hotels.length - result.insertedCount} duplicates skipped)`);
+      } catch (error) {
+        if (error.code === 11000) {
+          const inserted = error.result?.insertedCount || 0;
+          logger.info(`Inserted ${inserted} hotels (${hotels.length - inserted} duplicates skipped)`);
+        } else {
+          throw error;
+        }
       }
-      logger.info(`Upserted ${label}: inserted ${inserted}, matched ${matched}`);
-    };
+    }
     
-    logger.info('Upserting flights into database...');
-    await bulkUpsert('flights', flights, 'flights');
-    
-    logger.info('Upserting hotels into database...');
-    await bulkUpsert('hotels', hotels, 'hotels');
-    
-    logger.info('Upserting cars into database...');
-    await bulkUpsert('cars', cars, 'cars');
+    logger.info('Inserting cars into database...');
+    if (cars.length > 0) {
+      try {
+        const result = await db.collection('cars').insertMany(cars, { ordered: false });
+        logger.info(`Inserted ${result.insertedCount} cars (${cars.length - result.insertedCount} duplicates skipped)`);
+      } catch (error) {
+        if (error.code === 11000) {
+          const inserted = error.result?.insertedCount || 0;
+          logger.info(`Inserted ${inserted} cars (${cars.length - inserted} duplicates skipped)`);
+        } else {
+          throw error;
+        }
+      }
+    }
     
     logger.info('US data seeding completed successfully');
     
@@ -461,3 +413,4 @@ seedUSData()
     logger.error('Seed script failed:', error);
     process.exit(1);
   });
+
