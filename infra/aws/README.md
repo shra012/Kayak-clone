@@ -37,4 +37,4 @@ terraform apply
 
 ---
 
-**Simple. Clean. Standard.** 🚀
+**Simple. Clean. Standard.** 

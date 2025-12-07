@@ -259,12 +259,12 @@ fi
 
 # Frontend-Backend connectivity
 if [ -n "$FRONTEND_URL" ] && [ -n "$BACKEND_URL" ]; then
-    echo -e "${GREEN}OK: Frontend ↔ Backend: URLs available${NC}"
+    echo -e "${GREEN}OK: Frontend  Backend: URLs available${NC}"
     echo "    Frontend: $FRONTEND_URL"
     echo "    Backend: $BACKEND_URL"
     ((APP_PASSED++))
 else
-    echo -e "${RED}ERROR: Frontend ↔ Backend: Cannot verify (missing URLs)${NC}"
+    echo -e "${RED}ERROR: Frontend  Backend: Cannot verify (missing URLs)${NC}"
     ((APP_FAILED++))
 fi
 
