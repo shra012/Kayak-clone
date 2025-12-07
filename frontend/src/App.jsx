@@ -18,6 +18,7 @@ import AdminPage from './pages/admin/AdminPage';
 import AnalyticsPage from './pages/analytics/AnalyticsPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
+import AgentFlightsPage from './pages/listings/AgentFlightsPage';
 
 // Owner Portal Pages
 import OwnerDashboard from './pages/owner/OwnerDashboard';
@@ -52,6 +53,7 @@ function App() {
           }
         />
         <Route path="/flights" element={<FlightsPage />} />
+        <Route path="/agent/flights" element={<AgentFlightsPage />} />
         <Route path="/hotels" element={<HotelsPage />} />
         <Route path="/cars" element={<CarsPage />} />
         <Route

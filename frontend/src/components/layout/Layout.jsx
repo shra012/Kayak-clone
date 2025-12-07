@@ -5,6 +5,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { toggleSidebar, setTheme } from "../../store/slices/uiSlice";
 import { FaBars, FaHotel, FaCar, FaHome, FaChartLine } from "react-icons/fa";
 import AnimatedIcon from "../common/AnimatedIcon";
+import BookingChatWidget from "../common/BookingChatWidget";
 
 const Layout = ({ children }) => {
   const { isAuthenticated, logout, isAdmin, user } = useAuth();
@@ -348,6 +349,9 @@ const Layout = ({ children }) => {
           <p> 2024 Kayak Simulation Platform. All rights reserved.</p>
         </aside>
       </footer>
+
+      {/* Floating bookings chat available on all screens */}
+      <BookingChatWidget />
     </div>
   );
 };
