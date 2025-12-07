@@ -29,14 +29,13 @@ const PaymentsPage = () => {
     cvv: '',
     cardholderName: '',
   });
+  const [paymentErrors, setPaymentErrors] = useState({});
   const toast = useToast();
 
-  // Check if coming from booking flow
   const bookingFromState = location.state;
 
   useEffect(() => {
     if (bookingFromState?.bookingId) {
-      // Auto-populate payment form with booking data
       setNewPayment({
         bookingId: bookingFromState.bookingId,
         amount: bookingFromState.amount || '',
@@ -54,7 +53,7 @@ const PaymentsPage = () => {
       const params = {};
       if (filters.status) params.status = filters.status;
       if (filters.bookingId) params.bookingId = filters.bookingId;
-      
+
       const response = await paymentsApi.listPayments(params);
       setPayments(response.items || []);
     } catch (error) {
@@ -74,8 +73,56 @@ const PaymentsPage = () => {
     }
   };
 
+  const resetPaymentForm = () => {
+    setShowCreateModal(false);
+    setNewPayment({ bookingId: '', amount: '', currency: 'USD' });
+    setPaymentMethod({ type: 'card', cardNumber: '', expiryDate: '', cvv: '', cardholderName: '' });
+    setPaymentErrors({});
+  };
+
+  const clearPaymentError = (field) => {
+    setPaymentErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const validatePaymentMethod = () => {
+    if (!bookingFromState?.bookingId) {
+      return true;
+    }
+
+    const errors = {};
+    const digitsOnly = paymentMethod.cardNumber.replace(/\s/g, '');
+    if (!/^\d{13,19}$/.test(digitsOnly)) {
+      errors.cardNumber = 'Enter a valid card number (13-19 digits)';
+    }
+
+    if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(paymentMethod.expiryDate)) {
+      errors.expiryDate = 'Use MM/YY format';
+    }
+
+    if (!/^\d{3,4}$/.test(paymentMethod.cvv)) {
+      errors.cvv = 'Enter a 3 or 4 digit CVV';
+    }
+
+    if (!paymentMethod.cardholderName.trim()) {
+      errors.cardholderName = 'Cardholder name is required';
+    }
+
+    setPaymentErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleCreatePayment = async (e) => {
     e.preventDefault();
+    if (bookingFromState?.bookingId && !validatePaymentMethod()) {
+      toast.showError('Please fix the highlighted payment details');
+      return;
+    }
+
     try {
       setProcessing({ create: true });
       const paymentData = {
@@ -86,16 +133,14 @@ const PaymentsPage = () => {
       if (bookingFromState?.bookingId) {
         paymentData.paymentMethod = paymentMethod;
       }
-      
+
       const payment = await paymentsApi.createPayment(paymentData);
-      
-      // If coming from booking flow, automatically process payment with method
+
       if (bookingFromState?.bookingId) {
         await handleProcessPaymentWithMethod(payment.id);
       } else {
         toast.showSuccess('Payment created successfully');
-        setShowCreateModal(false);
-        setNewPayment({ bookingId: '', amount: '', currency: 'USD' });
+        resetPaymentForm();
         loadPayments();
       }
     } catch (error) {
@@ -116,13 +161,12 @@ const PaymentsPage = () => {
         cvv: paymentMethod.cvv,
         cardholderName: paymentMethod.cardholderName,
       };
-      
+
       await paymentsApi.processPayment(paymentId, paymentMethodData);
       toast.showSuccess('Payment processed successfully!');
-      setShowCreateModal(false);
+      resetPaymentForm();
       loadPayments();
-      
-      // Navigate to bookings page to show confirmation
+
       setTimeout(() => {
         navigate('/bookings');
       }, 1500);
@@ -152,13 +196,13 @@ const PaymentsPage = () => {
     if (!window.confirm('Are you sure you want to refund this payment? The associated booking will be cancelled.')) {
       return;
     }
-    
+
     try {
       setProcessing({ [`refund-${paymentId}`]: true });
       await paymentsApi.refundPayment(paymentId, amount);
       toast.showSuccess('Payment refunded successfully. Booking has been cancelled.');
       loadPayments();
-      loadBookings(); // Refresh bookings to show cancelled status
+      loadBookings();
     } catch (error) {
       console.error('Error refunding payment:', error);
       toast.showError(error.response?.data?.message || 'Failed to refund payment');
@@ -191,7 +235,6 @@ const PaymentsPage = () => {
 
   return (
     <div className="min-h-screen bg-base-100">
-      {/* Header Section */}
       <div className="bg-base-100/90 backdrop-blur-sm border-b border-base-300">
         <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="flex justify-between items-center">
@@ -199,17 +242,13 @@ const PaymentsPage = () => {
               <h1 className="text-3xl font-bold text-base-content">Payments</h1>
               <p className="text-base-content/70">Manage your payment transactions</p>
             </div>
-            <button
-              className="btn btn-primary"
-              onClick={() => setShowCreateModal(true)}
-            >
+            <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
               Create Payment
             </button>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="card bg-base-100 shadow-md border border-base-300">
           <div className="card-body">
@@ -248,7 +287,6 @@ const PaymentsPage = () => {
         </div>
       </div>
 
-      {/* Payments List */}
       <div className="max-w-7xl mx-auto px-4 py-4">
         {loading ? (
           <div className="flex justify-center items-center py-12">
@@ -342,7 +380,6 @@ const PaymentsPage = () => {
         )}
       </div>
 
-      {/* Create Payment Modal */}
       {showCreateModal && (
         <div className="modal modal-open">
           <div className="modal-box max-w-2xl">
@@ -362,7 +399,7 @@ const PaymentsPage = () => {
                 </button>
               )}
             </div>
-            
+
             {bookingFromState?.bookingId && (
               <div className="alert alert-info mb-4">
                 <FaCheckCircle />
@@ -432,7 +469,6 @@ const PaymentsPage = () => {
                 </select>
               </div>
 
-              {/* Payment Method Fields - shown when coming from booking flow */}
               {bookingFromState?.bookingId && (
                 <>
                   <div className="divider">Payment Method</div>
@@ -442,19 +478,24 @@ const PaymentsPage = () => {
                     </label>
                     <input
                       type="text"
-                      className="input input-bordered"
+                      inputMode="numeric"
+                      className={`input input-bordered ${paymentErrors.cardNumber ? 'input-error' : ''}`}
                       placeholder="1234 5678 9012 3456"
                       value={paymentMethod.cardNumber}
                       onChange={(e) => {
-                        let value = e.target.value.replace(/\s/g, '');
-                        if (value.length <= 16) {
-                          value = value.match(/.{1,4}/g)?.join(' ') || value;
-                          setPaymentMethod({ ...paymentMethod, cardNumber: value });
-                        }
+                        let value = e.target.value.replace(/\D/g, '').slice(0, 19);
+                        const formatted = value.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+                        setPaymentMethod({ ...paymentMethod, cardNumber: formatted });
+                        clearPaymentError('cardNumber');
                       }}
-                      maxLength={19}
+                      maxLength={23}
                       required
                     />
+                    {paymentErrors.cardNumber && (
+                      <label className="label">
+                        <span className="label-text-alt text-error">{paymentErrors.cardNumber}</span>
+                      </label>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div className="form-control">
@@ -463,19 +504,26 @@ const PaymentsPage = () => {
                       </label>
                       <input
                         type="text"
-                        className="input input-bordered"
+                        inputMode="numeric"
+                        className={`input input-bordered ${paymentErrors.expiryDate ? 'input-error' : ''}`}
                         placeholder="MM/YY"
                         value={paymentMethod.expiryDate}
                         onChange={(e) => {
-                          let value = e.target.value.replace(/\D/g, '');
-                          if (value.length >= 2) {
+                          let value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                          if (value.length >= 3) {
                             value = value.slice(0, 2) + '/' + value.slice(2, 4);
                           }
                           setPaymentMethod({ ...paymentMethod, expiryDate: value });
+                          clearPaymentError('expiryDate');
                         }}
                         maxLength={5}
                         required
                       />
+                      {paymentErrors.expiryDate && (
+                        <label className="label">
+                          <span className="label-text-alt text-error">{paymentErrors.expiryDate}</span>
+                        </label>
+                      )}
                     </div>
                     <div className="form-control">
                       <label className="label">
@@ -483,16 +531,23 @@ const PaymentsPage = () => {
                       </label>
                       <input
                         type="text"
-                        className="input input-bordered"
+                        inputMode="numeric"
+                        className={`input input-bordered ${paymentErrors.cvv ? 'input-error' : ''}`}
                         placeholder="123"
                         value={paymentMethod.cvv}
                         onChange={(e) => {
                           const value = e.target.value.replace(/\D/g, '').slice(0, 4);
                           setPaymentMethod({ ...paymentMethod, cvv: value });
+                          clearPaymentError('cvv');
                         }}
                         maxLength={4}
                         required
                       />
+                      {paymentErrors.cvv && (
+                        <label className="label">
+                          <span className="label-text-alt text-error">{paymentErrors.cvv}</span>
+                        </label>
+                      )}
                     </div>
                   </div>
                   <div className="form-control mb-4">
@@ -501,33 +556,29 @@ const PaymentsPage = () => {
                     </label>
                     <input
                       type="text"
-                      className="input input-bordered"
+                      className={`input input-bordered ${paymentErrors.cardholderName ? 'input-error' : ''}`}
                       placeholder="John Doe"
                       value={paymentMethod.cardholderName}
-                      onChange={(e) => setPaymentMethod({ ...paymentMethod, cardholderName: e.target.value })}
+                      onChange={(e) => {
+                        setPaymentMethod({ ...paymentMethod, cardholderName: e.target.value });
+                        clearPaymentError('cardholderName');
+                      }}
                       required
                     />
+                    {paymentErrors.cardholderName && (
+                      <label className="label">
+                        <span className="label-text-alt text-error">{paymentErrors.cardholderName}</span>
+                      </label>
+                    )}
                   </div>
                 </>
               )}
 
               <div className="modal-action">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setNewPayment({ bookingId: '', amount: '', currency: 'USD' });
-                    setPaymentMethod({ type: 'card', cardNumber: '', expiryDate: '', cvv: '', cardholderName: '' });
-                  }}
-                >
+                <button type="button" className="btn" onClick={resetPaymentForm}>
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={processing.create}
-                >
+                <button type="submit" className="btn btn-primary" disabled={processing.create}>
                   {processing.create ? (
                     <span className="loading loading-spinner loading-xs"></span>
                   ) : bookingFromState?.bookingId ? (
@@ -541,7 +592,7 @@ const PaymentsPage = () => {
               </div>
             </form>
           </div>
-          <div className="modal-backdrop" onClick={() => setShowCreateModal(false)}></div>
+          <div className="modal-backdrop" onClick={resetPaymentForm}></div>
         </div>
       )}
     </div>
