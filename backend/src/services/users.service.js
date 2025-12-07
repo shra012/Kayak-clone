@@ -135,18 +135,27 @@ export const getUserById = async (userId) => {
     return cached;
   }
 
-  // Try PostgreSQL first
-  const pool = getPostgresPool();
-  const result = await pool.query(
-    `SELECT id, ssn, first_name, last_name, email, phone_number,
-     address_line1, address_line2, address_city, address_state, address_zip_code,
-     profile_image_url, role, loyalty_tier, profile_type, ssn_verified_at,
-     partner_details, created_at, updated_at, last_login
-     FROM users WHERE id = $1`,
-    [userId]
-  );
+  let user = null;
 
-  let user = result.rows[0] ? { ...result.rows[0], data_source: 'postgres' } : null;
+  // Try PostgreSQL first. If the table is missing or the connection fails,
+  // log it and gracefully fall back to MongoDB so local dev can still work.
+  try {
+    const pool = getPostgresPool();
+    const result = await pool.query(
+      `SELECT id, ssn, first_name, last_name, email, phone_number,
+       address_line1, address_line2, address_city, address_state, address_zip_code,
+       profile_image_url, role, loyalty_tier, profile_type, ssn_verified_at,
+       partner_details, created_at, updated_at, last_login
+       FROM users WHERE id = $1`,
+      [userId]
+    );
+
+    user = result.rows[0] ? { ...result.rows[0], data_source: 'postgres' } : null;
+  } catch (error) {
+    const missingRelation = error?.code === '42P01' || error?.message?.includes('relation "users" does not exist');
+    const errorLabel = missingRelation ? 'users table missing' : 'query failed';
+    logger.warn(`PostgreSQL lookup for user ${userId} ${errorLabel}: ${error?.message || 'unknown error'}. Falling back to MongoDB.`);
+  }
 
   // If not found in PostgreSQL, fall back to MongoDB
   if (!user) {
