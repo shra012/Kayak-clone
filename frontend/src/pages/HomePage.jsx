@@ -32,6 +32,13 @@ const formatDateString = (dateStr) => {
   return `${year}-${month}-${day}`;
 };
 
+// Helper function to format date for display (e.g., "Dec 7, 2025")
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const date = parseLocalDate(dateStr);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 // Helper function to add days to a date string
 const addDaysToDateString = (dateStr, days) => {
   const date = parseLocalDate(dateStr);
@@ -105,6 +112,7 @@ const HomePage = () => {
   const [showHotelLocationDropdown, setShowHotelLocationDropdown] = useState(false);
   const [hotelLocationOptions, setHotelLocationOptions] = useState([]);
   const [hotelLocationSelected, setHotelLocationSelected] = useState(false);
+  const [showDateRangeCalendar, setShowDateRangeCalendar] = useState(false);
   
   // Car location dropdown states
   const [showCarLocationDropdown, setShowCarLocationDropdown] = useState(false);
@@ -994,12 +1002,17 @@ const navigate = useNavigate();
                 </button>
               </div>
 
-              <h1 className="text-2xl md:text-3xl font-bold text-base-content">
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-base-content mb-2">
                 {activeTab === 'flights' && 'Compare flight deals from 100s of sites'}
-                {activeTab === 'hotels' && 'Search hotels & more'}
+                {activeTab === 'hotels' && 'Find your perfect stay – anywhere, anytime.'}
                 {activeTab === 'cars' && 'Compare car rental deals'}
                 {activeTab === 'agent' && 'Let the concierge plan it for you'}
               </h1>
+              {activeTab === 'hotels' && (
+                <p className="text-base md:text-lg text-base-content/70 font-light mb-4">
+                  Discover amazing hotels, resorts, and apartments tailored to your preferences
+                </p>
+              )}
 
               {activeTab === 'agent' && (
                 <div className="bg-base-100 rounded-lg shadow-xl border border-base-200 p-6">
@@ -1706,15 +1719,18 @@ const navigate = useNavigate();
               )}
 
               {activeTab === 'hotels' && (
-                <div className="bg-base-100 rounded-lg shadow-xl">
+                <div className="bg-base-100 rounded-xl shadow-lg p-4">
                   {/* Main search row */}
-                  <div className="flex items-center gap-2 p-4">
-                    {/* Location */}
-                    <div className="flex-[2] min-w-0 relative">
+                  <div className="flex items-end gap-4 flex-wrap">
+                    {/* Where - Location */}
+                    <div className="relative flex-1 min-w-[200px]">
+                      <label className="label py-1 px-0">
+                        <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Where</span>
+                      </label>
                       <input
                         type="text"
-                        placeholder="Search city (e.g., New York, Miami, Austin...)"
-                        className="input input-sm input-bordered w-full text-sm"
+                        placeholder="Search city or property name (e.g., New York, Miami, Cozy Room...)"
+                        className="input input-sm input-bordered w-full"
                         value={searchData.hotels.location}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -1793,38 +1809,38 @@ const navigate = useNavigate();
                       )}
                     </div>
 
-                    {/* Check-in */}
-                    <div className="flex-1 min-w-0">
-                      <input
-                        type="date"
-                        className="input input-sm input-bordered w-full text-xs"
-                        value={searchData.hotels.checkIn}
-                        min={getMinDate()}
-                        onChange={(e) => setSearchData({
-                          ...searchData,
-                          hotels: { ...searchData.hotels, checkIn: e.target.value }
-                        })}
-                      />
-                    </div>
-
-                    {/* Check-out */}
-                    <div className="flex-1 min-w-0">
-                      <input
-                        type="date"
-                        className="input input-sm input-bordered w-full text-xs"
-                        value={searchData.hotels.checkOut}
-                        min={searchData.hotels.checkIn || getMinDate()}
-                        onChange={(e) => setSearchData({
-                          ...searchData,
-                          hotels: { ...searchData.hotels, checkOut: e.target.value }
-                        })}
-                      />
+                    {/* Check-in / Check-out - Combined Date Range Picker */}
+                    <div className="relative">
+                      <label className="label py-1 px-0">
+                        <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Check-in / Check-out</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowDateRangeCalendar(true)}
+                        className="input input-sm input-bordered w-64 text-left cursor-pointer hover:bg-base-200 flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className={searchData.hotels.checkIn ? 'text-base-content' : 'text-base-content/50'}>
+                            {searchData.hotels.checkIn ? formatDate(searchData.hotels.checkIn) : 'Check-in'}
+                          </span>
+                          <span className="text-base-content/40">→</span>
+                          <span className={searchData.hotels.checkOut ? 'text-base-content' : 'text-base-content/50'}>
+                            {searchData.hotels.checkOut ? formatDate(searchData.hotels.checkOut) : 'Check-out'}
+                          </span>
+                        </span>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </button>
                     </div>
 
                     {/* Guests */}
-                    <div className="flex-1 min-w-0">
+                    <div className="relative">
+                      <label className="label py-1 px-0">
+                        <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Guests</span>
+                      </label>
                       <select
-                        className="select select-sm select-bordered w-full text-xs"
+                        className="select select-sm select-bordered w-32"
                         value={searchData.hotels.guests}
                         onChange={(e) => setSearchData({
                           ...searchData,
@@ -1835,13 +1851,17 @@ const navigate = useNavigate();
                         <option value="2">2 guests</option>
                         <option value="3">3 guests</option>
                         <option value="4">4 guests</option>
+                        <option value="5">5 guests</option>
+                        <option value="6">6 guests</option>
+                        <option value="7">7 guests</option>
+                        <option value="8">8 guests</option>
                       </select>
-                  </div>
+                    </div>
 
                     {/* Search button */}
                     <button
                       onClick={handleSearch}
-                      className="btn btn-primary btn-circle"
+                      className="btn btn-primary btn-sm btn-circle h-10 w-10"
                     >
                       <FaSearch className="w-5 h-5" />
                     </button>
@@ -2031,7 +2051,7 @@ const navigate = useNavigate();
           {/* Column 2: vertical image stack (20% width) - scrollable with page */}
           <div className="hidden lg:block lg:w-[20%]">
             <div className="grid grid-cols-1 gap-3">
-              <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
+              <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-lg group cursor-pointer">
                 <img
                   key={`${activeMediaTab}-1`}
                   src={
@@ -2042,10 +2062,17 @@ const navigate = useNavigate();
                       : carImages.cars1
                   }
                   alt={`${activeMediaTab} 1`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent group-hover:from-black/80 group-hover:via-black/30 transition-all duration-300">
+                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                    <p className="text-sm font-semibold drop-shadow-lg">
+                      {activeMediaTab === 'flights' ? 'Popular Destinations' : activeMediaTab === 'hotels' ? 'Popular Stays' : 'Popular Rentals'}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
+              <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-lg group cursor-pointer">
                 <img
                   key={`${activeMediaTab}-2`}
                   src={
@@ -2056,10 +2083,17 @@ const navigate = useNavigate();
                       : carImages.cars2
                   }
                   alt={`${activeMediaTab} 2`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent group-hover:from-black/80 group-hover:via-black/30 transition-all duration-300">
+                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                    <p className="text-sm font-semibold drop-shadow-lg">
+                      {activeMediaTab === 'flights' ? 'Trending Routes' : activeMediaTab === 'hotels' ? 'Trending Locations' : 'Trending Models'}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
+              <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-lg group cursor-pointer">
                 <img
                   key={`${activeMediaTab}-3`}
                   src={
@@ -2070,8 +2104,15 @@ const navigate = useNavigate();
                       : carImages.cars3
                   }
                   alt={`${activeMediaTab} 3`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent group-hover:from-black/80 group-hover:via-black/30 transition-all duration-300">
+                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                    <p className="text-sm font-semibold drop-shadow-lg">
+                      {activeMediaTab === 'flights' ? 'Featured Deals' : activeMediaTab === 'hotels' ? 'Featured Hotels' : 'Featured Vehicles'}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2079,7 +2120,7 @@ const navigate = useNavigate();
           {/* Column 3: vertical image stack (20% width) - scrollable with page */}
           <div className="hidden lg:block lg:w-[20%]">
             <div className="grid grid-cols-1 gap-3">
-              <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
+              <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-lg group cursor-pointer">
                 <img
                   key={`${activeMediaTab}-4`}
                   src={
@@ -2090,10 +2131,17 @@ const navigate = useNavigate();
                       : carImages.cars4
                   }
                   alt={`${activeMediaTab} 4`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent group-hover:from-black/80 group-hover:via-black/30 transition-all duration-300">
+                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                    <p className="text-sm font-semibold drop-shadow-lg">
+                      {activeMediaTab === 'flights' ? 'Best Prices' : activeMediaTab === 'hotels' ? 'Luxury Stays' : 'Premium Cars'}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
+              <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-lg group cursor-pointer">
                 <img
                   key={`${activeMediaTab}-5`}
                   src={
@@ -2104,10 +2152,17 @@ const navigate = useNavigate();
                       : carImages.cars5
                   }
                   alt={`${activeMediaTab} 5`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent group-hover:from-black/80 group-hover:via-black/30 transition-all duration-300">
+                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                    <p className="text-sm font-semibold drop-shadow-lg">
+                      {activeMediaTab === 'flights' ? 'Exotic Locations' : activeMediaTab === 'hotels' ? 'Boutique Hotels' : 'SUV Collection'}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
+              <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-lg group cursor-pointer">
                 <img
                   key={`${activeMediaTab}-6`}
                   src={
@@ -2118,8 +2173,15 @@ const navigate = useNavigate();
                       : carImages.cars6
                   }
                   alt={`${activeMediaTab} 6`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent group-hover:from-black/80 group-hover:via-black/30 transition-all duration-300">
+                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                    <p className="text-sm font-semibold drop-shadow-lg">
+                      {activeMediaTab === 'flights' ? 'Last Minute' : activeMediaTab === 'hotels' ? 'Weekend Getaways' : 'Economy Options'}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2441,7 +2503,359 @@ const navigate = useNavigate();
           </div>
         </div>
       )}
+
+      {/* Date Range Calendar Modal for Hotels */}
+      {showDateRangeCalendar && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-4xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg">Select Dates</h3>
+              <button
+                onClick={() => setShowDateRangeCalendar(false)}
+                className="btn btn-sm btn-circle btn-ghost"
+              >
+                ✕
+              </button>
+            </div>
+
+            <DateRangeCalendar
+              startDate={searchData.hotels.checkIn}
+              endDate={searchData.hotels.checkOut}
+              onDateSelect={(startDate, endDate) => {
+                if (startDate) {
+                  setSearchData({
+                    ...searchData,
+                    hotels: { ...searchData.hotels, checkIn: startDate }
+                  });
+                }
+                if (endDate) {
+                  setSearchData({
+                    ...searchData,
+                    hotels: { ...searchData.hotels, checkOut: endDate }
+                  });
+                }
+              }}
+              onApply={() => setShowDateRangeCalendar(false)}
+              onClear={() => {
+                setSearchData({
+                  ...searchData,
+                  hotels: { ...searchData.hotels, checkIn: '', checkOut: '' }
+                });
+              }}
+              onToday={() => {
+                const today = new Date().toISOString().split('T')[0];
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowStr = tomorrow.toISOString().split('T')[0];
+                setSearchData({
+                  ...searchData,
+                  hotels: { ...searchData.hotels, checkIn: today, checkOut: tomorrowStr }
+                });
+              }}
+              minDate={new Date().toISOString().split('T')[0]}
+            />
+          </div>
+          <div className="modal-backdrop" onClick={() => setShowDateRangeCalendar(false)}></div>
+        </div>
+      )}
+
       <BookingChatWidget />
+    </div>
+  );
+};
+
+// Date Range Calendar Component with two calendars side by side
+const DateRangeCalendar = ({ startDate, endDate, onDateSelect, onApply, onClear, onToday, minDate }) => {
+  const [selectingStart, setSelectingStart] = useState(!startDate);
+  const [tempStartDate, setTempStartDate] = useState(startDate || '');
+  const [tempEndDate, setTempEndDate] = useState(endDate || '');
+
+  const [leftMonth, setLeftMonth] = useState(() => {
+    if (startDate) {
+      const date = parseLocalDate(startDate);
+      return { year: date.getFullYear(), month: date.getMonth() };
+    }
+    const today = new Date();
+    return { year: today.getFullYear(), month: today.getMonth() };
+  });
+
+  const [rightMonth, setRightMonth] = useState(() => {
+    if (startDate) {
+      const date = parseLocalDate(startDate);
+      const nextMonth = date.getMonth() === 11 ? 0 : date.getMonth() + 1;
+      const nextYear = date.getMonth() === 11 ? date.getFullYear() + 1 : date.getFullYear();
+      return { year: nextYear, month: nextMonth };
+    }
+    const today = new Date();
+    const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
+    const nextYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+    return { year: nextYear, month: nextMonth };
+  });
+
+  const generateCalendarDays = (year, month) => {
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    const days = [];
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null);
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(day);
+    }
+    return days;
+  };
+
+  const handlePrevMonth = (isLeft) => {
+    if (isLeft) {
+      setLeftMonth(prev => {
+        const newMonth = prev.month === 0 ? 11 : prev.month - 1;
+        const newYear = prev.month === 0 ? prev.year - 1 : prev.year;
+        return { year: newYear, month: newMonth };
+      });
+    } else {
+      setRightMonth(prev => {
+        const newMonth = prev.month === 0 ? 11 : prev.month - 1;
+        const newYear = prev.month === 0 ? prev.year - 1 : prev.year;
+        return { year: newYear, month: newMonth };
+      });
+    }
+  };
+
+  const handleNextMonth = (isLeft) => {
+    if (isLeft) {
+      setLeftMonth(prev => {
+        const newMonth = prev.month === 11 ? 0 : prev.month + 1;
+        const newYear = prev.month === 11 ? prev.year + 1 : prev.year;
+        return { year: newYear, month: newMonth };
+      });
+    } else {
+      setRightMonth(prev => {
+        const newMonth = prev.month === 11 ? 0 : prev.month + 1;
+        const newYear = prev.month === 11 ? prev.year + 1 : prev.year;
+        return { year: newYear, month: newMonth };
+      });
+    }
+  };
+
+  const getDateStr = (year, month, day) => {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
+
+  const isDateDisabled = (year, month, day) => {
+    if (!day || !minDate) return false;
+    const dateStr = getDateStr(year, month, day);
+    return dateStr < minDate;
+  };
+
+  const isDateInRange = (year, month, day) => {
+    if (!day || !tempStartDate || !tempEndDate) return false;
+    const dateStr = getDateStr(year, month, day);
+    return dateStr > tempStartDate && dateStr < tempEndDate;
+  };
+
+  const isDateStart = (year, month, day) => {
+    if (!day || !tempStartDate) return false;
+    const dateStr = getDateStr(year, month, day);
+    return dateStr === tempStartDate;
+  };
+
+  const isDateEnd = (year, month, day) => {
+    if (!day || !tempEndDate) return false;
+    const dateStr = getDateStr(year, month, day);
+    return dateStr === tempEndDate;
+  };
+
+  const handleDateClick = (year, month, day) => {
+    if (!day || isDateDisabled(year, month, day)) return;
+    const dateStr = getDateStr(year, month, day);
+    
+    if (selectingStart || (!tempStartDate && !tempEndDate)) {
+      // Selecting start date
+      setTempStartDate(dateStr);
+      setTempEndDate('');
+      setSelectingStart(false);
+      onDateSelect(dateStr, null);
+    } else {
+      // Selecting end date
+      if (dateStr <= tempStartDate) {
+        // If clicked date is before start, make it the new start
+        setTempStartDate(dateStr);
+        setTempEndDate('');
+        setSelectingStart(false);
+        onDateSelect(dateStr, null);
+      } else {
+        // Valid end date
+        setTempEndDate(dateStr);
+        setSelectingStart(true);
+        onDateSelect(tempStartDate, dateStr);
+      }
+    }
+  };
+
+  const handleApply = () => {
+    if (tempStartDate && tempEndDate) {
+      onDateSelect(tempStartDate, tempEndDate);
+    }
+    onApply();
+  };
+
+  const handleClear = () => {
+    setTempStartDate('');
+    setTempEndDate('');
+    setSelectingStart(true);
+    onClear();
+  };
+
+  const handleToday = () => {
+    onToday();
+    setTempStartDate(startDate || '');
+    setTempEndDate(endDate || '');
+  };
+
+  const renderCalendar = (currentMonth, isLeft) => {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const days = generateCalendarDays(currentMonth.year, currentMonth.month);
+
+    return (
+      <div className="w-full">
+        {/* Month Navigation */}
+        <div className="flex items-center justify-between mb-4">
+          <button 
+            onClick={() => handlePrevMonth(isLeft)} 
+            className="btn btn-circle btn-sm btn-ghost hover:bg-primary/10 hover:scale-110 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <span className="font-semibold text-base">
+            {monthNames[currentMonth.month]} {currentMonth.year}
+          </span>
+          <button 
+            onClick={() => handleNextMonth(isLeft)} 
+            className="btn btn-circle btn-sm btn-ghost hover:bg-primary/10 hover:scale-110 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Day Headers */}
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="text-center text-xs font-medium text-base-content/60 p-2">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar Days */}
+        <div className="grid grid-cols-7 gap-1">
+          {days.map((day, index) => {
+            const dateStr = day ? getDateStr(currentMonth.year, currentMonth.month, day) : null;
+            const disabled = day ? isDateDisabled(currentMonth.year, currentMonth.month, day) : false;
+            const inRange = day ? isDateInRange(currentMonth.year, currentMonth.month, day) : false;
+            const isStart = day ? isDateStart(currentMonth.year, currentMonth.month, day) : false;
+            const isEnd = day ? isDateEnd(currentMonth.year, currentMonth.month, day) : false;
+            const isToday = day && dateStr === new Date().toISOString().split('T')[0];
+
+            // Determine if this date is at the start, end, or in the middle of the range
+            const isRangeStart = isStart;
+            const isRangeEnd = isEnd;
+            const isRangeMiddle = inRange && !isStart && !isEnd;
+            
+            // Determine border radius based on position in range
+            let borderRadiusClass = 'rounded-lg';
+            if (isRangeStart && !isRangeEnd) {
+              borderRadiusClass = 'rounded-l-lg rounded-r-none';
+            } else if (isRangeEnd && !isRangeStart) {
+              borderRadiusClass = 'rounded-r-lg rounded-l-none';
+            } else if (isRangeMiddle) {
+              borderRadiusClass = 'rounded-none';
+            }
+
+            return (
+              <div key={index} className="aspect-square relative">
+                {day ? (
+                  <button
+                    onClick={() => handleDateClick(currentMonth.year, currentMonth.month, day)}
+                    disabled={disabled}
+                    className={`
+                      w-full h-full text-sm transition-all relative z-10 ${borderRadiusClass}
+                      ${isStart || isEnd
+                        ? 'bg-primary text-primary-content font-bold'
+                        : isRangeMiddle
+                        ? 'bg-primary/20 text-primary font-semibold'
+                        : disabled
+                        ? 'text-base-content/30 cursor-not-allowed rounded-lg'
+                        : isToday
+                        ? 'border-2 border-primary text-primary font-semibold hover:bg-primary/10 rounded-lg'
+                        : 'hover:bg-base-300 cursor-pointer rounded-lg'
+                      }
+                    `}
+                  >
+                    {day}
+                  </button>
+                ) : (
+                  <div className="w-full h-full"></div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // Sync temp dates with props
+  useEffect(() => {
+    setTempStartDate(startDate || '');
+    setTempEndDate(endDate || '');
+    setSelectingStart(!startDate);
+  }, [startDate, endDate]);
+
+  return (
+    <div className="w-full">
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        {/* Left Calendar */}
+        <div>
+          {renderCalendar(leftMonth, true)}
+        </div>
+
+        {/* Right Calendar */}
+        <div>
+          {renderCalendar(rightMonth, false)}
+        </div>
+      </div>
+
+      {/* Sticky Footer */}
+      <div className="sticky bottom-0 bg-base-100 border-t border-base-300 pt-4 mt-4 -mx-6 -mb-6 px-6 pb-6 flex items-center justify-between">
+        <div className="flex gap-2">
+          <button
+            onClick={handleClear}
+            className="btn btn-sm btn-ghost"
+          >
+            Clear
+          </button>
+          <button
+            onClick={handleToday}
+            className="btn btn-sm btn-ghost"
+          >
+            Today
+          </button>
+        </div>
+        <button
+          onClick={handleApply}
+          className="btn btn-sm btn-primary"
+          disabled={!tempStartDate || !tempEndDate}
+        >
+          Apply
+        </button>
+      </div>
     </div>
   );
 };

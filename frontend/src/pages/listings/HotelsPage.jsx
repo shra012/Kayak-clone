@@ -78,6 +78,13 @@ const createPriceIcon = (price, isHovered = false, isSelected = false) => {
 
 const MAX_CITY_SUGGESTIONS = 18;
 
+// Helper function to parse date in local timezone
+const parseLocalDate = (dateStr) => {
+  if (!dateStr) return new Date();
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
 const mapHotelLocationToOption = (item) => {
   if (!item) return null;
   const baseCity = item.city || item.name || '';
@@ -114,6 +121,31 @@ const getPropertyTypeIcon = (propertyType) => {
   return propertyTypeIcons[propertyType] || '🏨';
 };
 
+// Helper function to render star rating with half stars
+const renderStarRating = (rating) => {
+  const numRating = Number(rating);
+  const fullStars = Math.floor(numRating);
+  const hasHalfStar = numRating % 1 >= 0.5 && numRating % 1 < 1;
+  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+  
+  return (
+    <div className="flex gap-0.5 items-center">
+      {[...Array(fullStars)].map((_, i) => (
+        <span key={`full-${i}`} className="text-warning text-sm" style={{ display: 'inline-block', width: '1em', textAlign: 'center' }}>★</span>
+      ))}
+      {hasHalfStar && (
+        <span className="relative inline-block text-warning text-sm" style={{ width: '1em', height: '1em', lineHeight: '1em', textAlign: 'center' }}>
+          <span className="absolute inset-0 opacity-30" style={{ lineHeight: '1em' }}>★</span>
+          <span className="absolute left-0 top-0" style={{ width: '50%', overflow: 'hidden', lineHeight: '1em' }}>★</span>
+        </span>
+      )}
+      {[...Array(emptyStars)].map((_, i) => (
+        <span key={`empty-${i}`} className="text-warning opacity-30 text-sm" style={{ display: 'inline-block', width: '1em', textAlign: 'center' }}>★</span>
+      ))}
+    </div>
+  );
+};
+
 // Map controller component to handle programmatic map panning
 const MapController = ({ selectedHotelId, hotels, zoom = 15 }) => {
   const map = useMap();
@@ -143,6 +175,7 @@ const defaultFilters = {
   amenity: '', // Keep for backward compatibility with dropdown
   amenities: [], // Array for multiple selections
   propertyType: '', // Property type filter
+  freePlan: [], // Free Plan options: free_cancellation, free_parking, free_breakfast, all_inclusive
   sortBy: 'rating',
   sortOrder: 'desc',
 };
@@ -247,22 +280,29 @@ const HotelsPage = () => {
   const [availablePropertyTypes, setAvailablePropertyTypes] = useState([]);
   const [loadingPropertyTypes, setLoadingPropertyTypes] = useState(false);
   const [showSmartFilters, setShowSmartFilters] = useState(false);
-  // Filters drawer: visible on desktop (xl breakpoint), hidden on mobile/tablet
-  const [showFiltersDrawer, setShowFiltersDrawer] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
+  // Filter panel state: starts closed, opens when user clicks "Filters" button
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  // Track desktop size for responsive layout (but don't auto-open filters)
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1280);
+  // Date picker states
+  const [checkInDate, setCheckInDate] = useState(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return searchData?.checkIn || today;
+  });
+  const [checkOutDate, setCheckOutDate] = useState(() => {
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    return searchData?.checkOut || tomorrow;
+  });
+  const [guests, setGuests] = useState(() => {
+    return searchData?.guests || 1;
+  });
+  const [showDateRangeCalendar, setShowDateRangeCalendar] = useState(false);
   
-  // Auto-show filters on desktop (xl breakpoint = 1280px) and track screen size
+  // Track desktop size for responsive layout (but don't auto-open filters)
   useEffect(() => {
     const handleResize = () => {
-      const desktop = window.innerWidth >= 1280;
-      setIsDesktop(desktop);
-      // Auto-show filters when switching to desktop
-      if (desktop) {
-        setShowFiltersDrawer(true);
-      } else {
-        // On mobile, start with filters closed
-        setShowFiltersDrawer(false);
-      }
+      setIsDesktop(window.innerWidth >= 1280);
     };
     
     // Set initial state on mount
@@ -272,23 +312,78 @@ const HotelsPage = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Collapse all filter sections when filter panel opens
+  useEffect(() => {
+    if (isFilterPanelOpen) {
+      setExpandedFilterSections({
+        price: false,
+        amenities: false,
+        mealPlan: false,
+        propertyType: false,
+        rating: false,
+        smartFilters: false
+      });
+    }
+  }, [isFilterPanelOpen]);
   const [expandedFilterSections, setExpandedFilterSections] = useState({
-    price: true,
-    amenities: true,
-    mealPlan: true,
-    propertyType: true,
-    rating: true
+    price: false,
+    amenities: false,
+    mealPlan: false,
+    propertyType: false,
+    rating: false,
+    smartFilters: false
   });
   const [citySuggestions, setCitySuggestions] = useState([]);
   const [popularCities, setPopularCities] = useState([]);
   const [isCityLoading, setIsCityLoading] = useState(false);
   const cityDebounceRef = useRef(null);
 
+  // Format date for display
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const date = parseLocalDate(dateStr);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  // Handle date range selection
+  const handleDateRangeSelect = (startDate, endDate) => {
+    if (startDate) {
+      setCheckInDate(startDate);
+    }
+    if (endDate) {
+      setCheckOutDate(endDate);
+    }
+  };
+
+  // Handle date range calendar close
+  const handleDateRangeApply = () => {
+    setShowDateRangeCalendar(false);
+  };
+
+  // Handle date range clear
+  const handleDateRangeClear = () => {
+    setCheckInDate('');
+    setCheckOutDate('');
+  };
+
+  // Handle today button
+  const handleDateRangeToday = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    setCheckInDate(today);
+    setCheckOutDate(tomorrowStr);
+  };
+
   const fetchCityOptions = useCallback(async (query = '') => {
     try {
       setIsCityLoading(true);
-      const results = await listingsApi.searchHotelLocations(query || '', MAX_CITY_SUGGESTIONS);
-      const formatted = (results || [])
+      const response = await listingsApi.searchHotelLocations(query || '', MAX_CITY_SUGGESTIONS);
+      // API returns { items: [...] }, extract items array
+      const results = response?.items || (Array.isArray(response) ? response : []);
+      const formatted = results
         .map(mapHotelLocationToOption)
         .filter(Boolean);
 
@@ -377,11 +472,13 @@ const HotelsPage = () => {
       setLoadingAmenities(true);
       try {
         const data = await listingsApi.getAvailableAmenities();
-        setAvailableAmenities(data.amenities || []);
+        // Filter out 'breakfast' from amenities (now in Free Plan)
+        const amenities = (data.amenities || []).filter(amenity => amenity !== 'breakfast');
+        setAvailableAmenities(amenities);
       } catch (err) {
         console.error('Failed to load amenities', err);
-        // Fallback to default amenities if API fails
-        setAvailableAmenities(['wifi', 'pool', 'parking', 'gym', 'spa', 'restaurant', 'breakfast', 'concierge', 'beach_access', 'airport_shuttle', 'boat_service']);
+        // Fallback to default amenities if API fails (breakfast removed - now in Free Plan)
+        setAvailableAmenities(['wifi', 'pool', 'parking', 'gym', 'spa', 'restaurant', 'concierge', 'beach_access', 'airport_shuttle', 'boat_service']);
       } finally {
         setLoadingAmenities(false);
       }
@@ -410,6 +507,19 @@ const HotelsPage = () => {
     setHoveredHotelId(null);
     setSelectedHotelId(null);
   }, [results]);
+
+  // Sync dates and guests when searchData changes (e.g., from HomePage navigation)
+  useEffect(() => {
+    if (searchData?.checkIn) {
+      setCheckInDate(searchData.checkIn);
+    }
+    if (searchData?.checkOut) {
+      setCheckOutDate(searchData.checkOut);
+    }
+    if (searchData?.guests) {
+      setGuests(searchData.guests);
+    }
+  }, [searchData?.checkIn, searchData?.checkOut, searchData?.guests]);
 
   // Load hotels when component mounts or when search data changes
   useEffect(() => {
@@ -441,16 +551,20 @@ const HotelsPage = () => {
       if (!event.target.closest('.smart-filters-container')) {
         setShowSmartFilters(false);
       }
+      // Close sort dropdown when clicking outside
+      if (!event.target.closest('.dropdown.dropdown-end')) {
+        setShowSortDropdown(false);
+      }
     };
 
-    if (showCityDropdown || showPriceFilter || showSmartFilters) {
+    if (showCityDropdown || showPriceFilter || showSmartFilters || showSortDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showCityDropdown, showPriceFilter, showSmartFilters]);
+  }, [showCityDropdown, showPriceFilter, showSmartFilters, showSortDropdown]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -523,24 +637,25 @@ const HotelsPage = () => {
     console.log('isAuthenticated:', isAuthenticated);
     console.log('searchData:', searchData);
     
+    // Use the current date states (which can be changed by user)
+    const checkIn = checkInDate || new Date().toISOString().split('T')[0];
+    const checkOut = checkOutDate || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const checkInDateObj = new Date(checkIn);
+    const checkOutDateObj = new Date(checkOut);
+    const nights = Math.ceil((checkOutDateObj - checkInDateObj) / (1000 * 60 * 60 * 24)) || 1;
+    
     // Check if user is authenticated
     if (!isAuthenticated) {
       console.log('User not authenticated, redirecting to login');
       toast.showError('Please log in to continue with booking');
       // Save booking data to sessionStorage to restore after login
-      const checkIn = searchData?.checkIn || new Date().toISOString().split('T')[0];
-      const checkOut = searchData?.checkOut || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-      const checkInDate = new Date(checkIn);
-      const checkOutDate = new Date(checkOut);
-      const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
-
       const bookingData = {
         type: 'hotel',
         hotel,
         checkIn,
         checkOut,
         nights,
-        guests: searchData?.guests || 1,
+        guests: guests || 1,
       };
       sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
       sessionStorage.setItem('returnPath', '/bookings');
@@ -548,21 +663,13 @@ const HotelsPage = () => {
       return;
     }
 
-    // Calculate nights between check-in and check-out
-    // Use searchData first, then fallback to today/tomorrow
-    const checkIn = searchData?.checkIn || new Date().toISOString().split('T')[0];
-    const checkOut = searchData?.checkOut || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-    const checkInDate = new Date(checkIn);
-    const checkOutDate = new Date(checkOut);
-    const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
-
     const bookingData = {
       type: 'hotel',
       hotel,
       checkIn,
       checkOut,
       nights,
-      guests: searchData?.guests || 1,
+      guests: guests || 1,
     };
 
     console.log('Navigating to /bookings with bookingData:', bookingData);
@@ -646,16 +753,33 @@ const HotelsPage = () => {
   const activeCityOptions = (cityInput.trim() ? citySuggestions : popularCities);
 
   return (
-    <div className="min-h-screen bg-base-100">
+    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50">
+      {/* Hero Section */}
+      <div className="bg-gradient-to-b from-white to-gray-50 border-b border-base-200">
+        <div className="max-w-7xl mx-auto px-4 py-8 md:py-12">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-base-content mb-3 text-center">
+            Find your perfect stay – anywhere, anytime.
+          </h1>
+          <p className="text-lg md:text-xl text-base-content/70 text-center font-light max-w-2xl mx-auto">
+            Discover amazing hotels, resorts, and apartments tailored to your preferences
+          </p>
+        </div>
+      </div>
+
       {/* Top search bar - Kayak style */}
       <div className="bg-base-100/90 backdrop-blur-sm border-b border-base-300 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-full mx-auto px-4 py-3">
-          <form className="flex items-center gap-2" onSubmit={handleSubmit}>
-            <div className="relative flex-1 max-w-md" ref={cityDropdownRef}>
+        <div className="max-w-full mx-auto px-4 py-4">
+          <form className="bg-base-100 rounded-xl shadow-lg p-4" onSubmit={handleSubmit}>
+            <div className="flex items-end gap-4 flex-wrap">
+              {/* Where - City Input */}
+              <div className="relative flex-1 min-w-[200px]" ref={cityDropdownRef}>
+                <label className="label py-1 px-0">
+                  <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Where</span>
+                </label>
               <input
                 type="text"
                 name="city"
-                placeholder="Search city (e.g., New York, Miami, Austin...)"
+                  placeholder="Search city or property name (e.g., New York, Miami, Cozy Room...)"
                 value={cityInput}
                 onChange={handleCityInputChange}
                 onFocus={() => setShowCityDropdown(true)}
@@ -701,7 +825,7 @@ const HotelsPage = () => {
                         {option.region && (
                           <div className="text-xs text-base-content/60 mt-0.5">{option.region}</div>
                         )}
-                      </div>
+                        </div>
                       <span className="badge badge-xs badge-outline uppercase tracking-wide">
                         {option.type === 'property' ? 'Property' : 'City'}
                       </span>
@@ -709,30 +833,63 @@ const HotelsPage = () => {
                   ))}
                 </div>
               )}
+                  </div>
+              
+              {/* Check-in / Check-out - Combined Date Range Picker */}
+              <div className="relative">
+                <label className="label py-1 px-0">
+                  <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Check-in / Check-out</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowDateRangeCalendar(true)}
+                  className="input input-sm input-bordered w-64 text-left cursor-pointer hover:bg-base-200 flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className={checkInDate ? 'text-base-content' : 'text-base-content/50'}>
+                      {checkInDate ? formatDate(checkInDate) : 'Check-in'}
+                    </span>
+                    <span className="text-base-content/40">→</span>
+                    <span className={checkOutDate ? 'text-base-content' : 'text-base-content/50'}>
+                      {checkOutDate ? formatDate(checkOutDate) : 'Check-out'}
+                    </span>
+                  </span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </button>
             </div>
             
-            <input
-              type="date"
-              className="input input-sm input-bordered w-32"
-              value={searchData?.checkIn || ''}
-              readOnly
-            />
-            <input
-              type="date"
-              className="input input-sm input-bordered w-32"
-              value={searchData?.checkOut || ''}
-              readOnly
-            />
-            <div className="text-sm px-3">
-              {searchData?.guests || 1} guest{searchData?.guests > 1 ? 's' : ''}
+              {/* Guests */}
+              <div className="relative">
+                <label className="label py-1 px-0">
+                  <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Guests</span>
+                </label>
+                <select
+                  className="select select-sm select-bordered w-32"
+                  value={guests}
+                  onChange={(e) => setGuests(Number(e.target.value))}
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                    <option key={num} value={num}>
+                      {num} guest{num > 1 ? 's' : ''}
+                    </option>
+                  ))}
+                </select>
             </div>
+
+              {/* Search Button */}
             <button
               type="submit"
-              className="btn btn-primary btn-sm btn-circle"
+                className="btn btn-primary btn-sm btn-circle h-10 w-10"
               disabled={loading}
+                title="Search hotels"
             >
-              
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
             </button>
+            </div>
           </form>
         </div>
       </div>
@@ -743,9 +900,9 @@ const HotelsPage = () => {
           <div className="flex flex-wrap gap-2 items-center">
               <button
               className="btn btn-sm btn-primary"
-              onClick={() => setShowFiltersDrawer(!showFiltersDrawer)}
+              onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
             >
-              {showFiltersDrawer ? '✕ Close Filters' : '☰ Filters'}
+              {isFilterPanelOpen ? '✕ Close Filters' : '☰ Filters'}
             </button>
             {filters.state && (
               <button
@@ -761,7 +918,7 @@ const HotelsPage = () => {
               </button>
             )}
             <div className="smart-filters-container">
-              <button 
+            <button 
                 className="btn btn-sm btn-outline transition-all duration-200 hover:btn-primary"
                 onClick={() => setShowSmartFilters(!showSmartFilters)}
               >
@@ -777,51 +934,53 @@ const HotelsPage = () => {
                 style={{ top: '0', height: '100vh' }}
               >
                 <div className="p-6">
-                  <div className="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
+                  <div className="flex items-center justify-between mb-6 pb-4 border-b-2 border-base-300">
                     <div>
-                      <h3 className="text-2xl font-bold text-primary mb-1">✨ Smart Filters</h3>
-                      <p className="text-sm text-base-content/60">Quick filter presets</p>
+                      <h3 className="text-2xl font-bold text-primary mb-1.5">✨ Smart Filters</h3>
+                      <p className="text-sm font-medium text-base-content/70">Quick filter presets</p>
                     </div>
-                    <button 
-                      className="btn btn-sm btn-circle btn-ghost"
+            <button 
+                      className="btn btn-sm btn-circle btn-ghost hover:bg-base-200"
                       onClick={() => setShowSmartFilters(false)}
                     >
                       ✕
                     </button>
                   </div>
                   
-                  <div className="space-y-3">
+                  <div className="space-y-4">
+                    {/* Luxury */}
                     <button
-                      className="group w-full text-left bg-gradient-to-br from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 border-2 border-yellow-200 dark:border-yellow-800 rounded-xl p-5 hover:border-yellow-400 dark:hover:border-yellow-600 hover:shadow-lg transition-all duration-300"
-                      onClick={() => {
-                        const newFilters = {
-                          ...filters,
+                      className="group w-full text-left bg-gradient-to-br from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 rounded-xl p-5 hover:border-amber-500 dark:hover:border-amber-500 hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
+              onClick={() => {
+                const newFilters = {
+                  ...filters,
                           minRating: '4.5',
-                          amenities: ['wifi', 'breakfast', 'pool'],
+                          amenities: ['wifi', 'pool'],
                           amenity: ''
-                        };
-                        setFilters(newFilters);
-                        loadHotels(1, newFilters);
+                };
+                  setFilters(newFilters);
+                  loadHotels(1, newFilters);
                         setShowSmartFilters(false);
                       }}
                     >
                       <div className="flex items-center gap-3">
                         <div className="text-3xl group-hover:scale-110 transition-transform duration-300">⭐</div>
                         <div className="flex-1">
-                          <h4 className="text-lg font-bold text-yellow-900 dark:text-yellow-200 mb-1">Luxury</h4>
-                          <p className="text-xs text-yellow-700 dark:text-yellow-300/80">4.5+ stars, WiFi, Breakfast, Pool</p>
+                          <h4 className="text-lg font-bold text-amber-900 dark:text-amber-100 mb-1.5">Luxury</h4>
+                          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">4.5+ stars, WiFi, Pool</p>
                         </div>
-                        <div className="text-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-yellow-600">→</div>
+                        <div className="text-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-amber-700 dark:text-amber-300">→</div>
                       </div>
-                    </button>
-
-                    <button
-                      className="group w-full text-left bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-2 border-green-200 dark:border-green-800 rounded-xl p-5 hover:border-green-400 dark:hover:border-green-600 hover:shadow-lg transition-all duration-300"
-                      onClick={() => {
+              </button>
+            
+                    {/* Best Value */}
+              <button
+                      className="group w-full text-left bg-gradient-to-br from-emerald-100 to-green-100 dark:from-emerald-900/40 dark:to-green-900/40 border-2 border-emerald-300 dark:border-emerald-700 rounded-xl p-5 hover:border-emerald-500 dark:hover:border-emerald-500 hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
+                onClick={() => {
                         const newFilters = {
                           ...filters,
                           maxPrice: '200',
-                          amenities: ['wifi', 'breakfast'],
+                          amenities: ['wifi'],
                           amenity: ''
                         };
                         setFilters(newFilters);
@@ -832,15 +991,16 @@ const HotelsPage = () => {
                       <div className="flex items-center gap-3">
                         <div className="text-3xl group-hover:scale-110 transition-transform duration-300">💰</div>
                         <div className="flex-1">
-                          <h4 className="text-lg font-bold text-green-900 dark:text-green-200 mb-1">Best Value</h4>
-                          <p className="text-xs text-green-700 dark:text-green-300/80">Under $200, WiFi, Breakfast</p>
+                          <h4 className="text-lg font-bold text-emerald-900 dark:text-emerald-100 mb-1.5">Best Value</h4>
+                          <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">Under $200, WiFi</p>
                         </div>
-                        <div className="text-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-green-600">→</div>
+                        <div className="text-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-emerald-700 dark:text-emerald-300">→</div>
                       </div>
                     </button>
 
+                    {/* Fitness & Wellness */}
                     <button
-                      className="group w-full text-left bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-5 hover:border-blue-400 dark:hover:border-blue-600 hover:shadow-lg transition-all duration-300"
+                      className="group w-full text-left bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/40 dark:to-blue-900/40 border-2 border-cyan-300 dark:border-cyan-700 rounded-xl p-5 hover:border-cyan-500 dark:hover:border-cyan-500 hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
                       onClick={() => {
                         const newFilters = {
                           ...filters,
@@ -855,19 +1015,20 @@ const HotelsPage = () => {
                       <div className="flex items-center gap-3">
                         <div className="text-3xl group-hover:scale-110 transition-transform duration-300">🏋️</div>
                         <div className="flex-1">
-                          <h4 className="text-lg font-bold text-blue-900 dark:text-blue-200 mb-1">Fitness & Wellness</h4>
-                          <p className="text-xs text-blue-700 dark:text-blue-300/80">WiFi, Pool, Gym, Spa</p>
+                          <h4 className="text-lg font-bold text-cyan-900 dark:text-cyan-100 mb-1.5">Fitness & Wellness</h4>
+                          <p className="text-sm font-medium text-cyan-800 dark:text-cyan-200">WiFi, Pool, Gym, Spa</p>
                         </div>
-                        <div className="text-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-blue-600">→</div>
+                        <div className="text-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-cyan-700 dark:text-cyan-300">→</div>
                       </div>
-                    </button>
+              </button>
 
+                    {/* Family Friendly */}
                     <button
-                      className="group w-full text-left bg-gradient-to-br from-pink-50 to-rose-50 dark:from-pink-900/20 dark:to-rose-900/20 border-2 border-pink-200 dark:border-pink-800 rounded-xl p-5 hover:border-pink-400 dark:hover:border-pink-600 hover:shadow-lg transition-all duration-300"
+                      className="group w-full text-left bg-gradient-to-br from-rose-100 to-pink-100 dark:from-rose-900/40 dark:to-pink-900/40 border-2 border-rose-300 dark:border-rose-700 rounded-xl p-5 hover:border-rose-500 dark:hover:border-rose-500 hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
                       onClick={() => {
                         const newFilters = {
                           ...filters,
-                          amenities: ['wifi', 'breakfast', 'pool', 'parking'],
+                          amenities: ['wifi', 'pool', 'parking'],
                           amenity: ''
                         };
                         setFilters(newFilters);
@@ -878,15 +1039,16 @@ const HotelsPage = () => {
                       <div className="flex items-center gap-3">
                         <div className="text-3xl group-hover:scale-110 transition-transform duration-300">👨‍👩‍👧‍👦</div>
                         <div className="flex-1">
-                          <h4 className="text-lg font-bold text-pink-900 dark:text-pink-200 mb-1">Family Friendly</h4>
-                          <p className="text-xs text-pink-700 dark:text-pink-300/80">WiFi, Breakfast, Pool, Parking</p>
+                          <h4 className="text-lg font-bold text-rose-900 dark:text-rose-100 mb-1.5">Family Friendly</h4>
+                          <p className="text-sm font-medium text-rose-800 dark:text-rose-200">WiFi, Pool, Parking</p>
                         </div>
-                        <div className="text-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-pink-600">→</div>
+                        <div className="text-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-rose-700 dark:text-rose-300">→</div>
                       </div>
                     </button>
 
+                    {/* Beach Resort */}
                     <button
-                      className="group w-full text-left bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 border-2 border-teal-200 dark:border-teal-800 rounded-xl p-5 hover:border-teal-400 dark:hover:border-teal-600 hover:shadow-lg transition-all duration-300"
+                      className="group w-full text-left bg-gradient-to-br from-teal-100 to-cyan-100 dark:from-teal-900/40 dark:to-cyan-900/40 border-2 border-teal-300 dark:border-teal-700 rounded-xl p-5 hover:border-teal-500 dark:hover:border-teal-500 hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
                       onClick={() => {
                         const newFilters = {
                           ...filters,
@@ -901,10 +1063,10 @@ const HotelsPage = () => {
                       <div className="flex items-center gap-3">
                         <div className="text-3xl group-hover:scale-110 transition-transform duration-300">🏖️</div>
                         <div className="flex-1">
-                          <h4 className="text-lg font-bold text-teal-900 dark:text-teal-200 mb-1">Beach Resort</h4>
-                          <p className="text-xs text-teal-700 dark:text-teal-300/80">Beach Access, Pool, Spa</p>
+                          <h4 className="text-lg font-bold text-teal-900 dark:text-teal-100 mb-1.5">Beach Resort</h4>
+                          <p className="text-sm font-medium text-teal-800 dark:text-teal-200">Beach Access, Pool, Spa</p>
                         </div>
-                        <div className="text-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-teal-600">→</div>
+                        <div className="text-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-teal-700 dark:text-teal-300">→</div>
                       </div>
                     </button>
                   </div>
@@ -930,13 +1092,13 @@ const HotelsPage = () => {
         style={{ 
           height: 'calc(100vh - 150px)', 
           minHeight: 'calc(100vh - 150px)',
-          gridTemplateColumns: isDesktop 
-            ? (showFiltersDrawer ? '300px 1fr 450px' : '1fr 450px')
+          gridTemplateColumns: isDesktop
+            ? (isFilterPanelOpen ? '300px 1fr 450px' : '1fr 450px')
             : '1fr'
         }}
       >
         {/* Filters Sidebar - Column 1 - Sticky */}
-        {showFiltersDrawer && (
+        {isFilterPanelOpen && (
           <aside className={`overflow-y-auto border-r border-base-300 bg-base-100 transition-all duration-300 sticky`} style={{ 
             height: 'calc(100vh - 150px)',
             minWidth: '300px',
@@ -948,22 +1110,22 @@ const HotelsPage = () => {
           <div className="h-full overflow-y-auto p-4" style={{ maxHeight: 'calc(100vh - 150px)' }}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold">Filters</h2>
-                  <button
+            <button 
                     className="btn btn-sm btn-ghost"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setShowFiltersDrawer(false);
+                      setIsFilterPanelOpen(false);
                     }}
                   >
                     ✕
-                  </button>
+              </button>
                 </div>
-
+            
                 {/* Clear all filters button */}
-                {(filters.minPrice || filters.maxPrice || filters.minRating || filters.amenity || (filters.amenities && filters.amenities.length > 0) || filters.propertyType) && (
-                  <button
+                {(filters.minPrice || filters.maxPrice || filters.minRating || filters.amenity || (filters.amenities && filters.amenities.length > 0) || filters.propertyType || (filters.freePlan && filters.freePlan.length > 0)) && (
+              <button
                     className="btn btn-sm btn-outline btn-error w-full mb-4"
-                    onClick={() => {
+                onClick={() => {
                       const newFilters = {
                         ...filters,
                         minPrice: '',
@@ -971,7 +1133,8 @@ const HotelsPage = () => {
                         minRating: '',
                         amenity: '',
                         amenities: [],
-                        propertyType: ''
+                        propertyType: '',
+                        freePlan: []
                       };
                       setFilters(newFilters);
                       setTempMinPrice('');
@@ -1119,7 +1282,7 @@ const HotelsPage = () => {
                   </div>
             </div>
             
-                {/* Meal Plan Section */}
+                {/* Free Plan Section */}
                 <div className="collapse collapse-arrow bg-base-200 mb-2">
                   <input
                     type="checkbox"
@@ -1127,25 +1290,39 @@ const HotelsPage = () => {
                     onChange={(e) => setExpandedFilterSections({ ...expandedFilterSections, mealPlan: e.target.checked })}
                   />
                   <div className="collapse-title text-lg font-semibold">
-                    🍳 Meal Plan
+                    🎁 Free Plan
                   </div>
                   <div className="collapse-content">
-                    <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-base-300 rounded">
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm"
-                        checked={filters.amenity === 'breakfast'}
-                        onChange={(e) => {
-                          const newFilters = {
-                            ...filters,
-                            amenity: e.target.checked ? 'breakfast' : ''
-                          };
-                          setFilters(newFilters);
-                          loadHotels(1, newFilters);
-                        }}
-                      />
-                      <span className="text-sm">Free breakfast</span>
-                    </label>
+                    <div className="space-y-2">
+                      {[
+                        { key: 'free_cancellation', label: 'Free Cancellation', icon: '✅' },
+                        { key: 'free_parking', label: 'Free Parking', icon: '🅿️' },
+                        { key: 'free_breakfast', label: 'Free Breakfast', icon: '🍳' },
+                        { key: 'all_inclusive', label: 'All Inclusive', icon: '🏖️' }
+                      ].map((option) => (
+                        <label key={option.key} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-base-300 rounded">
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-sm"
+                            checked={filters.freePlan && filters.freePlan.includes(option.key)}
+                            onChange={(e) => {
+                              const currentFreePlan = filters.freePlan || [];
+                              const newFreePlan = e.target.checked
+                                ? [...currentFreePlan, option.key]
+                                : currentFreePlan.filter(item => item !== option.key);
+                              const newFilters = {
+                                ...filters,
+                                freePlan: newFreePlan
+                              };
+                              setFilters(newFilters);
+                              loadHotels(1, newFilters);
+                            }}
+                          />
+                          <span className="text-base">{option.icon}</span>
+                          <span className="text-sm">{option.label}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -1214,16 +1391,12 @@ const HotelsPage = () => {
                 }}
                           />
                           <span className="text-sm">{rating}+ stars</span>
-                          <div className="flex gap-0.5">
-                            {[...Array(Math.floor(Number(rating)))].map((_, i) => (
-                              <span key={i} className="text-warning text-xs">★</span>
-                            ))}
-          </div>
+                          {renderStarRating(Number(rating))}
                         </label>
                       ))}
+          </div>
         </div>
       </div>
-                </div>
           </div>
           </aside>
         )}
@@ -1233,66 +1406,156 @@ const HotelsPage = () => {
           height: 'calc(100vh - 150px)',
           minWidth: '360px'
         }}>
-          {/* Toggle Filters Button - All screen sizes */}
-          <div className="mb-4">
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => setShowFiltersDrawer(!showFiltersDrawer)}
-            >
-              {showFiltersDrawer ? '✕ Close Filters' : '☰ Filters'}
-            </button>
-          </div>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <span className="font-bold">{pagination?.totalItems || 0} results</span>
               {isRefreshing && (
                 <span className="loading loading-spinner loading-xs"></span>
               )}
-              <span className="ml-2 text-sm">Sort by</span>
-              <select
-                value={getCurrentSortValue(filters.sortBy, filters.sortOrder)}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  let sortBy, sortOrder;
-                  // Map the new sort options to backend fields
-                  switch(value) {
-                    case 'highest_rated':
-                      sortBy = 'rating';
-                      sortOrder = 'desc';
-                      break;
-                    case 'lowest_price':
-                      sortBy = 'pricePerNight';
-                      sortOrder = 'asc';
-                      break;
-                    case 'most_popular':
-                      sortBy = 'bookingsCount';
-                      sortOrder = 'desc';
-                      break;
-                    case 'top_amenities':
-                      sortBy = 'amenitiesCount';
-                      sortOrder = 'desc';
-                      break;
-                    case 'newest_listings':
-                      sortBy = 'createdAt';
-                      sortOrder = 'desc';
-                      break;
-                    default:
-                      const [sb, so] = value.split('_');
-                      sortBy = sb;
-                      sortOrder = so;
-                  }
-                  const newFilters = { ...filters, sortBy, sortOrder };
+            </div>
+            <div className={`dropdown dropdown-end ${showSortDropdown ? 'dropdown-open' : ''}`}>
+              <label 
+                tabIndex={0} 
+                className="btn btn-sm btn-outline btn-primary gap-2 hover:btn-primary transition-all"
+                onClick={() => setShowSortDropdown(!showSortDropdown)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                </svg>
+                <span className="hidden sm:inline">Sort:</span>
+                <span className="font-medium">
+                  {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'highest_rated' && '⭐ Highest Rated'}
+                  {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'lowest_price' && '💰 Lowest Price'}
+                  {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'most_popular' && '🔥 Most Popular'}
+                  {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'top_amenities' && '🛏️ Top Amenities'}
+                  {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'newest_listings' && '📰 Newest Listings'}
+                </span>
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </label>
+              <ul tabIndex={0} className={`dropdown-content menu bg-base-100 rounded-box z-[1] w-56 p-2 shadow-xl border border-base-300 mt-2 ${showSortDropdown ? 'block' : 'hidden'}`}>
+                <li>
+                  <a
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowSortDropdown(false);
+                      const newFilters = { ...filters, sortBy: 'rating', sortOrder: 'desc' };
                   setFilters(newFilters);
                   loadHotels(1, newFilters);
                 }}
-                className="select select-sm select-bordered ml-2"
-              >
-                <option value="highest_rated">⭐ Highest Rated</option>
-                <option value="lowest_price">💰 Lowest Price</option>
-                <option value="most_popular">🔥 Most Popular</option>
-                <option value="top_amenities">🛏️ Top Amenities</option>
-                <option value="newest_listings">📰 Newest Listings</option>
-              </select>
+                    className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                      getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'highest_rated' 
+                        ? 'bg-primary text-primary-content font-semibold' 
+                        : 'hover:bg-base-200'
+                    }`}
+                  >
+                    <span className="text-xl">⭐</span>
+                    <span className="flex-1">Highest Rated</span>
+                    {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'highest_rated' && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </a>
+                </li>
+                <li>
+                  <a
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowSortDropdown(false);
+                      const newFilters = { ...filters, sortBy: 'pricePerNight', sortOrder: 'asc' };
+                      setFilters(newFilters);
+                      loadHotels(1, newFilters);
+                    }}
+                    className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                      getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'lowest_price' 
+                        ? 'bg-primary text-primary-content font-semibold' 
+                        : 'hover:bg-base-200'
+                    }`}
+                  >
+                    <span className="text-xl">💰</span>
+                    <span className="flex-1">Lowest Price</span>
+                    {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'lowest_price' && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </a>
+                </li>
+                <li>
+                  <a
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowSortDropdown(false);
+                      const newFilters = { ...filters, sortBy: 'bookingsCount', sortOrder: 'desc' };
+                      setFilters(newFilters);
+                      loadHotels(1, newFilters);
+                    }}
+                    className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                      getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'most_popular' 
+                        ? 'bg-primary text-primary-content font-semibold' 
+                        : 'hover:bg-base-200'
+                    }`}
+                  >
+                    <span className="text-xl">🔥</span>
+                    <span className="flex-1">Most Popular</span>
+                    {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'most_popular' && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </a>
+                </li>
+                <li>
+                  <a
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowSortDropdown(false);
+                      const newFilters = { ...filters, sortBy: 'amenitiesCount', sortOrder: 'desc' };
+                      setFilters(newFilters);
+                      loadHotels(1, newFilters);
+                    }}
+                    className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                      getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'top_amenities' 
+                        ? 'bg-primary text-primary-content font-semibold' 
+                        : 'hover:bg-base-200'
+                    }`}
+                  >
+                    <span className="text-xl">🛏️</span>
+                    <span className="flex-1">Top Amenities</span>
+                    {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'top_amenities' && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </a>
+                </li>
+                <li>
+                  <a
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowSortDropdown(false);
+                      const newFilters = { ...filters, sortBy: 'createdAt', sortOrder: 'desc' };
+                      setFilters(newFilters);
+                      loadHotels(1, newFilters);
+                    }}
+                    className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                      getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'newest_listings' 
+                        ? 'bg-primary text-primary-content font-semibold' 
+                        : 'hover:bg-base-200'
+                    }`}
+                  >
+                    <span className="text-xl">📰</span>
+                    <span className="flex-1">Newest Listings</span>
+                    {getCurrentSortValue(filters.sortBy, filters.sortOrder) === 'newest_listings' && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </a>
+                </li>
+              </ul>
             </div>
           </div>
 
@@ -1369,17 +1632,17 @@ const HotelsPage = () => {
                 {popularCities.length === 0 ? (
                   <p className="text-xs text-base-content/50">We are loading top cities for you...</p>
                 ) : (
-                  <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
+                <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
                     {popularCities.slice(0, 18).map((cityOption) => (
-                      <button
+                    <button
                         key={cityOption.id}
-                        className="btn btn-xs btn-outline"
+                      className="btn btn-xs btn-outline"
                         onClick={() => handleCitySelect(cityOption)}
                       >
                         {cityOption.label}
-                      </button>
-                    ))}
-                  </div>
+                    </button>
+                  ))}
+                </div>
                 )}
               </div>
             </div>
@@ -1450,11 +1713,16 @@ const HotelsPage = () => {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h3 className="text-lg font-bold text-base-content truncate">{hotel.name || 'Hotel'}</h3>
+                          </div>
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             {hotel.propertyType && (
-                              <span className="badge badge-primary badge-sm gap-1.5 px-2 py-1 shadow-sm flex-shrink-0">
-                                <span className="text-base">{getPropertyTypeIcon(hotel.propertyType)}</span>
-                                <span className="font-medium text-xs whitespace-nowrap">{hotel.propertyType}</span>
+                              <span className="badge badge-primary badge-md gap-1.5 px-3 py-1.5 shadow-md flex-shrink-0 font-semibold">
+                                <span className="text-lg">{getPropertyTypeIcon(hotel.propertyType)}</span>
+                                <span className="font-semibold text-xs whitespace-nowrap">{hotel.propertyType}</span>
                               </span>
+                            )}
+                            {hotel.rating && (
+                              <span className="badge badge-success text-white font-bold badge-md">{Number(hotel.rating).toFixed(1)}</span>
                             )}
                           </div>
                           <p className="text-sm text-base-content/70 flex items-center gap-1">
@@ -1463,19 +1731,17 @@ const HotelsPage = () => {
                           </p>
                           {hotel.rating && (
                           <div className="flex items-center gap-2 mt-2">
-                              <span className="badge badge-success text-white font-bold">{Number(hotel.rating).toFixed(1)}</span>
                             <span className="text-sm text-base-content/60">Very good</span>
-                            <div className="flex gap-0.5">
-                              {[...Array(Math.floor(Number(hotel.rating)))].map((_, i) => (
-                                <span key={i} className="text-warning">★</span>
-                              ))}
+                            {renderStarRating(hotel.rating)}
                             </div>
-                          </div>
                           )}
-                          <div className="flex gap-2 mt-2">
-                            {Array.isArray(hotel.amenities) && hotel.amenities.slice(0, 3).map((amenity, i) => (
-                              <span key={i} className="text-xs text-base-content/60">{amenity}</span>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {Array.isArray(hotel.amenities) && hotel.amenities.slice(0, 4).map((amenity, i) => (
+                              <span key={i} className="badge badge-outline badge-sm capitalize text-xs">{amenity.replace(/_/g, ' ')}</span>
                             ))}
+                            {Array.isArray(hotel.amenities) && hotel.amenities.length > 4 && (
+                              <span className="badge badge-ghost badge-sm text-xs">+{hotel.amenities.length - 4} more</span>
+                            )}
                           </div>
                         </div>
 
@@ -1607,11 +1873,16 @@ const HotelsPage = () => {
                         <div className="p-3">
                           <div className="flex items-start gap-2 mb-2">
                             <h3 className="font-bold text-base flex-1">{hotel.name || 'Hotel'}</h3>
+                          </div>
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
                             {hotel.propertyType && (
-                              <span className="badge badge-primary badge-sm gap-1">
-                                <span>{getPropertyTypeIcon(hotel.propertyType)}</span>
-                                <span className="text-xs">{hotel.propertyType}</span>
+                              <span className="badge badge-primary badge-md gap-1.5 px-2.5 py-1.5 shadow-sm font-semibold">
+                                <span className="text-base">{getPropertyTypeIcon(hotel.propertyType)}</span>
+                                <span className="text-xs font-semibold">{hotel.propertyType}</span>
                               </span>
+                            )}
+                            {hotel.rating && (
+                              <span className="badge badge-success badge-md text-white font-bold">{Number(hotel.rating).toFixed(1)}</span>
                             )}
                           </div>
                           <p className="text-xs text-base-content/70 mb-2 flex items-center gap-1">
@@ -1625,22 +1896,20 @@ const HotelsPage = () => {
                           </p>
                           {hotel.rating && (
                             <div className="flex items-center gap-1">
-                              <span className="badge badge-success badge-sm text-white">{Number(hotel.rating).toFixed(1)}</span>
-                              <div className="flex gap-0.5">
-                                {[...Array(Math.floor(Number(hotel.rating)))].map((_, i) => (
-                                  <span key={i} className="text-warning text-xs">★</span>
-                                ))}
+                              {renderStarRating(hotel.rating)}
                         </div>
-                            </div>
                           )}
                         </div>
                         {Array.isArray(hotel.amenities) && hotel.amenities.length > 0 && (
                           <div className="flex flex-wrap gap-1 mb-2">
-                            {hotel.amenities.slice(0, 3).map((amenity, i) => (
+                            {hotel.amenities.slice(0, 4).map((amenity, i) => (
                               <span key={i} className="badge badge-outline badge-xs capitalize">
                                 {amenity.replace(/_/g, ' ')}
                               </span>
                             ))}
+                            {hotel.amenities.length > 4 && (
+                              <span className="badge badge-ghost badge-xs">+{hotel.amenities.length - 4}</span>
+                            )}
                           </div>
                         )}
                         <button 
@@ -1661,7 +1930,7 @@ const HotelsPage = () => {
               {loading ? (
                 <div className="w-full h-full animate-pulse">
                   <div className="w-full h-full bg-gradient-to-br from-base-300 via-base-200 to-base-300 flex items-center justify-center">
-                    <div className="text-center">
+              <div className="text-center">
                       <div className="loading loading-spinner loading-lg mb-4"></div>
                       <p className="text-lg font-semibold">Loading map...</p>
                     </div>
@@ -2092,8 +2361,8 @@ const HotelsPage = () => {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-base-content/60 mb-1">Check-in: {searchData?.checkIn || 'N/A'}</p>
-                    <p className="text-sm text-base-content/60">Check-out: {searchData?.checkOut || 'N/A'}</p>
+                    <p className="text-sm text-base-content/60 mb-1">Check-in: {checkInDate ? formatDate(checkInDate) : 'N/A'}</p>
+                    <p className="text-sm text-base-content/60">Check-out: {checkOutDate ? formatDate(checkOutDate) : 'N/A'}</p>
                   </div>
                 </div>
               </div>
@@ -2138,6 +2407,330 @@ const HotelsPage = () => {
           </div>
         </div>
       )}
+
+      {/* Date Range Calendar Modal */}
+      {showDateRangeCalendar && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-4xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg">Select Dates</h3>
+              <button
+                onClick={() => setShowDateRangeCalendar(false)}
+                className="btn btn-sm btn-circle btn-ghost"
+              >
+                ✕
+              </button>
+            </div>
+
+            <DateRangeCalendar
+              startDate={checkInDate}
+              endDate={checkOutDate}
+              onDateSelect={handleDateRangeSelect}
+              onApply={handleDateRangeApply}
+              onClear={handleDateRangeClear}
+              onToday={handleDateRangeToday}
+              minDate={new Date().toISOString().split('T')[0]}
+            />
+          </div>
+          <div className="modal-backdrop" onClick={() => setShowDateRangeCalendar(false)}></div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Date Range Calendar Component with two calendars side by side
+const DateRangeCalendar = ({ startDate, endDate, onDateSelect, onApply, onClear, onToday, minDate }) => {
+  const [selectingStart, setSelectingStart] = useState(!startDate);
+  const [tempStartDate, setTempStartDate] = useState(startDate || '');
+  const [tempEndDate, setTempEndDate] = useState(endDate || '');
+
+  const [leftMonth, setLeftMonth] = useState(() => {
+    if (startDate) {
+      const date = parseLocalDate(startDate);
+      return { year: date.getFullYear(), month: date.getMonth() };
+    }
+    const today = new Date();
+    return { year: today.getFullYear(), month: today.getMonth() };
+  });
+
+  const [rightMonth, setRightMonth] = useState(() => {
+    if (startDate) {
+      const date = parseLocalDate(startDate);
+      const nextMonth = date.getMonth() === 11 ? 0 : date.getMonth() + 1;
+      const nextYear = date.getMonth() === 11 ? date.getFullYear() + 1 : date.getFullYear();
+      return { year: nextYear, month: nextMonth };
+    }
+    const today = new Date();
+    const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
+    const nextYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+    return { year: nextYear, month: nextMonth };
+  });
+
+  const generateCalendarDays = (year, month) => {
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    const days = [];
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null);
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(day);
+    }
+    return days;
+  };
+
+  const handlePrevMonth = (isLeft) => {
+    if (isLeft) {
+      setLeftMonth(prev => {
+        const newMonth = prev.month === 0 ? 11 : prev.month - 1;
+        const newYear = prev.month === 0 ? prev.year - 1 : prev.year;
+        return { year: newYear, month: newMonth };
+      });
+    } else {
+      setRightMonth(prev => {
+        const newMonth = prev.month === 0 ? 11 : prev.month - 1;
+        const newYear = prev.month === 0 ? prev.year - 1 : prev.year;
+        return { year: newYear, month: newMonth };
+      });
+    }
+  };
+
+  const handleNextMonth = (isLeft) => {
+    if (isLeft) {
+      setLeftMonth(prev => {
+        const newMonth = prev.month === 11 ? 0 : prev.month + 1;
+        const newYear = prev.month === 11 ? prev.year + 1 : prev.year;
+        return { year: newYear, month: newMonth };
+      });
+    } else {
+      setRightMonth(prev => {
+        const newMonth = prev.month === 11 ? 0 : prev.month + 1;
+        const newYear = prev.month === 11 ? prev.year + 1 : prev.year;
+        return { year: newYear, month: newMonth };
+      });
+    }
+  };
+
+  const getDateStr = (year, month, day) => {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
+
+  const isDateDisabled = (year, month, day) => {
+    if (!day || !minDate) return false;
+    const dateStr = getDateStr(year, month, day);
+    return dateStr < minDate;
+  };
+
+  const isDateInRange = (year, month, day) => {
+    if (!day || !tempStartDate || !tempEndDate) return false;
+    const dateStr = getDateStr(year, month, day);
+    return dateStr > tempStartDate && dateStr < tempEndDate;
+  };
+
+  const isDateStart = (year, month, day) => {
+    if (!day || !tempStartDate) return false;
+    const dateStr = getDateStr(year, month, day);
+    return dateStr === tempStartDate;
+  };
+
+  const isDateEnd = (year, month, day) => {
+    if (!day || !tempEndDate) return false;
+    const dateStr = getDateStr(year, month, day);
+    return dateStr === tempEndDate;
+  };
+
+  const handleDateClick = (year, month, day) => {
+    if (!day || isDateDisabled(year, month, day)) return;
+    const dateStr = getDateStr(year, month, day);
+    
+    if (selectingStart || (!tempStartDate && !tempEndDate)) {
+      // Selecting start date
+      setTempStartDate(dateStr);
+      setTempEndDate('');
+      setSelectingStart(false);
+      onDateSelect(dateStr, null);
+    } else {
+      // Selecting end date
+      if (dateStr <= tempStartDate) {
+        // If clicked date is before start, make it the new start
+        setTempStartDate(dateStr);
+        setTempEndDate('');
+        setSelectingStart(false);
+        onDateSelect(dateStr, null);
+      } else {
+        // Valid end date
+        setTempEndDate(dateStr);
+        setSelectingStart(true);
+        onDateSelect(tempStartDate, dateStr);
+      }
+    }
+  };
+
+  const handleApply = () => {
+    if (tempStartDate && tempEndDate) {
+      onDateSelect(tempStartDate, tempEndDate);
+    }
+    onApply();
+  };
+
+  const handleClear = () => {
+    setTempStartDate('');
+    setTempEndDate('');
+    setSelectingStart(true);
+    onClear();
+  };
+
+  const handleToday = () => {
+    onToday();
+    setTempStartDate(startDate || '');
+    setTempEndDate(endDate || '');
+  };
+
+  const renderCalendar = (currentMonth, isLeft) => {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const days = generateCalendarDays(currentMonth.year, currentMonth.month);
+
+    return (
+      <div className="w-full">
+        {/* Month Navigation */}
+        <div className="flex items-center justify-between mb-4">
+          <button 
+            onClick={() => handlePrevMonth(isLeft)} 
+            className="btn btn-circle btn-sm btn-ghost hover:bg-primary/10 hover:scale-110 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <span className="font-semibold text-base">
+            {monthNames[currentMonth.month]} {currentMonth.year}
+          </span>
+          <button 
+            onClick={() => handleNextMonth(isLeft)} 
+            className="btn btn-circle btn-sm btn-ghost hover:bg-primary/10 hover:scale-110 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Day Headers */}
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="text-center text-xs font-medium text-base-content/60 p-2">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar Days */}
+        <div className="grid grid-cols-7 gap-1">
+          {days.map((day, index) => {
+            const dateStr = day ? getDateStr(currentMonth.year, currentMonth.month, day) : null;
+            const disabled = day ? isDateDisabled(currentMonth.year, currentMonth.month, day) : false;
+            const inRange = day ? isDateInRange(currentMonth.year, currentMonth.month, day) : false;
+            const isStart = day ? isDateStart(currentMonth.year, currentMonth.month, day) : false;
+            const isEnd = day ? isDateEnd(currentMonth.year, currentMonth.month, day) : false;
+            const isToday = day && dateStr === new Date().toISOString().split('T')[0];
+
+            // Determine if this date is at the start, end, or in the middle of the range
+            const isRangeStart = isStart;
+            const isRangeEnd = isEnd;
+            const isRangeMiddle = inRange && !isStart && !isEnd;
+            
+            // Determine border radius based on position in range
+            let borderRadiusClass = 'rounded-lg';
+            if (isRangeStart && !isRangeEnd) {
+              borderRadiusClass = 'rounded-l-lg rounded-r-none';
+            } else if (isRangeEnd && !isRangeStart) {
+              borderRadiusClass = 'rounded-r-lg rounded-l-none';
+            } else if (isRangeMiddle) {
+              borderRadiusClass = 'rounded-none';
+            }
+
+            return (
+              <div key={index} className="aspect-square relative">
+                {day ? (
+                  <button
+                    onClick={() => handleDateClick(currentMonth.year, currentMonth.month, day)}
+                    disabled={disabled}
+                    className={`
+                      w-full h-full text-sm transition-all relative z-10 ${borderRadiusClass}
+                      ${isStart || isEnd
+                        ? 'bg-primary text-primary-content font-bold'
+                        : isRangeMiddle
+                        ? 'bg-primary/20 text-primary font-semibold'
+                        : disabled
+                        ? 'text-base-content/30 cursor-not-allowed rounded-lg'
+                        : isToday
+                        ? 'border-2 border-primary text-primary font-semibold hover:bg-primary/10 rounded-lg'
+                        : 'hover:bg-base-300 cursor-pointer rounded-lg'
+                      }
+                    `}
+                  >
+                    {day}
+                  </button>
+                ) : (
+                  <div className="w-full h-full"></div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // Sync temp dates with props
+  useEffect(() => {
+    setTempStartDate(startDate || '');
+    setTempEndDate(endDate || '');
+    setSelectingStart(!startDate);
+  }, [startDate, endDate]);
+
+  return (
+    <div className="w-full">
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        {/* Left Calendar */}
+        <div>
+          {renderCalendar(leftMonth, true)}
+        </div>
+
+        {/* Right Calendar */}
+        <div>
+          {renderCalendar(rightMonth, false)}
+        </div>
+      </div>
+
+      {/* Sticky Footer */}
+      <div className="sticky bottom-0 bg-base-100 border-t border-base-300 pt-4 mt-4 -mx-6 -mb-6 px-6 pb-6 flex items-center justify-between">
+        <div className="flex gap-2">
+          <button
+            onClick={handleClear}
+            className="btn btn-sm btn-ghost"
+          >
+            Clear
+          </button>
+          <button
+            onClick={handleToday}
+            className="btn btn-sm btn-ghost"
+          >
+            Today
+          </button>
+        </div>
+        <button
+          onClick={handleApply}
+          className="btn btn-sm btn-primary"
+          disabled={!tempStartDate || !tempEndDate}
+        >
+          Apply
+        </button>
+      </div>
     </div>
   );
 };

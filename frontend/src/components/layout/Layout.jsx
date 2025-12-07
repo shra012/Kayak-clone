@@ -47,7 +47,7 @@ const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-base-100 text-base-content">
-      <div className="navbar bg-base-100 border-b border-base-300 shadow-sm sticky top-0 z-50">
+      <div className="navbar bg-base-100 border-b-2 border-base-300 shadow-md sticky top-0 z-50 backdrop-blur-sm bg-base-100/95">
         <div className="navbar-start">
           <div className="dropdown">
             <div tabIndex={0} role="button" className="btn btn-ghost lg:hidden">
@@ -151,68 +151,96 @@ const Layout = ({ children }) => {
           </div>
           <Link
             to={isOwner ? "/owner" : "/"}
-            className="btn btn-ghost text-xl font-bold text-primary logo-shine"
+            className="btn btn-ghost text-2xl md:text-3xl font-bold text-primary logo-shine px-2"
           >
             Kayak
           </Link>
         </div>
-        <div className="navbar-center hidden lg:flex">
+        <div className="navbar-center hidden lg:flex flex-1 justify-center max-w-2xl">
           {isAuthenticated && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5">
               {isOwner ? (
                 <>
                   <NavLink 
                     to="/owner" 
                     end
                     className={({ isActive }) => 
-                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                      `relative flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
                         isActive 
-                          ? 'bg-primary text-primary-content font-semibold' 
-                          : 'hover:bg-base-200'
+                          ? 'text-primary font-semibold' 
+                          : 'text-base-content/70 hover:text-base-content hover:bg-base-200'
                       }`
                     }
                   >
-                    <FaHome className="w-4 h-4" />
-                    Dashboard
+                    {({ isActive }) => (
+                      <>
+                        <FaHome className="w-4 h-4" />
+                        <span>Dashboard</span>
+                        {isActive && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full shadow-lg shadow-primary/50"></span>
+                        )}
+                      </>
+                    )}
                   </NavLink>
                   <NavLink 
                     to="/owner/hotels"
                     className={({ isActive }) => 
-                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                      `relative flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
                         isActive 
-                          ? 'bg-primary text-primary-content font-semibold' 
-                          : 'hover:bg-base-200'
+                          ? 'text-primary font-semibold' 
+                          : 'text-base-content/70 hover:text-base-content hover:bg-base-200'
                       }`
                     }
                   >
-                    <FaHotel className="w-4 h-4" />
-                    Hotels
+                    {({ isActive }) => (
+                      <>
+                        <FaHotel className="w-4 h-4" />
+                        <span>Hotels</span>
+                        {isActive && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full shadow-lg shadow-primary/50"></span>
+                        )}
+                      </>
+                    )}
                   </NavLink>
                   <NavLink 
                     to="/owner/cars"
                     className={({ isActive }) => 
-                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                      `relative flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
                         isActive 
-                          ? 'bg-primary text-primary-content font-semibold' 
-                          : 'hover:bg-base-200'
+                          ? 'text-primary font-semibold' 
+                          : 'text-base-content/70 hover:text-base-content hover:bg-base-200'
                       }`
                     }
                   >
-                    <FaCar className="w-4 h-4" />
-                    Cars
+                    {({ isActive }) => (
+                      <>
+                        <FaCar className="w-4 h-4" />
+                        <span>Cars</span>
+                        {isActive && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full shadow-lg shadow-primary/50"></span>
+                        )}
+                      </>
+                    )}
                   </NavLink>
                   <NavLink 
                     to="/analytics"
                     className={({ isActive }) => 
-                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                      `relative flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
                         isActive 
-                          ? 'bg-primary text-primary-content font-semibold' 
-                          : 'hover:bg-base-200'
+                          ? 'text-primary font-semibold' 
+                          : 'text-base-content/70 hover:text-base-content hover:bg-base-200'
                       }`
                     }
                   >
-                    <FaChartLine className="w-4 h-4" />
-                    Analytics
+                    {({ isActive }) => (
+                      <>
+                        <FaChartLine className="w-4 h-4" />
+                        <span>Analytics</span>
+                        {isActive && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full shadow-lg shadow-primary/50"></span>
+                        )}
+                      </>
+                    )}
                   </NavLink>
                 </>
               ) : (
@@ -220,39 +248,60 @@ const Layout = ({ children }) => {
                   <NavLink 
                     to="/bookings"
                     className={({ isActive }) => 
-                      `px-4 py-2 rounded-lg transition-colors ${
+                      `relative px-3 py-2 rounded-lg transition-all duration-200 ${
                         isActive 
-                          ? 'bg-primary text-primary-content font-semibold' 
-                          : 'hover:bg-base-200'
+                          ? 'text-primary font-semibold' 
+                          : 'text-base-content/70 hover:text-base-content hover:bg-base-200'
                       }`
                     }
                   >
-                    Bookings
+                    {({ isActive }) => (
+                      <>
+                        Bookings
+                        {isActive && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full shadow-lg shadow-primary/50"></span>
+                        )}
+                      </>
+                    )}
                   </NavLink>
                   <NavLink 
                     to="/payments"
                     className={({ isActive }) => 
-                      `px-4 py-2 rounded-lg transition-colors ${
+                      `relative px-3 py-2 rounded-lg transition-all duration-200 ${
                         isActive 
-                          ? 'bg-primary text-primary-content font-semibold' 
-                          : 'hover:bg-base-200'
+                          ? 'text-primary font-semibold' 
+                          : 'text-base-content/70 hover:text-base-content hover:bg-base-200'
                       }`
                     }
                   >
-                    Payments
+                    {({ isActive }) => (
+                      <>
+                        Payments
+                        {isActive && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full shadow-lg shadow-primary/50"></span>
+                        )}
+                      </>
+                    )}
                   </NavLink>
                   <NavLink 
                     to="/analytics"
                     className={({ isActive }) => 
-                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                      `relative flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
                         isActive 
-                          ? 'bg-primary text-primary-content font-semibold' 
-                          : 'hover:bg-base-200'
+                          ? 'text-primary font-semibold' 
+                          : 'text-base-content/70 hover:text-base-content hover:bg-base-200'
                       }`
                     }
                   >
-                    <FaChartLine className="w-4 h-4" />
-                    Analytics
+                    {({ isActive }) => (
+                      <>
+                        <FaChartLine className="w-4 h-4" />
+                        <span>Analytics</span>
+                        {isActive && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full shadow-lg shadow-primary/50"></span>
+                        )}
+                      </>
+                    )}
                   </NavLink>
                 </>
               )}

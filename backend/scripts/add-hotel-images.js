@@ -86,18 +86,56 @@ async function addHotelImages() {
       }
     }
     
-    // For hotels without specific images, use a default image
+    // For hotels without specific images or with null imageUrl, assign random hotel images
+    const hotelImagePool = [
+      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop', // Luxury hotel room
+      'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&h=600&fit=crop', // Hotel lobby
+      'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=800&h=600&fit=crop', // Resort pool
+      'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&h=600&fit=crop', // Hotel bedroom
+      'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&h=600&fit=crop', // Beach resort
+      'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&h=600&fit=crop', // Hotel exterior
+      'https://images.unsplash.com/photo-1596436889106-be35e843f974?w=800&h=600&fit=crop', // Modern hotel
+      'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&h=600&fit=crop', // Boutique hotel
+      'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=800&h=600&fit=crop', // Hotel suite
+      'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=800&h=600&fit=crop', // Hotel balcony
+    ];
+    
+    // Find all hotels without images (null, missing, or empty string)
     const hotelsWithoutImages = await collection.find({ 
-      imageUrl: { $exists: false } 
+      $or: [
+        { imageUrl: { $exists: false } },
+        { imageUrl: null },
+        { imageUrl: '' }
+      ]
     }).toArray();
     
     if (hotelsWithoutImages.length > 0) {
-      const defaultImage = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop';
-      const defaultResult = await collection.updateMany(
-        { imageUrl: { $exists: false } },
-        { $set: { imageUrl: defaultImage } }
-      );
-      console.log(`✅ Added default image to ${defaultResult.modifiedCount} hotels`);
+      console.log(`\n📸 Adding images to ${hotelsWithoutImages.length} hotels...`);
+      
+      // Update each hotel with a random image from the pool
+      let batch = [];
+      for (const hotel of hotelsWithoutImages) {
+        const randomImage = hotelImagePool[Math.floor(Math.random() * hotelImagePool.length)];
+        batch.push({
+          updateOne: {
+            filter: { _id: hotel._id },
+            update: { $set: { imageUrl: randomImage } }
+          }
+        });
+        
+        // Process in batches of 100 for better performance
+        if (batch.length >= 100) {
+          await collection.bulkWrite(batch);
+          batch = [];
+        }
+      }
+      
+      // Process remaining batch
+      if (batch.length > 0) {
+        await collection.bulkWrite(batch);
+      }
+      
+      console.log(`✅ Added images to ${hotelsWithoutImages.length} hotels`);
     }
     
     console.log(`\n📊 Summary:`);
