@@ -14,6 +14,24 @@ import {
   invalidateUserProfileCache,
 } from '../utils/cache.js';
 
+const isUsersTableMissing = (error) =>
+  error?.code === '42P01' || error?.message?.includes('relation "users" does not exist');
+
+const syncMongoUser = async (userId, updates) => {
+  if (!updates || Object.keys(updates).length === 0) {
+    return;
+  }
+
+  try {
+    const db = await getMongoDB();
+    const usersCollection = db.collection('users');
+    await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: updates, $currentDate: { updatedAt: true } });
+    logger.info(`Synced user update to MongoDB: ${userId}`);
+  } catch (mongoError) {
+    logger.warn(`Failed to sync user update to MongoDB: ${mongoError.message}`);
+  }
+};
+
 export const listUsers = async (filters) => {
   const pool = getPostgresPool();
   const { page, pageSize, email, state } = filters;
@@ -137,16 +155,25 @@ export const getUserById = async (userId) => {
 
   // Try PostgreSQL first
   const pool = getPostgresPool();
-  const result = await pool.query(
-    `SELECT id, ssn, first_name, last_name, email, phone_number,
-     address_line1, address_line2, address_city, address_state, address_zip_code,
-     profile_image_url, role, loyalty_tier, profile_type, ssn_verified_at,
-     partner_details, created_at, updated_at, last_login
-     FROM users WHERE id = $1`,
-    [userId]
-  );
+  let user = null;
+  try {
+    const result = await pool.query(
+      `SELECT id, ssn, first_name, last_name, email, phone_number,
+       address_line1, address_line2, address_city, address_state, address_zip_code,
+       profile_image_url, role, loyalty_tier, profile_type, ssn_verified_at,
+       partner_details, created_at, updated_at, last_login
+       FROM users WHERE id = $1`,
+      [userId]
+    );
 
-  let user = result.rows[0] ? { ...result.rows[0], data_source: 'postgres' } : null;
+    user = result.rows[0] ? { ...result.rows[0], data_source: 'postgres' } : null;
+  } catch (error) {
+    if (isUsersTableMissing(error)) {
+      logger.warn('PostgreSQL users table missing; falling back to MongoDB only');
+    } else {
+      logger.error(`PostgreSQL users lookup failed for ${userId}: ${error.message}`);
+    }
+  }
 
   // If not found in PostgreSQL, fall back to MongoDB
   if (!user) {
@@ -315,6 +342,21 @@ export const updateUser = async (userId, userData) => {
     return getUserById(userId);
   }
 
+  const mongoUpdates = {};
+  if (firstName !== undefined) mongoUpdates.firstName = firstName;
+  if (lastName !== undefined) mongoUpdates.lastName = lastName;
+  if (phoneNumber !== undefined) mongoUpdates.phoneNumber = phoneNumber;
+  if (address !== undefined) {
+    mongoUpdates.address = {
+      line1: address.line1,
+      line2: address.line2 || null,
+      city: address.city,
+      state: address.state,
+      zipCode: address.zipCode,
+    };
+  }
+  if (profileImageUrl !== undefined) mongoUpdates.profileImageUrl = profileImageUrl;
+
   updates.push(`updated_at = NOW()`);
   params.push(userId);
 
@@ -328,51 +370,34 @@ export const updateUser = async (userId, userData) => {
      partner_details, created_at, updated_at, last_login
   `;
 
-  const result = await pool.query(query, params);
+  try {
+    const result = await pool.query(query, params);
 
-  if (result.rowCount === 0) {
-    const error = new Error('User not found');
-    error.code = 'NOT_FOUND';
+    if (result.rowCount === 0) {
+      const error = new Error('User not found');
+      error.code = 'NOT_FOUND';
+      throw error;
+    }
+
+    await syncMongoUser(userId, mongoUpdates);
+
+    // Invalidate user profile cache
+    await invalidateUserProfileCache(userId);
+
+    return result.rows[0];
+  } catch (error) {
+    if (isUsersTableMissing(error)) {
+      logger.warn('PostgreSQL users table missing; applying MongoDB-only update');
+      await syncMongoUser(userId, mongoUpdates);
+      await invalidateUserProfileCache(userId);
+      // Return the best-effort profile from Mongo (will skip Postgres)
+      return getUserById(userId);
+    }
+
+    // Invalidate user profile cache before bubbling up other errors
+    await invalidateUserProfileCache(userId);
     throw error;
   }
-
-  // Also update MongoDB if user exists there
-  try {
-    const db = await getMongoDB();
-    const usersCollection = db.collection('users');
-    const mongoUpdates = {};
-    
-    if (firstName !== undefined) mongoUpdates.firstName = firstName;
-    if (lastName !== undefined) mongoUpdates.lastName = lastName;
-    if (phoneNumber !== undefined) mongoUpdates.phoneNumber = phoneNumber;
-    if (address !== undefined) {
-      mongoUpdates.address = {
-        line1: address.line1,
-        line2: address.line2 || null,
-        city: address.city,
-        state: address.state,
-        zipCode: address.zipCode,
-      };
-    }
-    if (profileImageUrl !== undefined) mongoUpdates.profileImageUrl = profileImageUrl;
-    
-    if (Object.keys(mongoUpdates).length > 0) {
-      mongoUpdates.updatedAt = new Date();
-      await usersCollection.updateOne(
-        { _id: new ObjectId(userId) },
-        { $set: mongoUpdates }
-      );
-      logger.info(`Synced user update to MongoDB: ${userId}`);
-    }
-  } catch (mongoError) {
-    // Log but don't fail if MongoDB update fails (user might not exist in MongoDB)
-    logger.warn(`Failed to sync user update to MongoDB: ${mongoError.message}`);
-  }
-
-  // Invalidate user profile cache
-  await invalidateUserProfileCache(userId);
-
-  return result.rows[0];
 };
 
 export const deleteUser = async (userId) => {
