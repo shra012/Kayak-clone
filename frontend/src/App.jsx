@@ -3,7 +3,6 @@ import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AuthInitializer from './components/common/AuthInitializer';
 import ErrorBoundary from './components/common/ErrorBoundary';
-import AIChatWidget from './components/common/AIChatWidget';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -16,10 +15,10 @@ import BookingsPage from './pages/bookings/BookingsPage';
 import BookingDetailPage from './pages/bookings/BookingDetailPage';
 import PaymentsPage from './pages/payments/PaymentsPage';
 import AdminPage from './pages/admin/AdminPage';
-import ConciergePage from './pages/concierge/ConciergePage';
 import AnalyticsPage from './pages/analytics/AnalyticsPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
+import AgentFlightsPage from './pages/listings/AgentFlightsPage';
 
 // Owner Portal Pages
 import OwnerDashboard from './pages/owner/OwnerDashboard';
@@ -32,7 +31,6 @@ function App() {
   return (
     <ErrorBoundary>
       <AuthInitializer />
-      <AIChatWidget />
       <Layout>
       <Routes>
         <Route path="/" element={<HomePage />} />
@@ -55,6 +53,7 @@ function App() {
           }
         />
         <Route path="/flights" element={<FlightsPage />} />
+        <Route path="/agent/flights" element={<AgentFlightsPage />} />
         <Route path="/hotels" element={<HotelsPage />} />
         <Route path="/cars" element={<CarsPage />} />
         <Route
@@ -89,14 +88,7 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/concierge"
-          element={
-            <ProtectedRoute>
-              <ConciergePage />
-            </ProtectedRoute>
-          }
-        />
+
         <Route
           path="/analytics"
           element={
@@ -164,4 +156,3 @@ function App() {
 }
 
 export default App;
-

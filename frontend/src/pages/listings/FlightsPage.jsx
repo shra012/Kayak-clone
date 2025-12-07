@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FaPlane, FaBed, FaCar, FaClock, FaCalendar, FaTimes } from 'react-icons/fa';
 import { listingsApi } from '../../services/api/listings';
@@ -6,6 +6,7 @@ import FlightPriceCalendar from '../../components/common/FlightPriceCalendar';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
+import AgentInlineChat from '../../components/agent/AgentInlineChat';
 
 // Helper function to parse date string as local time (not UTC)
 const parseLocalDate = (dateStr) => {
@@ -67,13 +68,15 @@ const defaultFilters = {
   sort: 'price-asc', // Combined sort: 'price-asc', 'price-desc', 'duration-asc'
 };
 
-const FlightsPage = () => {
+const FlightsPage = ({ forceAgentMode = false }) => {
   useDocumentTitle('Search Flights');
   
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated } = useAuth();
   const toast = useToast();
+  const agentMode = forceAgentMode || Boolean(location.state?.agentMode);
+  const initialAgentPromptRef = useRef(null);
   const [filters, setFilters] = useState(defaultFilters);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
@@ -95,12 +98,68 @@ const FlightsPage = () => {
   const [showToDropdown, setShowToDropdown] = useState(false);
   const [fromOptions, setFromOptions] = useState([]);
   const [toOptions, setToOptions] = useState([]);
-  const [fromSelected, setFromSelected] = useState(false);
-  const [toSelected, setToSelected] = useState(false);
+  const formatLocationDisplay = (location) => {
+    if (!location) return '';
+    if (location.label) return location.label;
+    if (location.city) {
+      return `${location.code} - ${location.city}`;
+    }
+    return location.code;
+  };
   const fromDropdownRef = useRef(null);
   const toDropdownRef = useRef(null);
   const fromSearchTimeoutRef = useRef(null);
   const toSearchTimeoutRef = useRef(null);
+  const ensureRouteSet = (activeFilters) => {
+    const isMultiCity = location.state?.search?.tripType === 'multi-city';
+    if (isMultiCity) return true;
+    if (!activeFilters.from || !activeFilters.to) {
+      if (!agentMode) {
+        setError('Please enter both origin and destination to search flights.');
+        toast.showError('Add both origin and destination to search flights.');
+      } else {
+        setError(null);
+      }
+      return false;
+    }
+    setError(null);
+    return true;
+  };
+  const flightContextSummary = [
+    'I’m in flight mode.',
+    filters.from || filters.to ? `From: ${filters.from || 'unset'}, To: ${filters.to || 'unset'}.` : 'Tell me your from/to.',
+    filters.date ? `Departing around ${filters.date}.` : 'Share your departure date.',
+    filters.returnDate ? `Returning around ${filters.returnDate}.` : 'Say one-way to skip a return date.',
+  ].join(' ');
+
+  const initialAgentPrompt = useMemo(() => {
+    if (!agentMode) return null;
+
+    const safe = (value, fallback = 'any') =>
+      (value || fallback).toString().trim().replace(/\s+/g, '-').toLowerCase();
+
+    const searchState = location.state?.search || {};
+    const providedText = location.state?.agentInitialPrompt;
+    const providedId = location.state?.agentInitialPromptId;
+
+    if (providedText) {
+      return {
+        text: providedText,
+        id: providedId || `flight_agent_prompt_${safe(searchState.from)}_${safe(searchState.to)}_${safe(searchState.departDate, 'anydate')}`,
+      };
+    }
+
+    const fromLabel = searchState.from || 'any origin';
+    const toLabel = searchState.to || 'any destination';
+    const departLabel = searchState.departDate || 'your preferred dates';
+
+    return {
+      text: `Let’s find flights from ${fromLabel} to ${toLabel} around ${departLabel}. Tell me if it’s one-way or round-trip and I’ll start searching.`,
+      id: `flight_agent_prompt_${safe(fromLabel)}_${safe(toLabel)}_${safe(departLabel)}`,
+    };
+  }, [agentMode, location.state]);
+
+  initialAgentPromptRef.current = initialAgentPrompt;
 
   // Handle View Deal button click
   const handleViewDeal = (flight, returnFlight = null) => {
@@ -149,16 +208,19 @@ const FlightsPage = () => {
     });
   };
 
-  // Extract airport code from label format (e.g., "LAX - Los Angeles..." -> "LAX")
+  // Extract airport code (handles labels like "LAX - Los Angeles" or lowercase input)
   const extractAirportCode = (value) => {
     if (!value) return null;
-    // If it's already just a code (3 letters), return it
-    if (/^[A-Z]{3}$/.test(value.trim())) {
-      return value.trim();
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const upper = trimmed.toUpperCase();
+    if (/^[A-Z]{3}$/.test(upper)) {
+      return upper;
     }
-    // Extract code from format like "LAX - Los Angeles (Los Angeles International)"
-    const match = value.match(/^([A-Z]{3})/);
-    return match ? match[1] : value.trim();
+
+    const match = upper.match(/^([A-Z]{3})/);
+    return match ? match[1] : trimmed;
   };
 
   // Load flight location options from API
@@ -181,18 +243,17 @@ const FlightsPage = () => {
 
   // Handle from input change
   const handleFromInputChange = (e) => {
-    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
+    const value = e.target.value;
     setFilters((prev) => ({ ...prev, from: value }));
-    setFromSelected(false);
     
-    // Debounced search
     if (fromSearchTimeoutRef.current) {
       clearTimeout(fromSearchTimeoutRef.current);
     }
     
     fromSearchTimeoutRef.current = setTimeout(() => {
-      if (value.trim()) {
-        loadFlightLocations(value, setFromOptions);
+      const query = value.trim();
+      if (query) {
+        loadFlightLocations(query, setFromOptions);
         setShowFromDropdown(true);
       } else {
         setFromOptions([]);
@@ -203,18 +264,17 @@ const FlightsPage = () => {
 
   // Handle to input change
   const handleToInputChange = (e) => {
-    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
+    const value = e.target.value;
     setFilters((prev) => ({ ...prev, to: value }));
-    setToSelected(false);
     
-    // Debounced search
     if (toSearchTimeoutRef.current) {
       clearTimeout(toSearchTimeoutRef.current);
     }
     
     toSearchTimeoutRef.current = setTimeout(() => {
-      if (value.trim()) {
-        loadFlightLocations(value, setToOptions);
+      const query = value.trim();
+      if (query) {
+        loadFlightLocations(query, setToOptions);
         setShowToDropdown(true);
       } else {
         setToOptions([]);
@@ -225,17 +285,15 @@ const FlightsPage = () => {
 
   // Handle from select
   const handleFromSelect = (location) => {
-    setFilters((prev) => ({ ...prev, from: location.code }));
+    setFilters((prev) => ({ ...prev, from: formatLocationDisplay(location) }));
     setShowFromDropdown(false);
-    setFromSelected(true);
     setFromOptions([]);
   };
 
   // Handle to select
   const handleToSelect = (location) => {
-    setFilters((prev) => ({ ...prev, to: location.code }));
+    setFilters((prev) => ({ ...prev, to: formatLocationDisplay(location) }));
     setShowToDropdown(false);
-    setToSelected(true);
     setToOptions([]);
   };
 
@@ -243,10 +301,6 @@ const FlightsPage = () => {
   const handleFromBlur = () => {
     // Delay to allow click events to fire first
     setTimeout(() => {
-      if (!fromSelected && filters.from.trim() && !/^[A-Z]{3}$/.test(filters.from.trim())) {
-        // Clear invalid input
-        setFilters((prev) => ({ ...prev, from: '' }));
-      }
       setShowFromDropdown(false);
     }, 200);
   };
@@ -255,10 +309,6 @@ const FlightsPage = () => {
   const handleToBlur = () => {
     // Delay to allow click events to fire first
     setTimeout(() => {
-      if (!toSelected && filters.to.trim() && !/^[A-Z]{3}$/.test(filters.to.trim())) {
-        // Clear invalid input
-        setFilters((prev) => ({ ...prev, to: '' }));
-      }
       setShowToDropdown(false);
     }, 200);
   };
@@ -298,10 +348,10 @@ const FlightsPage = () => {
       if (activeFilters.returnDate && 
           activeFilters.returnDate !== null && 
           activeFilters.returnDate !== activeFilters.date) {
-        console.log('✓ Adding returnDate to params:', activeFilters.returnDate);
+        console.log(' Adding returnDate to params:', activeFilters.returnDate);
         params.returnDate = activeFilters.returnDate;
       } else {
-        console.log('✗ NOT adding returnDate to params (returnDate:', activeFilters.returnDate, ', date:', activeFilters.date, ')');
+        console.log(' NOT adding returnDate to params (returnDate:', activeFilters.returnDate, ', date:', activeFilters.date, ')');
       }
 
       console.log('Final Airlines API params being sent:', JSON.stringify(params, null, 2));
@@ -412,6 +462,10 @@ const FlightsPage = () => {
 
     try {
       const activeFilters = overrideFilters ?? filters;
+      if (!ensureRouteSet(activeFilters)) {
+        setLoading(false);
+        return;
+      }
       // Only treat as round trip if returnDate exists, is not null, and is different from departDate
       const isRound = activeFilters.returnDate && 
                       activeFilters.returnDate !== null && 
@@ -724,8 +778,6 @@ const FlightsPage = () => {
   const swapLocations = () => {
     const newFilters = { ...filters, from: filters.to, to: filters.from };
     setFilters(newFilters);
-    setFromSelected(false);
-    setToSelected(false);
     setFromOptions([]);
     setToOptions([]);
     setShowFromDropdown(false);
@@ -739,10 +791,76 @@ const FlightsPage = () => {
     loadFlights(newPage);
   };
 
+  const agentPromptSuggestions = [
+    { label: 'Cheapest week', text: `Find the cheapest week to fly from ${filters.from || 'SFO'} to ${filters.to || 'JFK'} this month.` },
+    { label: 'Short layovers', text: `Show flights from ${filters.from || 'SFO'} to ${filters.to || 'JFK'} with short layovers only.` },
+    { label: 'Bags included', text: 'List options that include a carry-on and checked bag without extra fees.' },
+  ];
+
+  const navigateAgentTo = (mode) => {
+    if (mode === 'flights') return; // already here
+    if (mode === 'hotels') {
+      navigate('/hotels', {
+        state: {
+          search: {
+            location: filters.to || filters.from || '',
+          },
+          agentMode: true,
+        },
+      });
+      return;
+    }
+    if (mode === 'cars') {
+      const today = new Date().toISOString().split('T')[0];
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      navigate('/cars', {
+        state: {
+          search: {
+            location: filters.to || filters.from || '',
+            pickUp: today,
+            dropOff: tomorrow,
+          },
+          agentMode: true,
+        },
+      });
+    }
+  };
+
+  const handleAgentAssistantResponse = (agentReply) => {
+    if (!agentMode) return false;
+
+    const content = (agentReply?.response || '').toLowerCase();
+    const zeroMatch = content.match(/fetched\s*(\d+)\s+flights?/);
+    const mentionsZeroFlights =
+      (zeroMatch && Number(zeroMatch[1]) === 0) ||
+      content.includes('no flights found');
+
+    if (!mentionsZeroFlights) return false;
+
+    // Force UI into the empty-state view and refresh the search with current filters
+    setResults([]);
+    setRoundTripCombos([]);
+    setMultiCityResults([]);
+    setSuggestedFlights([]);
+    setAlternativeDates([]);
+    setPagination(null);
+    setError(null);
+    setLoading(false);
+
+    if (ensureRouteSet(filters)) {
+      loadFlights(1, filters);
+    }
+
+    return {
+      handled: true,
+      message: 'I could not find flights for that search. I refreshed the results so you can adjust filters.',
+    };
+  };
+
   return (
     <div className="min-h-screen bg-base-100">
       {/* Compact Sticky Header */}
-      <div className="bg-base-100 text-base-content border-b border-base-300 shadow-sm sticky top-0 z-40">
+      <div className="bg-base-100 text-base-content border-b border-base-300 shadow-sm sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <button
@@ -750,10 +868,10 @@ const FlightsPage = () => {
               onClick={() => navigate('/')}
               className="btn btn-sm btn-outline gap-2"
             >
-              <span className="text-xl">✈️</span>
+              <span className="text-xl"></span>
               <span className="font-semibold">New Search</span>
             </button>
-            
+
             <div className="flex gap-2">
               <button
                 type="button"
@@ -893,8 +1011,8 @@ const FlightsPage = () => {
             <div className="relative" ref={fromDropdownRef}>
               <input
                 type="text"
-                placeholder="From (e.g., LAX)"
-                className="input input-sm input-bordered w-32"
+                placeholder="From (city or airport)"
+                className="input input-sm input-bordered w-56"
                 value={filters.from}
                 onChange={handleFromInputChange}
                 onFocus={() => {
@@ -905,7 +1023,6 @@ const FlightsPage = () => {
                 }}
                 onBlur={handleFromBlur}
                 autoComplete="off"
-                maxLength={3}
               />
               {showFromDropdown && fromOptions.length > 0 && (
                 <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-64 max-h-72 overflow-y-auto z-50">
@@ -943,8 +1060,8 @@ const FlightsPage = () => {
             <div className="relative" ref={toDropdownRef}>
               <input
                 type="text"
-                placeholder="To (e.g., SFO)"
-                className="input input-sm input-bordered w-32"
+                placeholder="To (city or airport)"
+                className="input input-sm input-bordered w-56"
                 value={filters.to}
                 onChange={handleToInputChange}
                 onFocus={() => {
@@ -955,7 +1072,6 @@ const FlightsPage = () => {
                 }}
                 onBlur={handleToBlur}
                 autoComplete="off"
-                maxLength={3}
               />
               {showToDropdown && toOptions.length > 0 && (
                 <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-64 max-h-72 overflow-y-auto z-50">
@@ -994,140 +1110,151 @@ const FlightsPage = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Sidebar Filters */}
-          <aside className="lg:w-64 shrink-0">
-            <div className="card bg-base-100 shadow-md sticky top-24">
-              <div className="card-body p-4 space-y-4">
-                <h3 className="font-bold text-lg">Filters</h3>
-                
-                {/* Stops */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-medium">Stops</span>
-                  </label>
-                  <select
-                    name="nonstop"
-                    value={filters.nonstop}
-                    onChange={(e) => {
-                      const newFilters = { ...filters, nonstop: e.target.value };
-                      setFilters(newFilters);
-                      // For multi-city, just update filter (filtering happens in render)
-                      if (location.state?.search?.tripType !== 'multi-city') {
-                        loadFlights(1, newFilters);
-                      }
-                    }}
-                    className="select select-sm select-bordered w-full"
-                  >
-                    <option value="any">Any stops</option>
-                    <option value="true">Non-stop only</option>
-                    <option value="false">With stops</option>
-                  </select>
-                </div>
-
-                {/* Airline */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-medium">Airlines</span>
-                  </label>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {/* All airlines checkbox */}
-                    <label className="label cursor-pointer justify-start gap-2 py-1">
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm"
-                        checked={filters.airlines.length === availableAirlines.length && availableAirlines.length > 0}
-                        onChange={handleAllAirlinesToggle}
-                      />
-                      <span className="label-text font-medium">All airlines</span>
+      <div className={`max-w-7xl mx-auto px-4 py-6 ${agentMode ? 'grid lg:grid-cols-3 gap-6 items-start' : ''}`}>
+        {agentMode && (
+          <div className="lg:col-span-1">
+            <AgentInlineChat
+              initialPrompt={initialAgentPromptRef.current}
+              promptSuggestions={agentPromptSuggestions}
+              contextSummary={flightContextSummary}
+              onAssistantResponse={handleAgentAssistantResponse}
+            />
+          </div>
+        )}
+        <div className={agentMode ? 'lg:col-span-2' : ''}>
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Sidebar Filters */}
+            <aside className="lg:w-64 shrink-0">
+              <div className="card bg-base-100 shadow-md sticky top-24">
+                <div className="card-body p-4 space-y-4">
+                  <h3 className="font-bold text-lg">Filters</h3>
+                  
+                  {/* Stops */}
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text font-medium">Stops</span>
                     </label>
-                    
-                    {/* Individual airline checkboxes */}
-                    {availableAirlines.map((airline) => (
-                      <label key={airline} className="label cursor-pointer justify-start gap-2 py-1">
+                    <select
+                      name="nonstop"
+                      value={filters.nonstop}
+                      onChange={(e) => {
+                        const newFilters = { ...filters, nonstop: e.target.value };
+                        setFilters(newFilters);
+                        // For multi-city, just update filter (filtering happens in render)
+                        if (location.state?.search?.tripType !== 'multi-city') {
+                          loadFlights(1, newFilters);
+                        }
+                      }}
+                      className="select select-sm select-bordered w-full"
+                    >
+                      <option value="any">Any stops</option>
+                      <option value="true">Non-stop only</option>
+                      <option value="false">With stops</option>
+                    </select>
+                  </div>
+
+                  {/* Airline */}
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text font-medium">Airlines</span>
+                    </label>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {/* All airlines checkbox */}
+                      <label className="label cursor-pointer justify-start gap-2 py-1">
                         <input
                           type="checkbox"
                           className="checkbox checkbox-sm"
-                          checked={filters.airlines.includes(airline)}
-                          onChange={() => handleAirlineToggle(airline)}
+                          checked={filters.airlines.length === availableAirlines.length && availableAirlines.length > 0}
+                          onChange={handleAllAirlinesToggle}
                         />
-                        <span className="label-text">{airline}</span>
+                        <span className="label-text font-medium">All airlines</span>
                       </label>
-                    ))}
+                      
+                      {/* Individual airline checkboxes */}
+                      {availableAirlines.map((airline) => (
+                        <label key={airline} className="label cursor-pointer justify-start gap-2 py-1">
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-sm"
+                            checked={filters.airlines.includes(airline)}
+                            onChange={() => handleAirlineToggle(airline)}
+                          />
+                          <span className="label-text">{airline}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                {/* Price Range */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-medium">Price Range</span>
-                  </label>
-                  <div className="flex gap-2">
-                    {/* Min Price */}
-                    <div className="flex-1">
-                      <label className="label py-1">
-                        <span className="label-text text-xs">Min</span>
-                      </label>
-                      <input
-                        type="number"
-                        name="minPrice"
-                        placeholder="0"
-                        value={filters.minPrice}
-                        onChange={handleInputChange}
-                        onBlur={(e) => {
-                          const newFilters = { ...filters, minPrice: e.target.value };
-                          setFilters(newFilters);
-                          if (location.state?.search?.tripType !== 'multi-city') {
-                            loadFlights(1, newFilters);
-                          }
-                        }}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
+                  {/* Price Range */}
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text font-medium">Price Range</span>
+                    </label>
+                    <div className="flex gap-2">
+                      {/* Min Price */}
+                      <div className="flex-1">
+                        <label className="label py-1">
+                          <span className="label-text text-xs">Min</span>
+                        </label>
+                        <input
+                          type="number"
+                          name="minPrice"
+                          placeholder="0"
+                          value={filters.minPrice}
+                          onChange={handleInputChange}
+                          onBlur={(e) => {
                             const newFilters = { ...filters, minPrice: e.target.value };
                             setFilters(newFilters);
                             if (location.state?.search?.tripType !== 'multi-city') {
                               loadFlights(1, newFilters);
                             }
-                          }
-                        }}
-                        className="input input-sm input-bordered w-full"
-                        min="0"
-                      />
-                    </div>
-                    {/* Max Price */}
-                    <div className="flex-1">
-                      <label className="label py-1">
-                        <span className="label-text text-xs">Max</span>
-                      </label>
-                      <input
-                        type="number"
-                        name="maxPrice"
-                        placeholder="No limit"
-                        value={filters.maxPrice}
-                        onChange={handleInputChange}
-                        onBlur={(e) => {
-                          const newFilters = { ...filters, maxPrice: e.target.value };
-                          setFilters(newFilters);
-                          if (location.state?.search?.tripType !== 'multi-city') {
-                            loadFlights(1, newFilters);
-                          }
-                        }}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              const newFilters = { ...filters, minPrice: e.target.value };
+                              setFilters(newFilters);
+                              if (location.state?.search?.tripType !== 'multi-city') {
+                                loadFlights(1, newFilters);
+                              }
+                            }
+                          }}
+                          className="input input-sm input-bordered w-full"
+                          min="0"
+                        />
+                      </div>
+                      {/* Max Price */}
+                      <div className="flex-1">
+                        <label className="label py-1">
+                          <span className="label-text text-xs">Max</span>
+                        </label>
+                        <input
+                          type="number"
+                          name="maxPrice"
+                          placeholder="No limit"
+                          value={filters.maxPrice}
+                          onChange={handleInputChange}
+                          onBlur={(e) => {
                             const newFilters = { ...filters, maxPrice: e.target.value };
                             setFilters(newFilters);
                             if (location.state?.search?.tripType !== 'multi-city') {
                               loadFlights(1, newFilters);
                             }
-                          }
-                        }}
-                        className="input input-sm input-bordered w-full"
-                        min="0"
-                      />
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              const newFilters = { ...filters, maxPrice: e.target.value };
+                              setFilters(newFilters);
+                              if (location.state?.search?.tripType !== 'multi-city') {
+                                loadFlights(1, newFilters);
+                              }
+                            }
+                          }}
+                          className="input input-sm input-bordered w-full"
+                          min="0"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
 
                 {/* Sort By */}
                 <div className="form-control">
@@ -1186,7 +1313,7 @@ const FlightsPage = () => {
               {!loading && results.length > 0 && suggestedFlights.length > 0 && location.state?.search?.tripType !== 'multi-city' && (
                 <div className="mb-6 w-full">
                   <h3 className="text-lg font-semibold mb-3">
-                    ✈️ Other available dates:
+                     Other available dates:
                   </h3>
                   <div className="overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-base-300 scrollbar-track-base-200">
                     <div className="flex gap-3 pb-2 w-max">
@@ -1364,10 +1491,36 @@ const FlightsPage = () => {
                                             month: 'short',
                                             day: 'numeric',
                                           })}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
+            </div>
+          </div>
+
+          {agentMode && (
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                type="button"
+                className="btn btn-xs btn-primary"
+                onClick={() => navigateAgentTo('flights')}
+              >
+                Flights
+              </button>
+              <button
+                type="button"
+                className="btn btn-xs btn-ghost"
+                onClick={() => navigateAgentTo('hotels')}
+              >
+                Stays
+              </button>
+              <button
+                type="button"
+                className="btn btn-xs btn-ghost"
+                onClick={() => navigateAgentTo('cars')}
+              >
+                Cars
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
                                   {/* Price and Book Button */}
                                   <div className="flex flex-row md:flex-col items-center md:items-end gap-2 justify-between w-full md:w-auto">
@@ -1395,7 +1548,7 @@ const FlightsPage = () => {
                       ) : (
                         <div className="card bg-base-100 shadow-md">
                           <div className="card-body text-center py-8">
-                            <div className="text-4xl mb-2">✈️</div>
+                            <div className="text-4xl mb-2"></div>
                             <p className="text-base-content/70">No flights found for this leg</p>
                           </div>
                         </div>
@@ -1420,7 +1573,7 @@ const FlightsPage = () => {
                   {suggestedFlights.length > 0 && (
                     <div className="mb-6 w-full">
                       <h3 className="text-lg font-semibold mb-3">
-                        ✈️ Other available dates:
+                         Other available dates:
                       </h3>
                       <div className="overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                         <div className="flex gap-3 pb-2 w-max">
@@ -1469,7 +1622,7 @@ const FlightsPage = () => {
 
                   <div className="card bg-base-100 shadow-md">
                     <div className="card-body text-center py-12">
-                      <div className="text-6xl mb-4">✈️</div>
+                      <div className="text-6xl mb-4"></div>
                       <h3 className="text-xl font-semibold mb-2">No flights found</h3>
                       <p className="text-base-content/60">
                         {suggestedFlights.length > 0 
@@ -1502,7 +1655,7 @@ const FlightsPage = () => {
                           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div className="flex-1 space-y-3 w-full md:w-auto">
                               <div className="flex items-center gap-2">
-                                <span className="text-xl">✈️</span>
+                                <span className="text-xl"></span>
                                 <span className="font-semibold text-lg">{combo.outbound.airline}</span>
                                 {combo.outbound.nonstop && (
                                   <span className="badge badge-success badge-sm">Non-stop</span>
@@ -1561,7 +1714,7 @@ const FlightsPage = () => {
                           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div className="flex-1 space-y-3 w-full md:w-auto">
                               <div className="flex items-center gap-2">
-                                <span className="text-xl">✈️</span>
+                                <span className="text-xl"></span>
                                 <span className="font-semibold text-lg">{combo.return.airline}</span>
                                 {combo.return.nonstop && (
                                   <span className="badge badge-success badge-sm">Non-stop</span>
@@ -1649,7 +1802,7 @@ const FlightsPage = () => {
                           {/* Airline and Route Info */}
                           <div className="flex-1 space-y-3 w-full md:w-auto">
                             <div className="flex items-center gap-2">
-                              <span className="text-xl">✈️</span>
+                              <span className="text-xl"></span>
                               <span className="font-semibold text-lg">{flight.airline}</span>
                               {flight.nonstop && (
                                 <span className="badge badge-success badge-sm">Non-stop</span>
@@ -1749,6 +1902,8 @@ const FlightsPage = () => {
             </div>
           </main>
         </div>
+        </div>
+        {/* Close outer grid when agentMode is on */}
       </div>
 
       {/* Flight Price Calendar Modal for Departure Date */}
@@ -1774,7 +1929,9 @@ const FlightsPage = () => {
                 }
                 setFilters(newFilters);
                 setShowDepartCalendar(false);
-                loadFlights(1, newFilters);
+                if (ensureRouteSet(newFilters)) {
+                  loadFlights(1, newFilters);
+                }
               }}
               from={extractAirportCode(filters.from) || ''}
               to={extractAirportCode(filters.to) || ''}
@@ -1803,7 +1960,9 @@ const FlightsPage = () => {
                 };
                 setFilters(newFilters);
                 setShowReturnCalendar(false);
-                loadFlights(1, newFilters);
+                if (ensureRouteSet(newFilters)) {
+                  loadFlights(1, newFilters);
+                }
               }}
               from={extractAirportCode(filters.to) || ''} // Reverse for return flight
               to={extractAirportCode(filters.from) || ''}

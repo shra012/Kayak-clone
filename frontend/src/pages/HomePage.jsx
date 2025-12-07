@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaPlane, FaBed, FaCar, FaExchangeAlt, FaSearch, FaChevronDown, FaTimes, FaCalendar, FaClock } from 'react-icons/fa';
+import { FaPlane, FaBed, FaCar, FaExchangeAlt, FaSearch, FaChevronDown, FaTimes, FaCalendar, FaClock, FaRobot } from 'react-icons/fa';
 import { getDestinationImageUrl } from '../services/destinationImages.service.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useAuth } from '../hooks/useAuth';
@@ -8,11 +8,13 @@ import AnimatedCard from '../components/common/AnimatedCard';
 import AnimatedIcon from '../components/common/AnimatedIcon';
 import { listingsApi } from '../services/api/listings';
 import FlightPriceCalendar from '../components/common/FlightPriceCalendar';
+import AgentContainer from '../components/agent/AgentContainer';
 import {
   getHomePageCarImages,
   getHomePageFlightImages,
   getHomePageStayImages,
 } from '../services/backgroundImages.service.js';
+import BookingChatWidget from '../components/common/BookingChatWidget.jsx';
 
 // Helper function to parse date string as local time (not UTC)
 const parseLocalDate = (dateStr) => {
@@ -179,7 +181,7 @@ const HomePage = () => {
   const [toSelected, setToSelected] = useState(false);
   const [multiCitySelected, setMultiCitySelected] = useState({});
 
-  const [searchData, setSearchData] = useState({
+const [searchData, setSearchData] = useState({
     flights: {
       from: '',
       to: '',
@@ -205,12 +207,19 @@ const HomePage = () => {
       driverAge: 25
     }
   });
-  const navigate = useNavigate();
+const navigate = useNavigate();
+  const [showAgentContainer, setShowAgentContainer] = useState(false);
+  const [agentInitialFlow, setAgentInitialFlow] = useState('flights');
+  const activeMediaTab = activeTab === 'agent' ? 'flights' : activeTab;
+
+
+
+
 
   // Redirect owners to their dashboard - they shouldn't see the booking homepage
   useEffect(() => {
     if (user?.profileType === 'owner') {
-      navigate('/owner', { replace: true });
+      navigate('/owner');
     }
   }, [user, navigate]);
 
@@ -289,20 +298,12 @@ const HomePage = () => {
       
       // Check if locations were properly selected from dropdown
       if (!fromSelected) {
-        // Clear invalid input silently
-        setSearchData(prev => ({
-          ...prev,
-          flights: { ...prev.flights, from: '' }
-        }));
+        setErrors(prev => ({ ...prev, flights: 'Please choose a departure airport from the suggestions' }));
         return false;
       }
       
       if (!toSelected) {
-        // Clear invalid input silently
-        setSearchData(prev => ({
-          ...prev,
-          flights: { ...prev.flights, to: '' }
-        }));
+        setErrors(prev => ({ ...prev, flights: 'Please choose a destination airport from the suggestions' }));
         return false;
       }
     }
@@ -512,6 +513,13 @@ const HomePage = () => {
     }
   };
 
+
+
+  const handleAgentPrompt = (flowType) => {
+    setAgentInitialFlow(flowType);
+    setShowAgentContainer(true);
+  };
+
   const swapLocations = () => {
     setSearchData({
       ...searchData,
@@ -542,6 +550,8 @@ const HomePage = () => {
       [type]: Math.max(0, prev[type] + (increment ? 1 : -1))
     }));
   };
+
+
 
   const getTravelersLabel = () => {
     const total = getTotalTravelers();
@@ -661,6 +671,18 @@ const HomePage = () => {
     }
   };
 
+  const formatFlightLocationLabel = (location) => {
+    if (!location) return '';
+    if (location.label) return location.label;
+    if (location.city && location.name) {
+      return `${location.code} - ${location.city} (${location.name})`;
+    }
+    if (location.city) {
+      return `${location.code} - ${location.city}`;
+    }
+    return location.code || '';
+  };
+
   // Unified date validation helper - get minimum allowed date (today)
   const getMinDate = () => {
     const today = new Date();
@@ -668,24 +690,23 @@ const HomePage = () => {
   };
 
   const handleFromInputChange = (e) => {
-    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
-    setSearchData({
-      ...searchData,
-      flights: { ...searchData.flights, from: value }
-    });
-    
-    // Clear error when user starts typing and mark as not selected
+    const value = e.target.value;
+    setSearchData((prev) => ({
+      ...prev,
+      flights: { ...prev.flights, from: value }
+    }));
+
     setFromError('');
     setFromSelected(false);
-    
-    // Debounced search
+
     if (fromSearchTimeoutRef.current) {
       clearTimeout(fromSearchTimeoutRef.current);
     }
-    
+
     fromSearchTimeoutRef.current = setTimeout(() => {
-      if (value.trim()) {
-        loadFlightLocations(value, setFromOptions);
+      const query = value.trim();
+      if (query) {
+        loadFlightLocations(query, setFromOptions);
         setShowFromDropdown(true);
       } else {
         setFromOptions([]);
@@ -696,38 +717,29 @@ const HomePage = () => {
   
   // Validate from input on blur
   const handleFromBlur = () => {
-    // Delay to allow click events to fire first
     setTimeout(() => {
-      if (!fromSelected && searchData.flights.from.trim() && !/^[A-Z]{3}$/.test(searchData.flights.from.trim())) {
-        // Clear invalid input
-        setSearchData({
-          ...searchData,
-          flights: { ...searchData.flights, from: '' }
-        });
-      }
       setShowFromDropdown(false);
     }, 200);
   };
 
   const handleToInputChange = (e) => {
-    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
-    setSearchData({
-      ...searchData,
-      flights: { ...searchData.flights, to: value }
-    });
-    
-    // Clear error when user starts typing and mark as not selected
+    const value = e.target.value;
+    setSearchData((prev) => ({
+      ...prev,
+      flights: { ...prev.flights, to: value }
+    }));
+
     setToError('');
     setToSelected(false);
-    
-    // Debounced search
+
     if (toSearchTimeoutRef.current) {
       clearTimeout(toSearchTimeoutRef.current);
     }
-    
+
     toSearchTimeoutRef.current = setTimeout(() => {
-      if (value.trim()) {
-        loadFlightLocations(value, setToOptions);
+      const query = value.trim();
+      if (query) {
+        loadFlightLocations(query, setToOptions);
         setShowToDropdown(true);
       } else {
         setToOptions([]);
@@ -738,39 +750,33 @@ const HomePage = () => {
   
   // Validate to input on blur
   const handleToBlur = () => {
-    // Delay to allow click events to fire first
     setTimeout(() => {
-      if (!toSelected && searchData.flights.to.trim() && !/^[A-Z]{3}$/.test(searchData.flights.to.trim())) {
-        // Clear invalid input
-        setSearchData({
-          ...searchData,
-          flights: { ...searchData.flights, to: '' }
-        });
-      }
       setShowToDropdown(false);
     }, 200);
   };
 
   const handleFromSelect = (location) => {
-    setSearchData({
-      ...searchData,
-      flights: { ...searchData.flights, from: location.code }
-    });
+    const formatted = formatFlightLocationLabel(location);
+    setSearchData((prev) => ({
+      ...prev,
+      flights: { ...prev.flights, from: formatted }
+    }));
     setShowFromDropdown(false);
-    setFromError(''); // Clear error on valid selection
-    setFromSelected(true); // Mark as properly selected
     setFromOptions([]);
+    setFromError('');
+    setFromSelected(true);
   };
 
   const handleToSelect = (location) => {
-    setSearchData({
-      ...searchData,
-      flights: { ...searchData.flights, to: location.code }
-    });
+    const formatted = formatFlightLocationLabel(location);
+    setSearchData((prev) => ({
+      ...prev,
+      flights: { ...prev.flights, to: formatted }
+    }));
     setShowToDropdown(false);
-    setToError(''); // Clear error on valid selection
-    setToSelected(true); // Mark as properly selected
     setToOptions([]);
+    setToError('');
+    setToSelected(true);
   };
 
   // Multi-city flight handlers
@@ -955,6 +961,7 @@ const HomePage = () => {
               {/* Tab bar */}
               <div className="flex gap-2">
                 <button
+                  type="button"
                   className={`btn btn-sm ${activeTab === 'flights' ? 'btn-primary' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4`}
                   onClick={() => setActiveTab('flights')}
                 >
@@ -962,6 +969,7 @@ const HomePage = () => {
                   <span className="text-sm font-medium">Flights</span>
                 </button>
                 <button
+                  type="button"
                   className={`btn btn-sm ${activeTab === 'hotels' ? 'btn-primary' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4`}
                   onClick={() => setActiveTab('hotels')}
                 >
@@ -969,11 +977,20 @@ const HomePage = () => {
                   <span className="text-sm font-medium">Stays</span>
                 </button>
                 <button
+                  type="button"
                   className={`btn btn-sm ${activeTab === 'cars' ? 'btn-primary' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4`}
                   onClick={() => setActiveTab('cars')}
                 >
                   <FaCar className="w-4 h-4" />
                   <span className="text-sm font-medium">Cars</span>
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${activeTab === 'agent' ? 'btn-primary' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4`}
+                  onClick={() => setActiveTab('agent')}
+                >
+                  <FaRobot className="w-4 h-4" />
+                  <span className="text-sm font-medium">Agent</span>
                 </button>
               </div>
 
@@ -981,7 +998,51 @@ const HomePage = () => {
                 {activeTab === 'flights' && 'Compare flight deals from 100s of sites'}
                 {activeTab === 'hotels' && 'Search hotels & more'}
                 {activeTab === 'cars' && 'Compare car rental deals'}
+                {activeTab === 'agent' && 'Let the concierge plan it for you'}
               </h1>
+
+              {activeTab === 'agent' && (
+                <div className="bg-base-100 rounded-lg shadow-xl border border-base-200 p-6">
+                  <p className="text-base-content/70 text-center mb-6">
+                    Let our AI assistant help you book flights, hotels, or car rentals with natural conversation.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
+                    <button
+                      type="button"
+                      className="btn btn-lg btn-outline gap-2 flex-col h-auto py-6"
+                      onClick={() => handleAgentPrompt('flights')}
+                    >
+                      <FaPlane className="text-3xl" />
+                      <div>
+                        <div className="font-bold">Flights</div>
+                        <div className="text-xs opacity-70">Find and book flights</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-lg btn-outline gap-2 flex-col h-auto py-6"
+                      onClick={() => handleAgentPrompt('hotels')}
+                    >
+                      <FaBed className="text-3xl" />
+                      <div>
+                        <div className="font-bold">Hotels</div>
+                        <div className="text-xs opacity-70">Search for stays</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-lg btn-outline gap-2 flex-col h-auto py-6"
+                      onClick={() => handleAgentPrompt('cars')}
+                    >
+                      <FaCar className="text-3xl" />
+                      <div>
+                        <div className="font-bold">Cars</div>
+                        <div className="text-xs opacity-70">Rent a vehicle</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {activeTab === 'flights' && (
                 <div className="bg-base-100 rounded-lg shadow-xl">
@@ -1042,7 +1103,7 @@ const HomePage = () => {
                             {/* Carry-on bag */}
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-lg">🎒</span>
+                                <span className="text-lg"></span>
                                 <div className="text-sm font-medium">Carry-on bag</div>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1068,7 +1129,7 @@ const HomePage = () => {
                             {/* Checked bag */}
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-lg">💼</span>
+                                <span className="text-lg"></span>
                                 <div className="text-sm font-medium">Checked bag</div>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1104,10 +1165,10 @@ const HomePage = () => {
                   {tripType !== 'multi-city' && (
                   <div className="flex items-end gap-1 px-3 py-3">
                     {/* From */}
-                    <div className="w-32 relative" ref={fromDropdownRef}>
+                    <div className="w-48 max-w-xs relative" ref={fromDropdownRef}>
                       <input
                         type="text"
-                        placeholder="From?"
+                        placeholder="From (city or airport)"
                         className={`input input-sm input-bordered w-full text-sm px-2 h-10 ${fromError ? 'input-error border-error' : ''}`}
                         value={searchData.flights.from}
                         onChange={handleFromInputChange}
@@ -1155,10 +1216,10 @@ const HomePage = () => {
                     </button>
 
                     {/* To */}
-                    <div className="w-32 relative" ref={toDropdownRef}>
+                    <div className="w-48 max-w-xs relative" ref={toDropdownRef}>
                       <input
                         type="text"
-                        placeholder="To?"
+                        placeholder="To (city or airport)"
                         className={`input input-sm input-bordered w-full text-sm px-2 h-10 ${toError ? 'input-error border-error' : ''}`}
                         value={searchData.flights.to}
                         onChange={handleToInputChange}
@@ -1594,7 +1655,7 @@ const HomePage = () => {
                               onClick={() => removeMultiCityFlight(index)}
                               className="btn btn-ghost btn-sm btn-circle mb-1"
                             >
-                              ✕
+                              
                             </button>
                           )}
                         </div>
@@ -1652,7 +1713,7 @@ const HomePage = () => {
                     <div className="flex-[2] min-w-0 relative">
                       <input
                         type="text"
-                        placeholder="Try: Mumbai, Bangalore, Goa, London, New York..."
+                        placeholder="Search city (e.g., New York, Miami, Austin...)"
                         className="input input-sm input-bordered w-full text-sm"
                         value={searchData.hotels.location}
                         onChange={(e) => {
@@ -1688,7 +1749,10 @@ const HomePage = () => {
                       
                       {/* Location Dropdown */}
                       {showHotelLocationDropdown && hotelLocationOptions.length > 0 && (
-                        <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-80 max-h-72 overflow-y-auto z-50">
+                        <div className="absolute top-full left-0 mt-1 bg-base-100 border-2 border-primary/20 rounded-lg shadow-2xl w-full max-w-lg max-h-96 overflow-y-auto z-50">
+                          <div className="sticky top-0 bg-base-200 px-4 py-2 text-xs font-semibold text-base-content/70 border-b border-base-300">
+                            {hotelLocationOptions.length} {hotelLocationOptions.length === 1 ? 'location' : 'locations'} found
+                          </div>
                           {hotelLocationOptions.map((loc, index) => {
                             const isLocation = loc.type === 'location';
                             const isProperty = loc.type === 'property';
@@ -1698,7 +1762,7 @@ const HomePage = () => {
                             <button
                                 key={`${loc.type}-${loc.name}-${index}`}
                               type="button"
-                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-start gap-3 border-b border-base-200 last:border-b-0 transition-colors"
                               onMouseDown={(e) => {
                                 e.preventDefault(); // Prevent blur from firing
                                 setSearchData({
@@ -1710,25 +1774,18 @@ const HomePage = () => {
                                 setHotelLocationOptions([]);
                               }}
                             >
-                                <div className="flex flex-col">
-                                  <div className="flex items-center gap-2">
-                                    {isLocation && (
-                                      <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">Location</span>
-                                    )}
-                                    {isProperty && (
-                                      <span className="text-xs bg-secondary/20 text-secondary px-2 py-0.5 rounded">Property</span>
-                                    )}
-                                    <span className="font-medium text-base">{loc.displayName || loc.name}</span>
-                                  </div>
+                                <div className="flex-1">
+                                  <div className="text-sm font-semibold text-base-content">{loc.displayName || loc.name}</div>
                                   {isProperty && loc.city && (
-                                    <span className="text-sm text-base-content/60 mt-1">{loc.city}{loc.state ? `, ${loc.state}` : ''}</span>
+                                    <div className="text-xs text-base-content/60 mt-0.5">{loc.city}{loc.state ? `, ${loc.state}` : ''}</div>
+                                  )}
+                                  {isLocation && loc.state && loc.country && (
+                                    <div className="text-xs text-base-content/60 mt-0.5">{loc.state}, {loc.country}</div>
                                   )}
                                 </div>
-                                {loc.country && (
-                              <span className="text-sm text-base-content/60 ml-4 whitespace-nowrap">
-                                {loc.country}
-                              </span>
-                                )}
+                                <span className="badge badge-xs badge-outline uppercase tracking-wide">
+                                  {isProperty ? 'Property' : 'City'}
+                                </span>
                             </button>
                             );
                           })}
@@ -1976,43 +2033,43 @@ const HomePage = () => {
             <div className="grid grid-cols-1 gap-3">
               <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-1`}
+                  key={`${activeMediaTab}-1`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight1
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays1
                       : carImages.cars1
                   }
-                  alt={`${activeTab} 1`}
+                  alt={`${activeMediaTab} 1`}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-2`}
+                  key={`${activeMediaTab}-2`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight2
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays2
                       : carImages.cars2
                   }
-                  alt={`${activeTab} 2`}
+                  alt={`${activeMediaTab} 2`}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-3`}
+                  key={`${activeMediaTab}-3`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight3
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays3
                       : carImages.cars3
                   }
-                  alt={`${activeTab} 3`}
+                  alt={`${activeMediaTab} 3`}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -2024,43 +2081,43 @@ const HomePage = () => {
             <div className="grid grid-cols-1 gap-3">
               <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-4`}
+                  key={`${activeMediaTab}-4`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight4
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays4
                       : carImages.cars4
                   }
-                  alt={`${activeTab} 4`}
+                  alt={`${activeMediaTab} 4`}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-5`}
+                  key={`${activeMediaTab}-5`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight5
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays5
                       : carImages.cars5
                   }
-                  alt={`${activeTab} 5`}
+                  alt={`${activeMediaTab} 5`}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-6`}
+                  key={`${activeMediaTab}-6`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight6
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays6
                       : carImages.cars6
                   }
-                  alt={`${activeTab} 6`}
+                  alt={`${activeMediaTab} 6`}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -2068,6 +2125,14 @@ const HomePage = () => {
           </div>
         </div>
       </section>
+
+      {/* New Agent Container */}
+      {showAgentContainer && (
+        <AgentContainer
+          initialFlow={agentInitialFlow}
+          onClose={() => setShowAgentContainer(false)}
+        />
+      )}
 
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-6xl mx-auto">
@@ -2290,30 +2355,56 @@ const HomePage = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="relative">
             <button
-              onClick={() => setShowDepartCalendar(false)}
+              onClick={() => {
+                setShowDepartCalendar(false);
+                setAgentPendingFlow(null);
+              }}
               className="absolute -top-3 -right-3 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
             >
               <FaTimes className="w-5 h-5" />
             </button>
-            <FlightPriceCalendar
-              selectedDate={searchData.flights.departDate}
-              onDateSelect={(date) => {
-                setSearchData({
-                  ...searchData,
-                  flights: { ...searchData.flights, departDate: date }
+              <FlightPriceCalendar
+                selectedDate={searchData.flights.departDate}
+                onDateSelect={(date) => {
+                let agentSearchPayload = null;
+                setSearchData((prev) => {
+                  const needsReturnAdjust = prev.flights.returnDate && prev.flights.returnDate < date;
+                  const adjustedReturn = needsReturnAdjust
+                    ? addDaysToDateString(date, 7)
+                    : prev.flights.returnDate;
+                  const updatedFlights = {
+                    ...prev.flights,
+                    departDate: date,
+                    returnDate: tripType === 'one-way' ? null : adjustedReturn
+                  };
+                  const updated = { ...prev, flights: updatedFlights };
+
+                  if (agentPendingFlow === 'flights') {
+                    const outbound = tripType === 'one-way'
+                      ? { ...updatedFlights, returnDate: null }
+                      : updatedFlights;
+                    agentSearchPayload = {
+                      ...outbound,
+                      tripType,
+                    };
+                  }
+
+                  return updated;
                 });
                 setShowDepartCalendar(false);
-                // If return date is before depart date, adjust it
-                if (searchData.flights.returnDate && searchData.flights.returnDate < date) {
-                  const newReturnDate = addDaysToDateString(date, 7);
-                  setSearchData({
-                    ...searchData,
-                    flights: { 
-                      ...searchData.flights, 
-                      departDate: date,
-                      returnDate: newReturnDate
-                    }
+
+                if (agentPendingFlow === 'flights' && agentSearchPayload) {
+                  const promptText = buildAgentFlightPrompt(agentSearchPayload);
+                  const promptId = buildAgentFlightPromptId(agentSearchPayload);
+                  navigate('/flights', {
+                    state: {
+                      search: agentSearchPayload,
+                      agentMode: true,
+                      agentInitialPrompt: promptText,
+                      agentInitialPromptId: promptId,
+                    },
                   });
+                  setAgentPendingFlow(null);
                 }
               }}
               from={searchData.flights.from}
@@ -2350,6 +2441,7 @@ const HomePage = () => {
           </div>
         </div>
       )}
+      <BookingChatWidget />
     </div>
   );
 };

@@ -6,7 +6,7 @@ Multi-agent travel concierge with deal detection, bundle building, and WebSocket
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Set
@@ -18,9 +18,11 @@ import asyncio
 from contextlib import asynccontextmanager
 import random
 from collections import defaultdict
+from pathlib import Path
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 from redis import Redis
-from copy import deepcopy
 
 # Health check imports
 import psutil
@@ -28,7 +30,6 @@ import time
 
 # Local imports
 from models import Deal, Bundle, Watch, ChatSession, DealType, DealStatus
-from deal_processor import DealProcessor
 from bundle_builder import BundleBuilder
 from intent_parser import IntentParser
 from mock_data import generate_mock_deals
@@ -99,6 +100,19 @@ class ConnectionManager:
             # Clean up disconnected connections
             for conn in disconnected:
                 self.disconnect(conn, session_id)
+    
+    async def broadcast_to_all(self, message: dict):
+        """Broadcast message to all connected WebSocket clients"""
+        disconnected = []
+        for session_id, connections in list(self.active_connections.items()):
+            for connection in list(connections):
+                try:
+                    await connection.send_json(message)
+                except:
+                    disconnected.append((connection, session_id))
+        # Clean up disconnected connections
+        for conn, session_id in disconnected:
+            self.disconnect(conn, session_id)
 
 manager = ConnectionManager()
 
@@ -113,6 +127,26 @@ DEAL_LIMITS = {
     DealType.HOTEL: int(os.getenv("DEALS_PER_HOTEL", "6")),
     DealType.CAR: int(os.getenv("DEALS_PER_CAR", "6")),
 }
+
+# CSV File Watcher for deals_feed.csv
+class DealsFeedHandler(FileSystemEventHandler):
+    """Watch deals_feed.csv for changes and trigger deal refresh"""
+    def __init__(self, feed_path: Path):
+        self.feed_path = feed_path
+        self.last_modified = 0
+    
+    def on_modified(self, event):
+        if event.src_path == str(self.feed_path):
+            # Debounce rapid file changes
+            current_time = time.time()
+            if current_time - self.last_modified < 2:  # 2 second debounce
+                return
+            self.last_modified = current_time
+            
+            print(f"Detected changes in {self.feed_path.name}, refreshing deals...")
+            asyncio.create_task(refresh_and_notify_deals("csv_watcher"))
+
+file_observer: Optional[Observer] = None
 
 # In-memory deal cache (in production, use Redis)
 deal_cache: Dict[str, Deal] = {}
@@ -169,12 +203,20 @@ def is_search_question(message: str) -> bool:
 
 
 def context_ready_for_mongo(context: Optional[Dict[str, Any]]) -> bool:
+    """Check if context has enough info to query MongoDB (budget is optional)"""
     if not context:
         return False
+    intent_type = context.get("intent_type", "")
     destination = context.get("destination") or context.get("city") or context.get("to")
     has_dates = bool(context.get("check_in") and context.get("check_out"))
-    has_budget = bool(context.get("budget"))
-    return bool(destination and has_dates and has_budget)
+    
+    # For flights, also need origin
+    if "flight" in intent_type or "fly" in intent_type:
+        origin = context.get("origin") or context.get("from")
+        return bool(origin and destination and has_dates)
+    
+    # For hotels and cars, just need destination and dates
+    return bool(destination and has_dates)
 
 
 def should_use_langgraph(message: str, context: Optional[Dict[str, Any]] = None) -> bool:
@@ -252,6 +294,10 @@ class ChatSessionRequest(BaseModel):
     # User ID is optional; default to "anonymous" so unauthenticated users can start sessions
     user_id: Optional[str] = Field(default="anonymous", description="User ID (optional; defaults to 'anonymous')")
     initial_message: Optional[str] = Field(None, description="Initial user message")
+    chat_mode: Optional[str] = Field(
+        default=None,
+        description="Chat mode; e.g., 'booking_chat' to force natural-language booking Q&A without actions.",
+    )
 
 class ChatSessionResponse(BaseModel):
     session_id: str
@@ -269,6 +315,8 @@ class ChatMessageResponse(BaseModel):
     session_id: str
     response: str
     bundles: Optional[List[Dict[str, Any]]] = None
+    search_params: Optional[Dict[str, Any]] = None
+    search_params_complete: bool = False
     timestamp: datetime
 
 class BundleRecommendation(BaseModel):
@@ -333,6 +381,7 @@ start_time = time.time()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global file_observer
     print("Concierge AI Service starting up...")
     print("Initializing deal cache...")
     cached_deals = load_deals_from_redis()
@@ -353,11 +402,26 @@ async def lifespan(app: FastAPI):
                 update_deal_cache(deals)
     print(f"Loaded {len(deal_cache)} deals into cache")
     
+    # Start CSV file watcher
+    feed_path = Path(__file__).resolve().parent / "data" / "deals_feed.csv"
+    if feed_path.exists():
+        event_handler = DealsFeedHandler(feed_path)
+        file_observer = Observer()
+        file_observer.schedule(event_handler, str(feed_path.parent), recursive=False)
+        file_observer.start()
+        print(f"Watching {feed_path.name} for changes...")
+    else:
+        print(f"Warning: {feed_path} not found, file watcher disabled")
+    
     asyncio.create_task(watch_monitor_task())
     asyncio.create_task(deal_feed_refresh_task())
     
     yield
     
+    # Stop file watcher
+    if file_observer:
+        file_observer.stop()
+        file_observer.join()
     print("Concierge AI Service shutting down...")
 
 app.router.lifespan_context = lifespan
@@ -392,6 +456,8 @@ async def create_chat_session(request: ChatSessionRequest):
     
     messages = []
     context: Dict[str, Any] = {}
+    if request.chat_mode:
+        context["chat_mode"] = request.chat_mode
     if user_identifier:
         context["user_id"] = user_identifier
         if "@" in user_identifier:
@@ -469,18 +535,106 @@ async def send_message(session_id: str, request: ChatMessageRequest):
     
     # Generate response
     bundles = None
-    if should_use_langgraph(request.message, context):
-        ai_response = await generate_ai_response(request.message, context)
-    else:
+    message_lower = request.message.lower()
+    
+    # Booking-only chat mode: natural language answers, no actions
+    if context.get("chat_mode") == "booking_chat":
+        ai_response = await generate_booking_chat_response(request.message, context)
+        return ChatMessageResponse(
+            session_id=session_id,
+            response=ai_response,
+            bundles=None,
+            timestamp=datetime.now(),
+        )
+
+    # Check if message has travel planning intent OR if we're continuing a travel conversation
+    has_travel_intent = any(word in message_lower for word in [
+        "flight", "fly", "hotel", "stay", "car", "rental", "bundle", "package", 
+        "trip", "travel", "vacation", "book", "destination", "visit"
+    ])
+    
+    # Continue travel planning if we already have intent_type from previous messages
+    in_travel_flow = context.get("intent_type") is not None
+    
+    # For travel intent, check if we have enough info before querying
+    search_params = None
+    search_params_complete = False
+    
+    if has_travel_intent or in_travel_flow:
+        # First check if we need more information
         clarification = IntentParser.needs_clarification(context)
         if clarification:
             ai_response = clarification
         else:
-            bundles = await build_bundles_from_constraints(context)
-            if bundles:
-                ai_response = format_bundle_recommendation(bundles, is_refinement=True)
+            # We have complete info - prepare search params for frontend
+            intent_type = context.get("intent_type", "")
+            
+            if "flight" in intent_type:
+                # Format dates to YYYY-MM-DD (remove time component)
+                depart_date = context.get("check_in", "")
+                return_date = context.get("check_out")
+                if depart_date and "T" in depart_date:
+                    depart_date = depart_date.split("T")[0]
+                if return_date and "T" in return_date:
+                    return_date = return_date.split("T")[0]
+                
+                search_params = {
+                    "from": context.get("origin"),
+                    "to": context.get("destination"),
+                    "departDate": depart_date,
+                    "returnDate": return_date,
+                    "passengers": context.get("travelers", 1)
+                }
+                search_params_complete = True
+                ai_response = f"Great! I found your flight details:\n\n✈️ From: {search_params['from']}\n✈️ To: {search_params['to']}\n📅 Departure: {search_params['departDate']}\n{('📅 Return: ' + search_params['returnDate']) if search_params['returnDate'] else '🎫 One-way trip'}\n\nSearching for available flights..."
+            
+            elif "hotel" in intent_type:
+                # Format dates to YYYY-MM-DD
+                check_in = context.get("check_in", "")
+                check_out = context.get("check_out", "")
+                if check_in and "T" in check_in:
+                    check_in = check_in.split("T")[0]
+                if check_out and "T" in check_out:
+                    check_out = check_out.split("T")[0]
+                
+                search_params = {
+                    "city": context.get("city") or context.get("destination"),
+                    "checkIn": check_in,
+                    "checkOut": check_out,
+                    "guests": context.get("travelers", 1)
+                }
+                search_params_complete = True
+                ai_response = f"Perfect! Here are your hotel search details:\n\n🏨 Location: {search_params['city']}\n📅 Check-in: {search_params['checkIn']}\n📅 Check-out: {search_params['checkOut']}\n👥 Guests: {search_params['guests']}\n\nSearching for available hotels..."
+            
+            elif "car" in intent_type:
+                # Format dates to YYYY-MM-DD
+                pick_up = context.get("check_in", "")
+                drop_off = context.get("check_out", "")
+                if pick_up and "T" in pick_up:
+                    pick_up = pick_up.split("T")[0]
+                if drop_off and "T" in drop_off:
+                    drop_off = drop_off.split("T")[0]
+                
+                search_params = {
+                    "location": context.get("city") or context.get("destination"),
+                    "pickUp": pick_up,
+                    "dropOff": drop_off
+                }
+                search_params_complete = True
+                ai_response = f"Excellent! Your car rental details:\n\n🚗 Location: {search_params['location']}\n📅 Pick-up: {search_params['pickUp']}\n📅 Drop-off: {search_params['dropOff']}\n\nFinding available vehicles..."
             else:
-                ai_response = await generate_ai_response(request.message, context)
+                # Fallback to bundle or general response
+                bundles = await build_bundles_from_constraints(context)
+                if bundles:
+                    ai_response = format_bundle_recommendation(bundles, is_refinement=True)
+                else:
+                    ai_response = await generate_ai_response(request.message, context)
+    elif should_use_langgraph(request.message, context):
+        # Database queries (bookings, payments, reviews, weather, search)
+        ai_response = await generate_ai_response(request.message, context)
+    else:
+        # Natural conversation for greetings and general messages
+        ai_response = await generate_ai_response(request.message, context)
     
     # Format bundles for response
     bundle_data = None
@@ -491,6 +645,8 @@ async def send_message(session_id: str, request: ChatMessageRequest):
         session_id=session_id,
         response=ai_response,
         bundles=bundle_data,
+        search_params=search_params,
+        search_params_complete=search_params_complete,
         timestamp=datetime.now()
     )
 
@@ -666,6 +822,86 @@ async def get_policy_answer(request: PolicyQuestionRequest):
             source="listing_metadata"
         )
 
+@app.post("/api/v1/deals/refresh", tags=["Deals"])
+async def trigger_deal_refresh():
+    """Manually trigger deal refresh from CSV feed"""
+    try:
+        count = refresh_deals_from_feed(reason="manual_api")
+        
+        # Broadcast to all active WebSocket connections
+        with Session(engine) as db_session:
+            active_deals = db_session.exec(
+                select(Deal).where(Deal.status == DealStatus.ACTIVE)
+            ).all()
+            
+            # Send notification to all sessions
+            for session_id in list(manager.active_connections.keys()):
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event_type": "deals_refreshed",
+                        "data": {
+                            "count": len(active_deals),
+                            "deals": [
+                                {
+                                    "deal_id": deal.deal_id,
+                                    "deal_type": deal.deal_type.value if hasattr(deal.deal_type, 'value') else str(deal.deal_type),
+                                    "origin": deal.origin,
+                                    "destination": deal.destination,
+                                    "price": deal.price,
+                                    "avg_price": deal.avg_30d_price,
+                                    "savings_percent": round(((deal.avg_30d_price - deal.price) / deal.avg_30d_price * 100), 1) if deal.avg_30d_price else 0,
+                                    "availability": deal.availability,
+                                    "tags": deal.tags,
+                                }
+                                for deal in active_deals[:5]  # Send first 5 deals
+                            ]
+                        },
+                        "timestamp": datetime.now().isoformat()
+                    }
+                )
+        
+        return {
+            "status": "success",
+            "deals_refreshed": count,
+            "message": f"Refreshed {count} deals and notified active sessions"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to refresh deals: {str(e)}")
+
+@app.get("/api/v1/deals", tags=["Deals"])
+async def get_active_deals(limit: int = 20):
+    """Get currently active deals"""
+    with Session(engine) as db_session:
+        deals = db_session.exec(
+            select(Deal)
+            .where(Deal.status == DealStatus.ACTIVE)
+            .limit(limit)
+        ).all()
+        
+        return {
+            "count": len(deals),
+            "deals": [
+                {
+                    "deal_id": deal.deal_id,
+                    "deal_type": deal.deal_type.value if hasattr(deal.deal_type, 'value') else str(deal.deal_type),
+                    "origin": deal.origin,
+                    "destination": deal.destination,
+                    "listing_id": deal.listing_id,
+                    "price": deal.price,
+                    "avg_price": deal.avg_30d_price,
+                    "savings_percent": round(((deal.avg_30d_price - deal.price) / deal.avg_30d_price * 100), 1) if deal.avg_30d_price else 0,
+                    "currency": deal.currency,
+                    "availability": deal.availability,
+                    "is_limited": deal.is_limited,
+                    "tags": deal.tags,
+                    "deal_score": deal.deal_score,
+                    "created_at": deal.created_at.isoformat() if deal.created_at else None,
+                }
+                for deal in deals
+            ]
+        }
+
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
     """Basic health check endpoint"""
@@ -803,6 +1039,48 @@ def refresh_deals_from_feed(reason: str = "manual") -> int:
     print(f"[{reason}] refreshed {len(persisted)} rotating deals from feed")
     return len(persisted)
 
+async def refresh_and_notify_deals(reason: str = "manual") -> None:
+    """Refresh deals and broadcast notifications to all connected WebSocket clients"""
+    try:
+        count = refresh_deals_from_feed(reason)
+        if count > 0:
+            # Get active deals to broadcast
+            active_deals = [d for d in deal_cache.values() if d.status == DealStatus.ACTIVE][:5]
+            
+            # Format deal message for chat
+            deal_messages = []
+            for deal in active_deals:
+                if deal.deal_type == DealType.FLIGHT:
+                    msg = f"{deal.origin} to {deal.destination}: ${deal.price:.0f}"
+                    if deal.avg_30d_price:
+                        savings = ((deal.avg_30d_price - deal.price) / deal.avg_30d_price * 100)
+                        msg += f" ({savings:.0f}% OFF)"
+                elif deal.deal_type == DealType.HOTEL:
+                    msg = f"{deal.destination}: ${deal.price:.0f}/night"
+                    if deal.avg_30d_price:
+                        savings = ((deal.avg_30d_price - deal.price) / deal.avg_30d_price * 100)
+                        msg += f" ({savings:.0f}% OFF)"
+                else:
+                    msg = f"{deal.destination}: ${deal.price:.0f}/day"
+                
+                if deal.is_limited and deal.availability:
+                    msg += f" - Only {deal.availability} left!"
+                
+                deal_messages.append(msg)
+            
+            # Broadcast as assistant message to all connected clients
+            notification = {
+                "type": "message",
+                "role": "assistant",
+                "content": f"**New Hot Deals Just Dropped!**\\n\\n" + "\\n".join(deal_messages) + f"\\n\\nThese are limited-time offers. Want details on any of these?",
+                "deals": [serialize_deal_for_cache(d) for d in active_deals]
+            }
+            
+            await manager.broadcast_to_all(notification)
+            print(f"Broadcasted {count} deals to all connected clients")
+    except Exception as exc:
+        print(f"Error refreshing and notifying deals: {exc}")
+
 async def deal_feed_refresh_task():
     """Background task to rotate deals based on the CSV feed."""
     while True:
@@ -934,6 +1212,9 @@ async def generate_ai_response(user_message: str, context: Dict[str, Any]) -> st
     needs_mongo = is_mongo_question(user_message) or context_ready_for_mongo(context)
     needs_langgraph = needs_supabase or needs_weather or needs_search or needs_mongo
 
+    if context.get("chat_mode") == "booking_chat" and supabase_langgraph_agent.llm:
+        return await generate_booking_chat_response(user_message, context)
+
     if needs_langgraph:
         if needs_supabase and not context.get("user_id"):
             return "Please log in to view personal bookings, payments, reviews, or deals."
@@ -954,15 +1235,105 @@ async def generate_ai_response(user_message: str, context: Dict[str, Any]) -> st
         except Exception as exc:
             return f"I ran into an error while answering that: {exc}"
 
-    # Simple conversational responses for non-database queries
-    if any(word in message_lower for word in ["flight", "fly"]):
-        return "I can help you find flights! What's your destination and travel dates?"
-    elif any(word in message_lower for word in ["hotel", "stay"]):
-        return "I'd be happy to help you find a hotel! Where would you like to stay?"
-    elif any(word in message_lower for word in ["bundle", "package"]):
-        return "Great! I can create a travel bundle. What are your travel dates and budget?"
-    else:
-        return "Hello! I'm your travel concierge. I can help you find flights, hotels, create bundles, and answer questions about bookings. How can I assist you?"
+    # Use LLM for natural conversational responses
+    if supabase_langgraph_agent.llm:
+        try:
+            from langchain_core.messages import SystemMessage, HumanMessage
+            
+            system_prompt = """You are a friendly travel concierge assistant for a Kayak-like travel platform. 
+You help users with:
+- Finding flights, hotels, and car rentals
+- Creating travel bundles and packages
+- Answering questions about their bookings, payments, and reviews
+- Providing travel recommendations
+
+Be conversational, helpful, and concise. If users greet you or make small talk, respond naturally.
+If they mention travel needs, gently guide them to provide details like destination, dates, and budget."""
+
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_message)
+            ]
+            
+            response = await supabase_langgraph_agent.llm.ainvoke(messages)
+            return response.content
+        except Exception as exc:
+            # Fallback to simple response if LLM fails
+            return "Hello! I'm your travel concierge. I can help you find flights, hotels, create bundles, and answer questions about bookings. How can I assist you?"
+    
+    # Fallback if no LLM available
+    return "Hello! I'm your travel concierge. I can help you find flights, hotels, create bundles, and answer questions about bookings. How can I assist you?"
+
+
+async def generate_booking_chat_response(user_message: str, context: Dict[str, Any]) -> str:
+    """Lightweight bookings chat: natural language answers only, no booking actions or JSON."""
+    llm = supabase_langgraph_agent.llm
+    if not llm:
+        return "I can answer booking-related questions, but my chat model is unavailable right now."
+
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    lower = user_message.lower()
+    booking_intent = any(
+        keyword in lower
+        for keyword in [
+            "booking",
+            "bookings",
+            "reservation",
+            "previous booking",
+            "past trip",
+            "upcoming",
+            "flight",
+            "hotel",
+            "stay",
+            "ticket",
+        ]
+    )
+
+    # If logged in and asking about bookings, try the LangGraph path for structured answers
+    if booking_intent and context.get("user_id"):
+        try:
+            agent_response = await supabase_langgraph_agent.ainvoke(
+                user_message,
+                context or {},
+            )
+            if not agent_response:
+                raise RuntimeError("Empty agent response.")
+            if agent_response.get("error"):
+                raise RuntimeError(agent_response.get("error"))
+
+            source = agent_response.get("source")
+            if source == "supabase":
+                return format_supabase_response(agent_response)
+            return format_generic_agent_response(agent_response)
+        except Exception:
+            # Fall through to LLM response below
+            pass
+
+    system_prompt = """You are a bookings Q&A assistant.
+- Answer in concise natural language.
+- You do NOT create or modify bookings.
+- You can suggest flights or stays and provide helpful links like /flights, /hotels, /bookings, or relevant web URLs.
+- Never return JSON, code, or bullet dumps of raw data. Keep it conversational."""
+
+    # Add lightweight user context to help the LLM answer about known bookings
+    user_ctx = context.get("user_context") or {}
+    booking_count = user_ctx.get("bookingCount") or user_ctx.get("bookings_count")
+    recent_bookings = user_ctx.get("bookings") or []
+    context_snippet = ""
+    if booking_count or recent_bookings:
+        context_snippet = f"User has {booking_count or len(recent_bookings)} known booking(s). Summarize if asked. "
+
+    messages = [
+        SystemMessage(content=system_prompt + "\n" + context_snippet),
+        HumanMessage(content=user_message),
+    ]
+
+    try:
+        response = await llm.ainvoke(messages)
+        return response.content
+    except Exception:
+        return "I hit a snag answering that booking question. Try again in a moment."
 
 async def watch_monitor_task():
     """Background task to monitor watches and send WebSocket updates"""
