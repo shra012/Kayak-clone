@@ -6,6 +6,7 @@ import FlightPriceCalendar from '../../components/common/FlightPriceCalendar';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
+import AgentInlineChat from '../../components/agent/AgentInlineChat';
 
 // Helper function to parse date string as local time (not UTC)
 const parseLocalDate = (dateStr) => {
@@ -74,6 +75,8 @@ const FlightsPage = () => {
   const location = useLocation();
   const { isAuthenticated } = useAuth();
   const toast = useToast();
+  const agentMode = Boolean(location.state?.agentMode);
+  const initialAgentPromptRef = useRef(null);
   const [filters, setFilters] = useState(defaultFilters);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
@@ -101,6 +104,32 @@ const FlightsPage = () => {
   const toDropdownRef = useRef(null);
   const fromSearchTimeoutRef = useRef(null);
   const toSearchTimeoutRef = useRef(null);
+  const ensureRouteSet = (activeFilters) => {
+    const isMultiCity = location.state?.search?.tripType === 'multi-city';
+    if (isMultiCity) return true;
+    if (!activeFilters.from || !activeFilters.to) {
+      setError('Please enter both origin and destination to search flights.');
+      toast.showError('Add both origin and destination to search flights.');
+      return false;
+    }
+    setError(null);
+    return true;
+  };
+  const flightContextSummary = [
+    'I’m in flight mode.',
+    filters.from || filters.to ? `From: ${filters.from || 'unset'}, To: ${filters.to || 'unset'}.` : 'Tell me your from/to.',
+    filters.date ? `Departing around ${filters.date}.` : 'Share your departure date.',
+    filters.returnDate ? `Returning around ${filters.returnDate}.` : 'Say one-way to skip a return date.',
+  ].join(' ');
+
+  const initialAgentPrompt = agentMode
+    ? {
+        text: 'Let’s find flights. Tell me your origin, destination, and dates (one-way or round-trip) and I’ll start searching.',
+        id: `flight_agent_prompt_${filters.from || 'any'}_${filters.to || 'any'}`,
+      }
+    : null;
+
+  initialAgentPromptRef.current = initialAgentPrompt;
 
   // Handle View Deal button click
   const handleViewDeal = (flight, returnFlight = null) => {
@@ -412,6 +441,10 @@ const FlightsPage = () => {
 
     try {
       const activeFilters = overrideFilters ?? filters;
+      if (!ensureRouteSet(activeFilters)) {
+        setLoading(false);
+        return;
+      }
       // Only treat as round trip if returnDate exists, is not null, and is different from departDate
       const isRound = activeFilters.returnDate && 
                       activeFilters.returnDate !== null && 
@@ -739,6 +772,12 @@ const FlightsPage = () => {
     loadFlights(newPage);
   };
 
+  const agentPromptSuggestions = [
+    { label: 'Cheapest week', text: `Find the cheapest week to fly from ${filters.from || 'SFO'} to ${filters.to || 'JFK'} this month.` },
+    { label: 'Short layovers', text: `Show flights from ${filters.from || 'SFO'} to ${filters.to || 'JFK'} with short layovers only.` },
+    { label: 'Bags included', text: 'List options that include a carry-on and checked bag without extra fees.' },
+  ];
+
   return (
     <div className="min-h-screen bg-base-100">
       {/* Compact Sticky Header */}
@@ -994,140 +1033,150 @@ const FlightsPage = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Sidebar Filters */}
-          <aside className="lg:w-64 shrink-0">
-            <div className="card bg-base-100 shadow-md sticky top-24">
-              <div className="card-body p-4 space-y-4">
-                <h3 className="font-bold text-lg">Filters</h3>
-                
-                {/* Stops */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-medium">Stops</span>
-                  </label>
-                  <select
-                    name="nonstop"
-                    value={filters.nonstop}
-                    onChange={(e) => {
-                      const newFilters = { ...filters, nonstop: e.target.value };
-                      setFilters(newFilters);
-                      // For multi-city, just update filter (filtering happens in render)
-                      if (location.state?.search?.tripType !== 'multi-city') {
-                        loadFlights(1, newFilters);
-                      }
-                    }}
-                    className="select select-sm select-bordered w-full"
-                  >
-                    <option value="any">Any stops</option>
-                    <option value="true">Non-stop only</option>
-                    <option value="false">With stops</option>
-                  </select>
-                </div>
-
-                {/* Airline */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-medium">Airlines</span>
-                  </label>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {/* All airlines checkbox */}
-                    <label className="label cursor-pointer justify-start gap-2 py-1">
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm"
-                        checked={filters.airlines.length === availableAirlines.length && availableAirlines.length > 0}
-                        onChange={handleAllAirlinesToggle}
-                      />
-                      <span className="label-text font-medium">All airlines</span>
+      <div className={`max-w-7xl mx-auto px-4 py-6 ${agentMode ? 'grid lg:grid-cols-3 gap-6 items-start' : ''}`}>
+        {agentMode && (
+          <div className="lg:col-span-1">
+            <AgentInlineChat
+              initialPrompt={initialAgentPromptRef.current}
+              promptSuggestions={agentPromptSuggestions}
+              contextSummary={flightContextSummary}
+            />
+          </div>
+        )}
+        <div className={agentMode ? 'lg:col-span-2' : ''}>
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Sidebar Filters */}
+            <aside className="lg:w-64 shrink-0">
+              <div className="card bg-base-100 shadow-md sticky top-24">
+                <div className="card-body p-4 space-y-4">
+                  <h3 className="font-bold text-lg">Filters</h3>
+                  
+                  {/* Stops */}
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text font-medium">Stops</span>
                     </label>
-                    
-                    {/* Individual airline checkboxes */}
-                    {availableAirlines.map((airline) => (
-                      <label key={airline} className="label cursor-pointer justify-start gap-2 py-1">
+                    <select
+                      name="nonstop"
+                      value={filters.nonstop}
+                      onChange={(e) => {
+                        const newFilters = { ...filters, nonstop: e.target.value };
+                        setFilters(newFilters);
+                        // For multi-city, just update filter (filtering happens in render)
+                        if (location.state?.search?.tripType !== 'multi-city') {
+                          loadFlights(1, newFilters);
+                        }
+                      }}
+                      className="select select-sm select-bordered w-full"
+                    >
+                      <option value="any">Any stops</option>
+                      <option value="true">Non-stop only</option>
+                      <option value="false">With stops</option>
+                    </select>
+                  </div>
+
+                  {/* Airline */}
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text font-medium">Airlines</span>
+                    </label>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {/* All airlines checkbox */}
+                      <label className="label cursor-pointer justify-start gap-2 py-1">
                         <input
                           type="checkbox"
                           className="checkbox checkbox-sm"
-                          checked={filters.airlines.includes(airline)}
-                          onChange={() => handleAirlineToggle(airline)}
+                          checked={filters.airlines.length === availableAirlines.length && availableAirlines.length > 0}
+                          onChange={handleAllAirlinesToggle}
                         />
-                        <span className="label-text">{airline}</span>
+                        <span className="label-text font-medium">All airlines</span>
                       </label>
-                    ))}
+                      
+                      {/* Individual airline checkboxes */}
+                      {availableAirlines.map((airline) => (
+                        <label key={airline} className="label cursor-pointer justify-start gap-2 py-1">
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-sm"
+                            checked={filters.airlines.includes(airline)}
+                            onChange={() => handleAirlineToggle(airline)}
+                          />
+                          <span className="label-text">{airline}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                {/* Price Range */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-medium">Price Range</span>
-                  </label>
-                  <div className="flex gap-2">
-                    {/* Min Price */}
-                    <div className="flex-1">
-                      <label className="label py-1">
-                        <span className="label-text text-xs">Min</span>
-                      </label>
-                      <input
-                        type="number"
-                        name="minPrice"
-                        placeholder="0"
-                        value={filters.minPrice}
-                        onChange={handleInputChange}
-                        onBlur={(e) => {
-                          const newFilters = { ...filters, minPrice: e.target.value };
-                          setFilters(newFilters);
-                          if (location.state?.search?.tripType !== 'multi-city') {
-                            loadFlights(1, newFilters);
-                          }
-                        }}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
+                  {/* Price Range */}
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text font-medium">Price Range</span>
+                    </label>
+                    <div className="flex gap-2">
+                      {/* Min Price */}
+                      <div className="flex-1">
+                        <label className="label py-1">
+                          <span className="label-text text-xs">Min</span>
+                        </label>
+                        <input
+                          type="number"
+                          name="minPrice"
+                          placeholder="0"
+                          value={filters.minPrice}
+                          onChange={handleInputChange}
+                          onBlur={(e) => {
                             const newFilters = { ...filters, minPrice: e.target.value };
                             setFilters(newFilters);
                             if (location.state?.search?.tripType !== 'multi-city') {
                               loadFlights(1, newFilters);
                             }
-                          }
-                        }}
-                        className="input input-sm input-bordered w-full"
-                        min="0"
-                      />
-                    </div>
-                    {/* Max Price */}
-                    <div className="flex-1">
-                      <label className="label py-1">
-                        <span className="label-text text-xs">Max</span>
-                      </label>
-                      <input
-                        type="number"
-                        name="maxPrice"
-                        placeholder="No limit"
-                        value={filters.maxPrice}
-                        onChange={handleInputChange}
-                        onBlur={(e) => {
-                          const newFilters = { ...filters, maxPrice: e.target.value };
-                          setFilters(newFilters);
-                          if (location.state?.search?.tripType !== 'multi-city') {
-                            loadFlights(1, newFilters);
-                          }
-                        }}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              const newFilters = { ...filters, minPrice: e.target.value };
+                              setFilters(newFilters);
+                              if (location.state?.search?.tripType !== 'multi-city') {
+                                loadFlights(1, newFilters);
+                              }
+                            }
+                          }}
+                          className="input input-sm input-bordered w-full"
+                          min="0"
+                        />
+                      </div>
+                      {/* Max Price */}
+                      <div className="flex-1">
+                        <label className="label py-1">
+                          <span className="label-text text-xs">Max</span>
+                        </label>
+                        <input
+                          type="number"
+                          name="maxPrice"
+                          placeholder="No limit"
+                          value={filters.maxPrice}
+                          onChange={handleInputChange}
+                          onBlur={(e) => {
                             const newFilters = { ...filters, maxPrice: e.target.value };
                             setFilters(newFilters);
                             if (location.state?.search?.tripType !== 'multi-city') {
                               loadFlights(1, newFilters);
                             }
-                          }
-                        }}
-                        className="input input-sm input-bordered w-full"
-                        min="0"
-                      />
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              const newFilters = { ...filters, maxPrice: e.target.value };
+                              setFilters(newFilters);
+                              if (location.state?.search?.tripType !== 'multi-city') {
+                                loadFlights(1, newFilters);
+                              }
+                            }
+                          }}
+                          className="input input-sm input-bordered w-full"
+                          min="0"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
 
                 {/* Sort By */}
                 <div className="form-control">
@@ -1749,6 +1798,8 @@ const FlightsPage = () => {
             </div>
           </main>
         </div>
+        </div>
+        {/* Close outer grid when agentMode is on */}
       </div>
 
       {/* Flight Price Calendar Modal for Departure Date */}
@@ -1774,7 +1825,9 @@ const FlightsPage = () => {
                 }
                 setFilters(newFilters);
                 setShowDepartCalendar(false);
-                loadFlights(1, newFilters);
+                if (ensureRouteSet(newFilters)) {
+                  loadFlights(1, newFilters);
+                }
               }}
               from={extractAirportCode(filters.from) || ''}
               to={extractAirportCode(filters.to) || ''}
@@ -1803,7 +1856,9 @@ const FlightsPage = () => {
                 };
                 setFilters(newFilters);
                 setShowReturnCalendar(false);
-                loadFlights(1, newFilters);
+                if (ensureRouteSet(newFilters)) {
+                  loadFlights(1, newFilters);
+                }
               }}
               from={extractAirportCode(filters.to) || ''} // Reverse for return flight
               to={extractAirportCode(filters.from) || ''}

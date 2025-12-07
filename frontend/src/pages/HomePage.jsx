@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaPlane, FaBed, FaCar, FaExchangeAlt, FaSearch, FaChevronDown, FaTimes, FaCalendar, FaClock } from 'react-icons/fa';
+import { FaPlane, FaBed, FaCar, FaExchangeAlt, FaSearch, FaChevronDown, FaTimes, FaCalendar, FaClock, FaRobot } from 'react-icons/fa';
 import { getDestinationImageUrl } from '../services/destinationImages.service.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useAuth } from '../hooks/useAuth';
@@ -8,6 +8,7 @@ import AnimatedCard from '../components/common/AnimatedCard';
 import AnimatedIcon from '../components/common/AnimatedIcon';
 import { listingsApi } from '../services/api/listings';
 import FlightPriceCalendar from '../components/common/FlightPriceCalendar';
+import AgentInlineChat from '../components/agent/AgentInlineChat';
 import {
   getHomePageCarImages,
   getHomePageFlightImages,
@@ -205,12 +206,31 @@ const HomePage = () => {
       driverAge: 25
     }
   });
-  const navigate = useNavigate();
+const [agentPrompt, setAgentPrompt] = useState(null);
+const [agentPendingFlow, setAgentPendingFlow] = useState(null);
+const agentSectionRef = useRef(null);
+const navigate = useNavigate();
+  const [selectedAgentFlow, setSelectedAgentFlow] = useState(null);
+  const [showAgentFlightModal, setShowAgentFlightModal] = useState(false);
+  const [agentFlightForm, setAgentFlightForm] = useState({
+    from: '',
+    to: '',
+    tripType: 'round-trip',
+    departDate: '',
+    returnDate: '',
+  });
+  const [agentFlightError, setAgentFlightError] = useState('');
+  const [agentFromOptions, setAgentFromOptions] = useState([]);
+  const [agentToOptions, setAgentToOptions] = useState([]);
+  const [agentShowFromDropdown, setAgentShowFromDropdown] = useState(false);
+  const [agentShowToDropdown, setAgentShowToDropdown] = useState(false);
+  const agentFromDropdownRef = useRef(null);
+  const agentToDropdownRef = useRef(null);
 
   // Redirect owners to their dashboard - they shouldn't see the booking homepage
   useEffect(() => {
     if (user?.profileType === 'owner') {
-      navigate('/owner', { replace: true });
+      navigate('/owner');
     }
   }, [user, navigate]);
 
@@ -512,6 +532,50 @@ const HomePage = () => {
     }
   };
 
+  const buildAgentPrompt = (flowType) => {
+    if (flowType === 'flights') {
+      return 'Let’s find flights. Tell me your from/to, dates, and whether it is one-way or round-trip.';
+    }
+    if (flowType === 'hotels') {
+      const city = searchData.hotels.location || 'any city with great value';
+      const checkIn = searchData.hotels.checkIn || defaultDates.today;
+      const checkOut = searchData.hotels.checkOut || defaultDates.tomorrow;
+      return `Find me a stay in ${city} from ${checkIn} to ${checkOut}. I want solid reviews and good value.`;
+    }
+    if (flowType === 'cars') {
+      const city = searchData.cars.location || 'San Francisco';
+      const pickUp = searchData.cars.pickUp || defaultDates.today;
+      const dropOff = searchData.cars.dropOff || defaultDates.tomorrow;
+      return `Find me a rental car in ${city} from ${pickUp} to ${dropOff}. I prefer automatic with reasonable rates.`;
+    }
+    return 'Plan my trip end-to-end.';
+  };
+
+  const handleAgentPrompt = (flowType) => {
+    setSelectedAgentFlow(flowType);
+    setActiveTab('agent');
+    const promptText = buildAgentPrompt(flowType);
+    setAgentPrompt({ text: promptText, id: Date.now() });
+
+    // Seed sensible defaults so the follow-up view has data
+    if (flowType === 'flights') {
+      setAgentPendingFlow('flights');
+      setAgentFlightForm({
+        from: searchData.flights.from || '',
+        to: searchData.flights.to || '',
+        tripType: tripType === 'one-way' ? 'one-way' : 'round-trip',
+        departDate: searchData.flights.departDate || '',
+        returnDate: tripType === 'one-way' ? '' : (searchData.flights.returnDate || ''),
+      });
+      setAgentFlightError('');
+      setShowAgentFlightModal(true);
+      return;
+    }
+
+    // Non-flight flows: no modal needed
+    setShowAgentFlightModal(false);
+  };
+
   const swapLocations = () => {
     setSearchData({
       ...searchData,
@@ -541,6 +605,97 @@ const HomePage = () => {
       ...prev,
       [type]: Math.max(0, prev[type] + (increment ? 1 : -1))
     }));
+  };
+
+  const handleAgentFlightSubmit = () => {
+    const from = agentFlightForm.from.trim();
+    const to = agentFlightForm.to.trim();
+    const departDate = agentFlightForm.departDate;
+    const isOneWay = agentFlightForm.tripType === 'one-way';
+    const returnDate = isOneWay ? null : agentFlightForm.returnDate;
+
+    if (!from || !to || !departDate || (!isOneWay && !returnDate)) {
+      setAgentFlightError('Please enter origin, destination, and date(s).');
+      return;
+    }
+
+    setAgentFlightError('');
+    setShowAgentFlightModal(false);
+    setTripType(isOneWay ? 'one-way' : 'round-trip');
+    setSearchData((prev) => ({
+      ...prev,
+      flights: {
+        ...prev.flights,
+        from,
+        to,
+        departDate,
+        returnDate: isOneWay ? null : returnDate,
+      },
+    }));
+
+    const searchPayload = {
+      from,
+      to,
+      departDate,
+      returnDate: isOneWay ? null : returnDate,
+      tripType: isOneWay ? 'one-way' : 'round-trip',
+    };
+
+    navigate('/flights', {
+      state: {
+        search: searchPayload,
+        agentMode: true,
+        agentInitialPrompt: agentPrompt?.text,
+      },
+    });
+  };
+
+  // Close agent dropdowns when clicking outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (agentFromDropdownRef.current && !agentFromDropdownRef.current.contains(e.target)) {
+        setAgentShowFromDropdown(false);
+      }
+      if (agentToDropdownRef.current && !agentToDropdownRef.current.contains(e.target)) {
+        setAgentShowToDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleAgentFromInputChange = (e) => {
+    const value = e.target.value;
+    setAgentFlightForm((prev) => ({ ...prev, from: value }));
+    if (value.trim()) {
+      loadFlightLocations(value, setAgentFromOptions);
+      setAgentShowFromDropdown(true);
+    } else {
+      setAgentFromOptions([]);
+      setAgentShowFromDropdown(false);
+    }
+  };
+
+  const handleAgentToInputChange = (e) => {
+    const value = e.target.value;
+    setAgentFlightForm((prev) => ({ ...prev, to: value }));
+    if (value.trim()) {
+      loadFlightLocations(value, setAgentToOptions);
+      setAgentShowToDropdown(true);
+    } else {
+      setAgentToOptions([]);
+      setAgentShowToDropdown(false);
+    }
+  };
+
+  const handleAgentFromSelect = (loc) => {
+    setAgentFlightForm((prev) => ({ ...prev, from: loc.code || loc.label || '' }));
+    setAgentShowFromDropdown(false);
+  };
+
+  const handleAgentToSelect = (loc) => {
+    setAgentFlightForm((prev) => ({ ...prev, to: loc.code || loc.label || '' }));
+    setAgentShowToDropdown(false);
   };
 
   const getTravelersLabel = () => {
@@ -955,6 +1110,7 @@ const HomePage = () => {
               {/* Tab bar */}
               <div className="flex gap-2">
                 <button
+                  type="button"
                   className={`btn btn-sm ${activeTab === 'flights' ? 'btn-primary' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4`}
                   onClick={() => setActiveTab('flights')}
                 >
@@ -962,6 +1118,7 @@ const HomePage = () => {
                   <span className="text-sm font-medium">Flights</span>
                 </button>
                 <button
+                  type="button"
                   className={`btn btn-sm ${activeTab === 'hotels' ? 'btn-primary' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4`}
                   onClick={() => setActiveTab('hotels')}
                 >
@@ -969,11 +1126,20 @@ const HomePage = () => {
                   <span className="text-sm font-medium">Stays</span>
                 </button>
                 <button
+                  type="button"
                   className={`btn btn-sm ${activeTab === 'cars' ? 'btn-primary' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4`}
                   onClick={() => setActiveTab('cars')}
                 >
                   <FaCar className="w-4 h-4" />
                   <span className="text-sm font-medium">Cars</span>
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${activeTab === 'agent' ? 'btn-primary' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4`}
+                  onClick={() => setActiveTab('agent')}
+                >
+                  <FaRobot className="w-4 h-4" />
+                  <span className="text-sm font-medium">Agent</span>
                 </button>
               </div>
 
@@ -981,7 +1147,254 @@ const HomePage = () => {
                 {activeTab === 'flights' && 'Compare flight deals from 100s of sites'}
                 {activeTab === 'hotels' && 'Search hotels & more'}
                 {activeTab === 'cars' && 'Compare car rental deals'}
+                {activeTab === 'agent' && 'Let the concierge plan it for you'}
               </h1>
+
+              {activeTab === 'agent' && (
+                <div ref={agentSectionRef} className="bg-base-100 rounded-lg shadow-xl border border-base-200 p-4 space-y-4">
+                  <p className="text-base-content/70">
+                    Pick a flow and the concierge will pair chat + results side-by-side.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      className={`card shadow-sm transition-all ${
+                        selectedAgentFlow === 'flights'
+                          ? 'bg-primary/10 border border-primary/30'
+                          : 'bg-base-100 border border-base-300 hover:border-primary'
+                      }`}
+                      onClick={() => handleAgentPrompt('flights')}
+                    >
+                      <div className="card-body gap-2 items-start">
+                        <div className={`badge ${selectedAgentFlow === 'flights' ? 'badge-primary badge-outline' : 'badge-outline'}`}>
+                          Flights
+                        </div>
+                        <h3 className="font-semibold text-left">Plan a flight</h3>
+                        <p className="text-sm text-left text-base-content/70">
+                          Choose dates with a calendar, then see chat + live fares together.
+                        </p>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className={`card shadow-sm transition-all ${
+                        selectedAgentFlow === 'hotels'
+                          ? 'bg-primary/10 border border-primary/30'
+                          : 'bg-base-100 border border-base-300 hover:border-primary'
+                      }`}
+                      onClick={() => handleAgentPrompt('hotels')}
+                    >
+                      <div className="card-body gap-2 items-start">
+                        <div className={`badge ${selectedAgentFlow === 'hotels' ? 'badge-primary badge-outline' : 'badge-outline'}`}>
+                          Stays
+                        </div>
+                        <h3 className="font-semibold text-left">Find a stay</h3>
+                        <p className="text-sm text-left text-base-content/70">
+                          Ask for neighborhoods, budgets, or vibe—agent will curate options.
+                        </p>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className={`card shadow-sm transition-all ${
+                        selectedAgentFlow === 'cars'
+                          ? 'bg-primary/10 border border-primary/30'
+                          : 'bg-base-100 border border-base-300 hover:border-primary'
+                      }`}
+                      onClick={() => handleAgentPrompt('cars')}
+                    >
+                      <div className="card-body gap-2 items-start">
+                        <div className={`badge ${selectedAgentFlow === 'cars' ? 'badge-primary badge-outline' : 'badge-outline'}`}>
+                          Cars
+                        </div>
+                        <h3 className="font-semibold text-left">Grab a rental</h3>
+                        <p className="text-sm text-left text-base-content/70">
+                          Provide pick-up and drop-off vibes; agent compares the best deals.
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+
+              <AgentInlineChat
+                initialPrompt={agentPrompt}
+                promptSuggestions={[
+                  { label: 'Track a route', text: 'Watch fares for SFO → JFK next month with one carry-on.' },
+                  { label: 'Family hotel', text: 'Find family-friendly stays in Orlando with a pool under $250/night.' },
+                  { label: 'One-way car', text: 'One-way SUV pickup in Denver, drop in Aspen this weekend.' },
+                ]}
+              />
+
+              {showAgentFlightModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-base-100 rounded-lg shadow-2xl w-full max-w-md p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Flight details</h3>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setShowAgentFlightModal(false)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="form-control">
+                        <label className="label">
+                          <span className="label-text text-sm">From</span>
+                        </label>
+                        <div className="relative" ref={agentFromDropdownRef}>
+                          <input
+                            type="text"
+                            className="input input-bordered input-sm w-full"
+                            placeholder="e.g., SFO"
+                            value={agentFlightForm.from}
+                            onChange={handleAgentFromInputChange}
+                            onFocus={() => {
+                              if (agentFlightForm.from.trim()) {
+                                loadFlightLocations(agentFlightForm.from, setAgentFromOptions);
+                                setAgentShowFromDropdown(true);
+                              }
+                            }}
+                            onBlur={() => setTimeout(() => setAgentShowFromDropdown(false), 120)}
+                            autoComplete="off"
+                            maxLength={60}
+                          />
+                          {agentShowFromDropdown && agentFromOptions.length > 0 && (
+                            <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-full max-h-60 overflow-y-auto z-50">
+                              {agentFromOptions.map((loc, index) => (
+                                <button
+                                  key={`agent-from-${loc.code || index}`}
+                                  type="button"
+                                  className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleAgentFromSelect(loc);
+                                  }}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-base">{loc.label || loc.code}</span>
+                                    {loc.city && (
+                                      <span className="text-xs text-base-content/60">{loc.city}</span>
+                                    )}
+                                  </div>
+                                  <span className="badge badge-ghost badge-sm">{loc.code}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="form-control">
+                        <label className="label">
+                          <span className="label-text text-sm">To</span>
+                        </label>
+                        <div className="relative" ref={agentToDropdownRef}>
+                          <input
+                            type="text"
+                            className="input input-bordered input-sm w-full"
+                            placeholder="e.g., JFK"
+                            value={agentFlightForm.to}
+                            onChange={handleAgentToInputChange}
+                            onFocus={() => {
+                              if (agentFlightForm.to.trim()) {
+                                loadFlightLocations(agentFlightForm.to, setAgentToOptions);
+                                setAgentShowToDropdown(true);
+                              }
+                            }}
+                            onBlur={() => setTimeout(() => setAgentShowToDropdown(false), 120)}
+                            autoComplete="off"
+                            maxLength={60}
+                          />
+                          {agentShowToDropdown && agentToOptions.length > 0 && (
+                            <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-full max-h-60 overflow-y-auto z-50">
+                              {agentToOptions.map((loc, index) => (
+                                <button
+                                  key={`agent-to-${loc.code || index}`}
+                                  type="button"
+                                  className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleAgentToSelect(loc);
+                                  }}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-base">{loc.label || loc.code}</span>
+                                    {loc.city && (
+                                      <span className="text-xs text-base-content/60">{loc.city}</span>
+                                    )}
+                                  </div>
+                                  <span className="badge badge-ghost badge-sm">{loc.code}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="form-control">
+                        <label className="label">
+                          <span className="label-text text-sm">Trip type</span>
+                        </label>
+                        <select
+                          className="select select-bordered select-sm"
+                          value={agentFlightForm.tripType}
+                          onChange={(e) => setAgentFlightForm((prev) => ({ ...prev, tripType: e.target.value }))}
+                        >
+                          <option value="round-trip">Round-trip</option>
+                          <option value="one-way">One-way</option>
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="form-control">
+                          <label className="label">
+                            <span className="label-text text-sm">Depart</span>
+                          </label>
+                          <input
+                            type="date"
+                            className="input input-bordered input-sm"
+                            value={agentFlightForm.departDate}
+                            onChange={(e) => setAgentFlightForm((prev) => ({ ...prev, departDate: e.target.value }))}
+                          />
+                        </div>
+                        <div className="form-control">
+                          <label className="label">
+                            <span className="label-text text-sm">Return</span>
+                          </label>
+                          <input
+                            type="date"
+                            className="input input-bordered input-sm"
+                            value={agentFlightForm.returnDate}
+                            onChange={(e) => setAgentFlightForm((prev) => ({ ...prev, returnDate: e.target.value }))}
+                            disabled={agentFlightForm.tripType === 'one-way'}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    {agentFlightError && (
+                      <div className="alert alert-error py-2 text-sm">
+                        <span>{agentFlightError}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setShowAgentFlightModal(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={handleAgentFlightSubmit}
+                      >
+                        Start search
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+              )}
 
               {activeTab === 'flights' && (
                 <div className="bg-base-100 rounded-lg shadow-xl">
@@ -2290,30 +2703,53 @@ const HomePage = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="relative">
             <button
-              onClick={() => setShowDepartCalendar(false)}
+              onClick={() => {
+                setShowDepartCalendar(false);
+                setAgentPendingFlow(null);
+              }}
               className="absolute -top-3 -right-3 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
             >
               <FaTimes className="w-5 h-5" />
             </button>
-            <FlightPriceCalendar
-              selectedDate={searchData.flights.departDate}
-              onDateSelect={(date) => {
-                setSearchData({
-                  ...searchData,
-                  flights: { ...searchData.flights, departDate: date }
+              <FlightPriceCalendar
+                selectedDate={searchData.flights.departDate}
+                onDateSelect={(date) => {
+                let agentSearchPayload = null;
+                setSearchData((prev) => {
+                  const needsReturnAdjust = prev.flights.returnDate && prev.flights.returnDate < date;
+                  const adjustedReturn = needsReturnAdjust
+                    ? addDaysToDateString(date, 7)
+                    : prev.flights.returnDate;
+                  const updatedFlights = {
+                    ...prev.flights,
+                    departDate: date,
+                    returnDate: tripType === 'one-way' ? null : adjustedReturn
+                  };
+                  const updated = { ...prev, flights: updatedFlights };
+
+                  if (agentPendingFlow === 'flights') {
+                    const outbound = tripType === 'one-way'
+                      ? { ...updatedFlights, returnDate: null }
+                      : updatedFlights;
+                    agentSearchPayload = {
+                      ...outbound,
+                      tripType,
+                    };
+                  }
+
+                  return updated;
                 });
                 setShowDepartCalendar(false);
-                // If return date is before depart date, adjust it
-                if (searchData.flights.returnDate && searchData.flights.returnDate < date) {
-                  const newReturnDate = addDaysToDateString(date, 7);
-                  setSearchData({
-                    ...searchData,
-                    flights: { 
-                      ...searchData.flights, 
-                      departDate: date,
-                      returnDate: newReturnDate
-                    }
+
+                if (agentPendingFlow === 'flights' && agentSearchPayload) {
+                  navigate('/flights', {
+                    state: {
+                      search: agentSearchPayload,
+                      agentMode: true,
+                      agentInitialPrompt: agentPrompt?.text || buildAgentPrompt('flights'),
+                    },
                   });
+                  setAgentPendingFlow(null);
                 }
               }}
               from={searchData.flights.from}

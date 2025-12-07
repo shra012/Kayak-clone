@@ -11,6 +11,7 @@ const AIChatWidget = () => {
   const [sessionId, setSessionId] = useState(null);
   const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
+  const wsRef = useRef(null);
   const { isAuthenticated, user } = useAuth();
 
   // Scroll to bottom when messages change
@@ -24,6 +25,50 @@ const AIChatWidget = () => {
       initializeSession();
     }
   }, [isOpen]);
+
+  // Connect to WebSocket for real-time deal notifications
+  useEffect(() => {
+    if (sessionId && isOpen) {
+      const ws = new WebSocket(`ws://localhost:8000/events?session_id=${sessionId}`);
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected for deals');
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          // Handle deal notifications as assistant messages
+          if (data.type === 'message' && data.role === 'assistant') {
+            setMessages(prev => [...prev, {
+              role: 'assistant',
+              content: data.content,
+              deals: data.deals || []
+            }]);
+          }
+        } catch (err) {
+          console.error('WebSocket message error:', err);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+      };
+      
+      wsRef.current = ws;
+      
+      return () => {
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+      };
+    }
+  }, [sessionId, isOpen]);
 
   const initializeSession = async () => {
     try {
@@ -169,6 +214,47 @@ const AIChatWidget = () => {
                   }`}
                 >
                   <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  
+                  {/* Display deals if available */}
+                  {msg.deals && msg.deals.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {msg.deals.map((deal, dealIndex) => (
+                        <div
+                          key={dealIndex}
+                          className="bg-base-100 rounded-lg p-3 text-sm border border-primary/20 hover:border-primary/50 transition-colors"
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="font-semibold text-primary">
+                              {deal.deal_type === 'flight' && 'Flight'}
+                              {deal.deal_type === 'hotel' && 'Hotel'}
+                              {deal.deal_type === 'car' && 'Car Rental'}
+                            </span>
+                            {deal.is_limited && (
+                              <span className="badge badge-error badge-xs">Limited!</span>
+                            )}
+                          </div>
+                          <p className="text-xs opacity-75 mb-2">
+                            {deal.deal_type === 'flight' 
+                              ? `${deal.origin} to ${deal.destination}`
+                              : deal.destination}
+                          </p>
+                          <div className="flex justify-between items-center">
+                            <span className="text-lg font-bold">${deal.price}</span>
+                            {deal.avg_30d_price && (
+                              <span className="text-xs line-through opacity-50">
+                                ${deal.avg_30d_price}
+                              </span>
+                            )}
+                          </div>
+                          {deal.availability && (
+                            <p className="text-xs opacity-60 mt-1">
+                              {deal.availability} {deal.deal_type === 'flight' ? 'seats' : deal.deal_type === 'hotel' ? 'rooms' : 'cars'} available
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   
                   {/* Display bundles if available */}
                   {msg.bundles && msg.bundles.length > 0 && (

@@ -16,38 +16,39 @@ MONGO_SCHEMA_SUMMARY = dedent(
     The key collections and fields are:
 
     1. flights
+       - id
        - flightNumber (string)
        - airline (string)
        - from (IATA code)
        - to (IATA code)
        - departDate (YYYY-MM-DD)
-       - departTime (HH:MM)
-       - arriveDate / arriveTime
+       - returnDate (YYYY-MM-DD or None)
+       - departureTime (HH:MM)
+       - arrivalTime (HH:MM)
        - durationMinutes (int)
        - nonstop (bool)
+       - stops (int)
        - price (number)
-       - seatsAvailable (int)
-       - class (economy | premium_economy | business | first)
+       - availableSeats (int)
+       - class (economy | business | first)
 
     2. hotels
-       - listingId
+       - id
        - name
        - city, state, country
-       - neighborhood
-       - nightlyPrice (number)
-       - stars (1-5)
+       - neighbourhood
+       - pricePerNight (number)
+       - rating (number, 1-5)
        - amenities (array of strings)
-       - reviewScore (number)
-       - roomsAvailable (int)
+       - availableRooms (int)
 
     3. cars
-       - listingId
-       - company
-       - city / airport
-       - vehicleType (SUV, sedan, compact, etc.)
-       - seats, luggage, transmission
-       - dailyPrice (number)
-       - availability (int)
+       - id
+       - vendor
+       - city, state, country
+       - type (Economy, SUV, Luxury, etc.)
+       - seats
+       - pricePerDay (number)
 
     4. airports
        - code (IATA)
@@ -97,6 +98,13 @@ class MongoQueryGenerator:
 
         response = await self.llm.ainvoke([system_prompt, HumanMessage(content=human_prompt)])
         spec = self._parse_spec(response.content)
+        
+        # DEBUG: Log the generated MongoDB query
+        print(f"\n🔍 MongoDB Query Generated:")
+        print(f"   Question: {question}")
+        print(f"   Context: {context_payload}")
+        print(f"   Spec: {json.dumps(spec, indent=2)}")
+        
         return spec
 
     @staticmethod
