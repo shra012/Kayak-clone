@@ -4,10 +4,9 @@ export const aiAgentApi = {
   /**
    * Create a new chat session
    */
-  createSession: async (initialMessage = null, mode = null) => {
+  createSession: async (initialMessage = null) => {
     const { data } = await apiClient.post('/ai-agent/sessions', {
       initial_message: initialMessage,
-      chat_mode: mode,
     });
     return data;
   },
@@ -92,3 +91,4 @@ export const aiAgentApi = {
     return data;
   },
 };
+
