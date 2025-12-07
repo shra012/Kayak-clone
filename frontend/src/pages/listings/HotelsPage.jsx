@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
@@ -39,29 +39,27 @@ const createPriceIcon = (price) => {
   });
 };
 
-// Available cities with hotels in our database
-const availableCities = [
-  // Indian Cities
-  { name: 'Mumbai', fullName: 'Mumbai, Maharashtra, India', hotels: 3 },
-  { name: 'Bangalore', fullName: 'Bangalore, Karnataka, India', hotels: 3 },
-  { name: 'Goa', fullName: 'Goa, India', hotels: 3 },
-  { name: 'Jaipur', fullName: 'Jaipur, Rajasthan, India', hotels: 3 },
-  { name: 'Hyderabad', fullName: 'Hyderabad, Telangana, India', hotels: 3 },
-  { name: 'Chennai', fullName: 'Chennai, Tamil Nadu, India', hotels: 3 },
-  { name: 'Kolkata', fullName: 'Kolkata, West Bengal, India', hotels: 3 },
-  { name: 'Agra', fullName: 'Agra, Uttar Pradesh, India', hotels: 2 },
-  { name: 'Udaipur', fullName: 'Udaipur, Rajasthan, India', hotels: 2 },
-  { name: 'New Delhi', fullName: 'New Delhi, Delhi, India', hotels: 1 },
-  // International Cities
-  { name: 'New York', fullName: 'New York, New York, United States', hotels: 3 },
-  { name: 'Los Angeles', fullName: 'Los Angeles, California, United States', hotels: 2 },
-  { name: 'London', fullName: 'London, United Kingdom', hotels: 2 },
-  { name: 'Paris', fullName: 'Paris, France', hotels: 2 },
-  { name: 'Tokyo', fullName: 'Tokyo, Japan', hotels: 2 },
-  { name: 'Dubai', fullName: 'Dubai, United Arab Emirates', hotels: 2 },
-  { name: 'Abu Dhabi', fullName: 'Abu Dhabi, United Arab Emirates', hotels: 2 },
-  { name: 'San Francisco', fullName: 'San Francisco, California, United States', hotels: 2 },
-];
+const MAX_CITY_SUGGESTIONS = 18;
+
+const mapHotelLocationToOption = (item) => {
+  if (!item) return null;
+  const baseCity = item.city || item.name || '';
+  if (!baseCity) return null;
+
+  const regionParts = [];
+  if (item.state) regionParts.push(item.state);
+  if (item.country && !regionParts.includes(item.country)) {
+    regionParts.push(item.country);
+  }
+
+  return {
+    id: `${item.type || 'location'}-${baseCity}-${regionParts.join('-')}`,
+    label: item.displayName || baseCity,
+    city: baseCity,
+    region: regionParts.join(', '),
+    type: item.type || 'location',
+  };
+};
 
 const defaultFilters = {
   city: '',
@@ -149,16 +147,34 @@ const HotelsPage = () => {
   const [showAllFilters, setShowAllFilters] = useState(false);
   const [selectedFilterSection, setSelectedFilterSection] = useState('price');
   const [freebies, setFreebies] = useState([]);
+  const [citySuggestions, setCitySuggestions] = useState([]);
+  const [popularCities, setPopularCities] = useState([]);
+  const [isCityLoading, setIsCityLoading] = useState(false);
+  const cityDebounceRef = useRef(null);
 
-  // Filter cities based on input
-  const getFilteredCities = () => {
-    if (!cityInput) return availableCities;
-    const searchTerm = cityInput.toLowerCase();
-    return availableCities.filter(city => 
-      city.name.toLowerCase().includes(searchTerm) || 
-      city.fullName.toLowerCase().includes(searchTerm)
-    );
-  };
+  const fetchCityOptions = useCallback(async (query = '') => {
+    try {
+      setIsCityLoading(true);
+      const results = await listingsApi.searchHotelLocations(query || '', MAX_CITY_SUGGESTIONS);
+      const formatted = (results || [])
+        .map(mapHotelLocationToOption)
+        .filter(Boolean);
+
+      if (query) {
+        setCitySuggestions(formatted);
+      } else {
+        setPopularCities(formatted);
+        setCitySuggestions(formatted);
+      }
+    } catch (fetchError) {
+      console.error('Failed to load hotel locations', fetchError);
+      if (query) {
+        setCitySuggestions([]);
+      }
+    } finally {
+      setIsCityLoading(false);
+    }
+  }, []);
 
   const loadHotels = async (overridePage, overrideFilters) => {
     const currentPage = overridePage ?? page;
@@ -265,9 +281,37 @@ const HotelsPage = () => {
     setShowCityDropdown(true);
   };
 
-  const handleCitySelect = (city) => {
-    setCityInput(city.name);
-    const newFilters = { ...filters, city: city.name };
+  useEffect(() => {
+    fetchCityOptions('');
+  }, [fetchCityOptions]);
+
+  useEffect(() => {
+    const trimmed = cityInput.trim();
+    if (!trimmed) {
+      setCitySuggestions([...(popularCities ?? [])]);
+      return undefined;
+    }
+
+    if (cityDebounceRef.current) {
+      clearTimeout(cityDebounceRef.current);
+    }
+
+    cityDebounceRef.current = setTimeout(() => {
+      fetchCityOptions(trimmed);
+    }, 300);
+
+    return () => {
+      if (cityDebounceRef.current) {
+        clearTimeout(cityDebounceRef.current);
+      }
+    };
+  }, [cityInput, fetchCityOptions, popularCities]);
+
+  const handleCitySelect = (cityOption) => {
+    const selectedCity = cityOption?.city || cityOption?.name;
+    if (!selectedCity) return;
+    setCityInput(cityOption.label || selectedCity);
+    const newFilters = { ...filters, city: selectedCity };
     setFilters(newFilters);
     setShowCityDropdown(false);
     loadHotels(1, newFilters);
@@ -404,6 +448,8 @@ const HotelsPage = () => {
     );
   };
 
+  const activeCityOptions = (cityInput.trim() ? citySuggestions : popularCities);
+
   return (
     <div className="min-h-screen bg-base-100">
       {/* Top search bar - Kayak style */}
@@ -414,7 +460,7 @@ const HotelsPage = () => {
               <input
                 type="text"
                 name="city"
-                placeholder="Search city (e.g., Mumbai, Bangalore, Goa...)"
+                placeholder="Search city (e.g., New York, Miami, Austin...)"
                 value={cityInput}
                 onChange={handleCityInputChange}
                 onFocus={() => setShowCityDropdown(true)}
@@ -423,34 +469,49 @@ const HotelsPage = () => {
               />
               
               {/* Autocomplete Dropdown */}
-              {showCityDropdown && getFilteredCities().length > 0 && (
+              {showCityDropdown && (
                 <div className="absolute top-full left-0 mt-1 bg-base-100 border-2 border-primary/20 rounded-lg shadow-2xl w-full max-h-96 overflow-y-auto" style={{ zIndex: 9999 }}>
-                  <div className="sticky top-0 bg-base-200 px-4 py-2 text-xs font-semibold text-base-content/70 border-b border-base-300">
-                    {getFilteredCities().length} {getFilteredCities().length === 1 ? 'city' : 'cities'} found
+                  <div className="sticky top-0 bg-base-200 px-4 py-2 text-xs font-semibold text-base-content/70 border-b border-base-300 flex items-center justify-between">
+                    <span>
+                      {isCityLoading
+                        ? 'Searching cities...'
+                        : `${activeCityOptions.length} ${activeCityOptions.length === 1 ? 'city' : 'cities'} found`}
+                    </span>
+                    {isCityLoading && <span className="loading loading-xs loading-spinner text-primary"></span>}
                   </div>
-                  {getFilteredCities().map((city, index) => (
+
+                  {isCityLoading && (
+                    <div className="px-4 py-6 text-sm text-base-content/70 flex items-center gap-2">
+                      <span className="loading loading-sm loading-spinner text-primary"></span>
+                      Fetching the best matches...
+                    </div>
+                  )}
+
+                  {!isCityLoading && activeCityOptions.length === 0 && (
+                    <div className="px-4 py-4 text-sm text-base-content/60">
+                      No cities found. Try broadening your search or check spelling.
+                    </div>
+                  )}
+
+                  {!isCityLoading && activeCityOptions.map((option) => (
                     <button
-                      key={index}
+                      key={option.id}
                       type="button"
                       className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-start gap-3 border-b border-base-200 last:border-b-0 transition-colors"
-                      onClick={() => handleCitySelect(city)}
+                      onClick={() => handleCitySelect(option)}
                     >
                       <span className="text-primary text-lg mt-0.5"></span>
                       <div className="flex-1">
-                        <div className="text-sm font-semibold text-base-content">{city.fullName}</div>
-                        <div className="text-xs text-base-content/60 mt-0.5">
-                          {city.hotels} {city.hotels === 1 ? 'hotel' : 'hotels'} available
-                        </div>
+                        <div className="text-sm font-semibold text-base-content">{option.label}</div>
+                        {option.region && (
+                          <div className="text-xs text-base-content/60 mt-0.5">{option.region}</div>
+                        )}
                       </div>
+                      <span className="badge badge-xs badge-outline uppercase tracking-wide">
+                        {option.type === 'property' ? 'Property' : 'City'}
+                      </span>
                     </button>
                   ))}
-                </div>
-              )}
-              {showCityDropdown && getFilteredCities().length === 0 && cityInput && (
-                <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-full" style={{ zIndex: 9999 }}>
-                  <div className="px-4 py-3 text-sm text-base-content/60">
-                    No cities found. Try: Mumbai, Bangalore, Goa, London, New York...
-                  </div>
                 </div>
               )}
             </div>
@@ -731,25 +792,27 @@ const HotelsPage = () => {
 
           {!loading && results.length === 0 && !error && (
             <div className="text-center py-8">
+              <svg className="w-16 h-16 mx-auto mb-4 text-base-content/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
               <p className="text-base-content/70 mb-4">No hotels found. Try adjusting your filters.</p>
               <div className="text-sm text-base-content/60">
-                <p className="font-semibold mb-2">Available cities:</p>
-                <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
-                  {['Mumbai', 'Bangalore', 'Goa', 'Jaipur', 'Hyderabad', 'Chennai', 'Kolkata', 'Agra', 'Udaipur', 'New Delhi', 'New York', 'Los Angeles', 'London', 'Paris', 'Tokyo', 'Dubai', 'Abu Dhabi'].map(city => (
-                    <button
-                      key={city}
-                      className="btn btn-xs btn-outline"
-                      onClick={() => {
-                        setCityInput(city);
-                        const newFilters = { ...filters, city };
-                        setFilters(newFilters);
-                        loadHotels(1, newFilters);
-                      }}
-                    >
-                      {city}
-                    </button>
-                  ))}
-                </div>
+                <p className="font-semibold mb-2">Popular destinations:</p>
+                {popularCities.length === 0 ? (
+                  <p className="text-xs text-base-content/50">We are loading top cities for you...</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
+                    {popularCities.slice(0, 18).map((cityOption) => (
+                      <button
+                        key={cityOption.id}
+                        className="btn btn-xs btn-outline"
+                        onClick={() => handleCitySelect(cityOption)}
+                      >
+                        {cityOption.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -768,12 +831,18 @@ const HotelsPage = () => {
                           className="w-full h-full object-cover transition-opacity duration-300"
                           loading="lazy"
                           onError={(e) => {
-                            e.target.src = 'https://source.unsplash.com/featured/800x600/?hotel,resort';
+                            e.target.style.display = 'none';
+                            const fallback = document.createElement('div');
+                            fallback.className = 'w-full h-full flex items-center justify-center text-base-content/40';
+                            fallback.innerHTML = '<svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>';
+                            e.target.parentElement.appendChild(fallback);
                           }}
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-4xl">
-                          
+                        <div className="w-full h-full flex items-center justify-center text-base-content/40">
+                          <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                          </svg>
                         </div>
                       )}
                     </div>

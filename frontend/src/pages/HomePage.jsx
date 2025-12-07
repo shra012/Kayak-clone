@@ -1713,7 +1713,7 @@ const navigate = useNavigate();
                     <div className="flex-[2] min-w-0 relative">
                       <input
                         type="text"
-                        placeholder="Try: Mumbai, Bangalore, Goa, London, New York..."
+                        placeholder="Search city (e.g., New York, Miami, Austin...)"
                         className="input input-sm input-bordered w-full text-sm"
                         value={searchData.hotels.location}
                         onChange={(e) => {
@@ -1749,7 +1749,10 @@ const navigate = useNavigate();
                       
                       {/* Location Dropdown */}
                       {showHotelLocationDropdown && hotelLocationOptions.length > 0 && (
-                        <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-80 max-h-72 overflow-y-auto z-50">
+                        <div className="absolute top-full left-0 mt-1 bg-base-100 border-2 border-primary/20 rounded-lg shadow-2xl w-full max-w-lg max-h-96 overflow-y-auto z-50">
+                          <div className="sticky top-0 bg-base-200 px-4 py-2 text-xs font-semibold text-base-content/70 border-b border-base-300">
+                            {hotelLocationOptions.length} {hotelLocationOptions.length === 1 ? 'location' : 'locations'} found
+                          </div>
                           {hotelLocationOptions.map((loc, index) => {
                             const isLocation = loc.type === 'location';
                             const isProperty = loc.type === 'property';
@@ -1759,7 +1762,7 @@ const navigate = useNavigate();
                             <button
                                 key={`${loc.type}-${loc.name}-${index}`}
                               type="button"
-                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
+                              className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-start gap-3 border-b border-base-200 last:border-b-0 transition-colors"
                               onMouseDown={(e) => {
                                 e.preventDefault(); // Prevent blur from firing
                                 setSearchData({
@@ -1771,25 +1774,18 @@ const navigate = useNavigate();
                                 setHotelLocationOptions([]);
                               }}
                             >
-                                <div className="flex flex-col">
-                                  <div className="flex items-center gap-2">
-                                    {isLocation && (
-                                      <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">Location</span>
-                                    )}
-                                    {isProperty && (
-                                      <span className="text-xs bg-secondary/20 text-secondary px-2 py-0.5 rounded">Property</span>
-                                    )}
-                                    <span className="font-medium text-base">{loc.displayName || loc.name}</span>
-                                  </div>
+                                <div className="flex-1">
+                                  <div className="text-sm font-semibold text-base-content">{loc.displayName || loc.name}</div>
                                   {isProperty && loc.city && (
-                                    <span className="text-sm text-base-content/60 mt-1">{loc.city}{loc.state ? `, ${loc.state}` : ''}</span>
+                                    <div className="text-xs text-base-content/60 mt-0.5">{loc.city}{loc.state ? `, ${loc.state}` : ''}</div>
+                                  )}
+                                  {isLocation && loc.state && loc.country && (
+                                    <div className="text-xs text-base-content/60 mt-0.5">{loc.state}, {loc.country}</div>
                                   )}
                                 </div>
-                                {loc.country && (
-                              <span className="text-sm text-base-content/60 ml-4 whitespace-nowrap">
-                                {loc.country}
-                              </span>
-                                )}
+                                <span className="badge badge-xs badge-outline uppercase tracking-wide">
+                                  {isProperty ? 'Property' : 'City'}
+                                </span>
                             </button>
                             );
                           })}
