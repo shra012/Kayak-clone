@@ -105,6 +105,11 @@ class MongoQueryGenerator:
               * "departing 2025-12-06 returning 2025-12-09" → {{"departDate": "2025-12-06"}} (outbound only)
               * "flights from Dec 9 to Dec 13" → {{"departDate": {{"$gte": "2025-12-09", "$lte": "2025-12-13"}}}}
               * "round-trip Dec 10 to Dec 15" → {{"departDate": "2025-12-10"}} (outbound only)
+            
+            IMPORTANT FOR BUDGET/PRICE FILTERS:
+            - Only add price filters if the user explicitly requests a budget constraint (e.g., "under $200", "cheap flights")
+            - If context has a very low budget (under $100 for flights, under $30 for hotels, under $20 for cars), IGNORE it - it's likely a default value
+            - Without explicit budget constraints, omit the price filter entirely to show all available options
 
             Use ISO date strings for dates. If the request cannot be satisfied, reply with __UNSUPPORTED__.
             """

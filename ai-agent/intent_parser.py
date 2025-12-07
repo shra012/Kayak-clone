@@ -3,7 +3,7 @@ Natural Language Understanding for user intent parsing
 """
 
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 
 
@@ -18,6 +18,22 @@ class IntentParser:
         """
         message_lower = message.lower()
         constraints = session_context.copy() if session_context else {}
+        
+        # Handle direct answers to clarifying questions
+        # If message is very short (just an airport code, city name, or date), 
+        # and we're missing that info, fill it in
+        message_stripped = message.strip()
+        
+        # Check if user is answering with just an airport code (3 letters)
+        if re.match(r"^[A-Z]{3}$", message_stripped):
+            # If we're missing origin, fill that
+            if not constraints.get("origin"):
+                constraints["origin"] = message_stripped
+                return constraints
+            # If we have origin but not destination, fill destination
+            elif not constraints.get("destination"):
+                constraints["destination"] = message_stripped
+                return constraints
         
         # Detect intent type
         if any(word in message_lower for word in ["flight", "fly", "flying"]):
@@ -43,6 +59,23 @@ class IntentParser:
         destination = IntentParser._parse_destination(message)
         if destination:
             constraints["destination"] = destination
+            # For hotels and cars, also populate 'city' field
+            intent_type = constraints.get("intent_type", "")
+            if intent_type in ["hotel", "car"]:
+                # Convert airport codes to city names for hotels/cars
+                city_names = {
+                    "SFO": "San Francisco",
+                    "LAX": "Los Angeles",
+                    "NYC": "New York",
+                    "ORD": "Chicago",
+                    "MIA": "Miami",
+                    "SEA": "Seattle",
+                    "BOS": "Boston",
+                    "ATL": "Atlanta",
+                    "DEN": "Denver",
+                    "LAS": "Las Vegas",
+                }
+                constraints["city"] = city_names.get(destination, destination)
         
         # Parse budget
         budget = IntentParser._parse_budget(message)
@@ -62,6 +95,14 @@ class IntentParser:
         # Parse preferences
         preferences = IntentParser._parse_preferences(message)
         constraints.update(preferences)
+        
+        # Parse trip type (one-way vs round-trip)
+        trip_type = IntentParser._parse_trip_type(message)
+        if trip_type:
+            constraints["trip_type"] = trip_type
+            # If user says "round-trip" but we don't have a return date, we need to ask
+            if trip_type == "round-trip" and not constraints.get("check_out"):
+                constraints["needs_return_date"] = True
         
         return constraints
     
@@ -215,18 +256,56 @@ class IntentParser:
             except ValueError:
                 pass
         
+        # Pattern 5: Single date "on December 15" or "December 15" (for one-way flights or single day)
+        for month_name, month_num in month_patterns.items():
+            # Try "on December 15" or "on Dec 15"
+            pattern = rf"(?:on\s+)?{month_name}\s+(\d{{1,2}})"
+            match = re.search(pattern, text_lower)
+            if match:
+                day = int(match.group(1))
+                year = datetime.now().year
+                now = datetime.now()
+                requested_date = datetime(year, month_num, day)
+                
+                # If date is more than 7 days in the past, assume next year
+                days_diff = (now - requested_date).days
+                if days_diff > 7:
+                    year += 1
+                    requested_date = datetime(year, month_num, day)
+                
+                return {
+                    "check_in": requested_date.isoformat(),
+                    # For single date, return None for check_out to indicate one-way/unknown return
+                }
+        
+        # Pattern 6: Single numeric date "on 12/15" or "12/15"
+        single_date = re.search(r"(?:on\s+)?(\d{1,2})/(\d{1,2})", text_lower)
+        if single_date:
+            month, day = single_date.groups()
+            year = datetime.now().year
+            try:
+                month_int = int(month)
+                day_int = int(day)
+                now = datetime.now()
+                requested_date = datetime(year, month_int, day_int)
+                
+                # If date is more than 7 days in the past, assume next year
+                days_diff = (now - requested_date).days
+                if days_diff > 7:
+                    year += 1
+                    requested_date = datetime(year, month_int, day_int)
+                
+                return {
+                    "check_in": requested_date.isoformat(),
+                }
+            except ValueError:
+                pass
+        
         return None
     
     @staticmethod
     def _parse_origin(text: str) -> Optional[str]:
         """Parse origin airport/city"""
-        # Skip if this is a date string
-        month_names = ["january", "february", "march", "april", "may", "june", 
-                       "july", "august", "september", "october", "november", "december",
-                       "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
-        if any(month in text.lower() for month in month_names):
-            return None
-        
         # Map common airport/city names to codes
         city_to_code = {
             "san francisco": "SFO",
@@ -246,10 +325,17 @@ class IntentParser:
             "vegas": "LAS",
         }
         
-        text_upper = text.upper()
+        text_lower = text.lower()
+        
+        # First, check for known city names explicitly (longest first to avoid partial matches)
+        sorted_cities = sorted(city_to_code.keys(), key=len, reverse=True)
+        for city in sorted_cities:
+            # Check if city appears after "from"
+            if re.search(rf"\bfrom\s+{re.escape(city)}\b", text_lower):
+                return city_to_code[city]
         
         # Pattern 1: "from LAX" or "from SF" or "from Los Angeles" or "from San Francisco International"
-        from_match = re.search(r"from\s+([A-Z]{2,3}(?:\s+International)?|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s+International)?)", text, re.IGNORECASE)
+        from_match = re.search(r"from\s+([A-Z]{2,3}|[A-Za-z\s]+?)(?:\s+International)?\s*(?:to|$|,|\s+on)", text, re.IGNORECASE)
         if from_match:
             origin = from_match.group(1).strip()
             # Remove "International" suffix
@@ -263,25 +349,19 @@ class IntentParser:
             return origin.upper() if len(origin) <= 3 else origin.title()
         
         # Pattern 2: "LAX to" or "SF to" or "San Francisco to" (before "to")
-        to_patterns = [
-            r"([A-Z]{2,3})\s+to",  # Airport code or 2-letter abbreviation
-            r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+to",  # City name
-        ]
-        
-        for pattern in to_patterns:
-            to_match = re.search(pattern, text)
-            if to_match:
-                origin = to_match.group(1).strip()
-                
-                # Check if it's a known city name
-                origin_lower = origin.lower()
-                if origin_lower in city_to_code:
-                    return city_to_code[origin_lower]
-                
-                return origin.upper() if len(origin) <= 3 else origin.title()
+        before_to_match = re.search(r"([A-Z]{2,3}|[A-Za-z\s]+?)\s+to\s+", text, re.IGNORECASE)
+        if before_to_match:
+            origin = before_to_match.group(1).strip()
+            
+            # Check if it's a known city name
+            origin_lower = origin.lower()
+            if origin_lower in city_to_code:
+                return city_to_code[origin_lower]
+            
+            return origin.upper() if len(origin) <= 3 else origin.title()
         
         # Pattern 3: "leaving from SFO" or "leaving from SF" or "departing from San Francisco"
-        leaving_match = re.search(r"(?:leaving|departing)\s+from\s+([A-Z]{2,3}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", text, re.IGNORECASE)
+        leaving_match = re.search(r"(?:leaving|departing)\s+from\s+([A-Z]{2,3}|[A-Za-z\s]+?)(?:\s+on|,|$)", text, re.IGNORECASE)
         if leaving_match:
             origin = leaving_match.group(1).strip()
             
@@ -297,13 +377,6 @@ class IntentParser:
     @staticmethod
     def _parse_destination(text: str) -> Optional[str]:
         """Parse destination"""
-        # Skip if this is a date string
-        month_names = ["january", "february", "march", "april", "may", "june", 
-                       "july", "august", "september", "october", "november", "december",
-                       "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
-        if any(month in text.lower() for month in month_names):
-            return None
-        
         # Map common airport/city names to codes
         city_to_code = {
             "san francisco": "SFO",
@@ -323,11 +396,20 @@ class IntentParser:
             "vegas": "LAS",
         }
         
+        text_lower = text.lower()
+        
+        # First, check for known city names explicitly (longest first to avoid partial matches)
+        sorted_cities = sorted(city_to_code.keys(), key=len, reverse=True)
+        for city in sorted_cities:
+            # Check if city appears after "to" or "in"
+            if re.search(rf"\b(?:to|in)\s+{re.escape(city)}\b", text_lower):
+                return city_to_code[city]
+        
         # Pattern 1: "to SFO" or "to SF" or "to San Francisco" or "to San Francisco International"
-        to_match = re.search(r"to\s+([A-Z]{2,3}(?:\s+International)?|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s+International)?)", text, re.IGNORECASE)
+        to_match = re.search(r"to\s+([A-Z]{2,3}|[A-Za-z\s]+?)(?:\s+International)?\s*(?:from|$|,|\s+on|\s+in|\s+for)", text, re.IGNORECASE)
         if to_match:
             dest = to_match.group(1).strip()
-            # Remove "International" suffix
+            # Remove "International" suffix if captured
             dest = re.sub(r"\s+International$", "", dest, flags=re.IGNORECASE).strip()
             
             # Handle vague destinations like "anywhere warm"
@@ -342,7 +424,7 @@ class IntentParser:
             return dest.upper() if len(dest) <= 3 else dest.title()
         
         # Pattern 2: "in San Francisco" or "in SF" or "in SFO" (for hotels/cars)
-        in_match = re.search(r"in\s+([A-Z]{2,3}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", text, re.IGNORECASE)
+        in_match = re.search(r"in\s+([A-Z]{2,3}|[A-Za-z\s]+?)(?:\s+from|\s+for|\s+on|,|$)", text, re.IGNORECASE)
         if in_match:
             dest = in_match.group(1).strip()
             if any(word in dest.lower() for word in ["warm", "sunny", "beach", "anywhere"]):
@@ -353,12 +435,7 @@ class IntentParser:
             if dest_lower in city_to_code:
                 return city_to_code[dest_lower]
             
-            # Check if it's a known city name
-            dest_lower = dest.lower()
-            if dest_lower in city_to_code:
-                return city_to_code[dest_lower]
-            
-            return dest.upper() if len(dest) == 3 else dest.title()
+            return dest.upper() if len(dest) <= 3 else dest.title()
         
         # Pattern 3: "anywhere warm/sunny"
         if "anywhere" in text.lower():
@@ -468,6 +545,41 @@ class IntentParser:
         return preferences
     
     @staticmethod
+    def _parse_trip_type(text: str) -> Optional[str]:
+        """Parse trip type (one-way, round-trip, multi-city)"""
+        text_lower = text.lower()
+        
+        # Check for round-trip keywords
+        round_trip_keywords = [
+            "round-trip", "round trip", "roundtrip", 
+            "return flight", "returning", "come back",
+            "both ways", "two way", "two-way"
+        ]
+        
+        for keyword in round_trip_keywords:
+            if keyword in text_lower:
+                return "round-trip"
+        
+        # Check for one-way keywords
+        one_way_keywords = [
+            "one-way", "one way", "oneway",
+            "single flight", "just going", "not returning"
+        ]
+        
+        for keyword in one_way_keywords:
+            if keyword in text_lower:
+                return "one-way"
+        
+        # Check for multi-city keywords
+        multi_city_keywords = ["multi-city", "multiple cities", "several stops"]
+        
+        for keyword in multi_city_keywords:
+            if keyword in text_lower:
+                return "multi-city"
+        
+        return None
+    
+    @staticmethod
     def needs_clarification(constraints: Dict[str, Any]) -> Optional[str]:
         """
         Determine if we need to ask a clarifying question based on travel type
@@ -478,12 +590,17 @@ class IntentParser:
         
         # For flight bookings - ask dates first, then route
         if "flight" in intent_type or "fly" in intent_type:
-            if not constraints.get("check_in") or not constraints.get("check_out"):
-                return "What are your travel dates?"
+            # At minimum, need departure date (check_in)
+            if not constraints.get("check_in"):
+                return "What is your departure date?"
             if not constraints.get("origin"):
                 return "Where are you flying from?"
             if not constraints.get("destination"):
                 return "Where would you like to fly to?"
+            # If user specified round-trip but no return date, ask for it
+            if constraints.get("trip_type") == "round-trip" and not constraints.get("check_out"):
+                return "What is your return date?"
+            # Return date (check_out) is optional for one-way flights
             # Budget optional for flights
             return None
         
@@ -524,4 +641,3 @@ class IntentParser:
             if not constraints.get("check_in") or not constraints.get("check_out"):
                 return "What are your travel dates?"
             return None
-

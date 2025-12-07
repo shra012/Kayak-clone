@@ -8,12 +8,13 @@ import AnimatedCard from '../components/common/AnimatedCard';
 import AnimatedIcon from '../components/common/AnimatedIcon';
 import { listingsApi } from '../services/api/listings';
 import FlightPriceCalendar from '../components/common/FlightPriceCalendar';
-import AgentInlineChat from '../components/agent/AgentInlineChat';
+import AgentContainer from '../components/agent/AgentContainer';
 import {
   getHomePageCarImages,
   getHomePageFlightImages,
   getHomePageStayImages,
 } from '../services/backgroundImages.service.js';
+import BookingChatWidget from '../components/common/BookingChatWidget.jsx';
 
 // Helper function to parse date string as local time (not UTC)
 const parseLocalDate = (dateStr) => {
@@ -180,7 +181,7 @@ const HomePage = () => {
   const [toSelected, setToSelected] = useState(false);
   const [multiCitySelected, setMultiCitySelected] = useState({});
 
-  const [searchData, setSearchData] = useState({
+const [searchData, setSearchData] = useState({
     flights: {
       from: '',
       to: '',
@@ -206,26 +207,14 @@ const HomePage = () => {
       driverAge: 25
     }
   });
-const [agentPrompt, setAgentPrompt] = useState(null);
-const [agentPendingFlow, setAgentPendingFlow] = useState(null);
-const agentSectionRef = useRef(null);
 const navigate = useNavigate();
-  const [selectedAgentFlow, setSelectedAgentFlow] = useState(null);
-  const [showAgentFlightModal, setShowAgentFlightModal] = useState(false);
-  const [agentFlightForm, setAgentFlightForm] = useState({
-    from: '',
-    to: '',
-    tripType: 'round-trip',
-    departDate: '',
-    returnDate: '',
-  });
-  const [agentFlightError, setAgentFlightError] = useState('');
-  const [agentFromOptions, setAgentFromOptions] = useState([]);
-  const [agentToOptions, setAgentToOptions] = useState([]);
-  const [agentShowFromDropdown, setAgentShowFromDropdown] = useState(false);
-  const [agentShowToDropdown, setAgentShowToDropdown] = useState(false);
-  const agentFromDropdownRef = useRef(null);
-  const agentToDropdownRef = useRef(null);
+  const [showAgentContainer, setShowAgentContainer] = useState(false);
+  const [agentInitialFlow, setAgentInitialFlow] = useState('flights');
+  const activeMediaTab = activeTab === 'agent' ? 'flights' : activeTab;
+
+
+
+
 
   // Redirect owners to their dashboard - they shouldn't see the booking homepage
   useEffect(() => {
@@ -524,72 +513,11 @@ const navigate = useNavigate();
     }
   };
 
-  const buildAgentPrompt = (flowType) => {
-    if (flowType === 'flights') {
-      return 'Let’s find flights. Tell me your from/to, dates, and whether it is one-way or round-trip.';
-    }
-    if (flowType === 'hotels') {
-      const city = searchData.hotels.location || 'any city with great value';
-      const checkIn = searchData.hotels.checkIn || defaultDates.today;
-      const checkOut = searchData.hotels.checkOut || defaultDates.tomorrow;
-      return `Find me a stay in ${city} from ${checkIn} to ${checkOut}. I want solid reviews and good value.`;
-    }
-    if (flowType === 'cars') {
-      const city = searchData.cars.location || 'San Francisco';
-      const pickUp = searchData.cars.pickUp || defaultDates.today;
-      const dropOff = searchData.cars.dropOff || defaultDates.tomorrow;
-      return `Find me a rental car in ${city} from ${pickUp} to ${dropOff}. I prefer automatic with reasonable rates.`;
-    }
-    return 'Plan my trip end-to-end.';
-  };
 
-  const buildAgentFlightPrompt = ({ from, to, departDate, returnDate, tripType }) => {
-    const origin = from?.trim() || 'any origin airport';
-    const destination = to?.trim() || 'any destination';
-    const depart = departDate || 'your ideal date';
-    const isOneWay = tripType === 'one-way';
-    const returnPart = isOneWay || !returnDate ? '' : ` and returning ${returnDate}`;
-    const tripLabel = isOneWay ? 'one-way' : 'round-trip';
-
-    return `Plan a ${tripLabel} flight from ${origin} to ${destination}, departing ${depart}${returnPart}. Show live fares and set a price watch if it helps.`;
-  };
-
-  const buildAgentFlightPromptId = ({ from, to, departDate, returnDate, tripType }) => {
-    const safe = (value, fallback = 'any') =>
-      (value || fallback).toString().trim().replace(/\s+/g, '-').toLowerCase();
-
-    const origin = safe(from);
-    const destination = safe(to);
-    const depart = safe(departDate, 'any-date');
-    const tripLabel = tripType === 'one-way' ? 'oneway' : 'round';
-    const ret = tripLabel === 'oneway' ? 'na' : safe(returnDate, 'flex');
-
-    return `agent-flight-${origin}-${destination}-${depart}-${ret}-${tripLabel}`;
-  };
 
   const handleAgentPrompt = (flowType) => {
-    setSelectedAgentFlow(flowType);
-    setActiveTab('agent');
-    const promptText = buildAgentPrompt(flowType);
-    setAgentPrompt({ text: promptText, id: Date.now() });
-
-    // Seed sensible defaults so the follow-up view has data
-    if (flowType === 'flights') {
-      setAgentPendingFlow('flights');
-      setAgentFlightForm({
-        from: searchData.flights.from || '',
-        to: searchData.flights.to || '',
-        tripType: tripType === 'one-way' ? 'one-way' : 'round-trip',
-        departDate: searchData.flights.departDate || '',
-        returnDate: tripType === 'one-way' ? '' : (searchData.flights.returnDate || ''),
-      });
-      setAgentFlightError('');
-      setShowAgentFlightModal(true);
-      return;
-    }
-
-    // Non-flight flows: no modal needed
-    setShowAgentFlightModal(false);
+    setAgentInitialFlow(flowType);
+    setShowAgentContainer(true);
   };
 
   const swapLocations = () => {
@@ -623,99 +551,7 @@ const navigate = useNavigate();
     }));
   };
 
-  const handleAgentFlightSubmit = () => {
-    const from = agentFlightForm.from.trim();
-    const to = agentFlightForm.to.trim();
-    const departDate = agentFlightForm.departDate;
-    const isOneWay = agentFlightForm.tripType === 'one-way';
-    const returnDate = isOneWay ? null : agentFlightForm.returnDate;
 
-    if (!from || !to || !departDate || (!isOneWay && !returnDate)) {
-      setAgentFlightError('Please enter origin, destination, and date(s).');
-      return;
-    }
-
-    setAgentFlightError('');
-    setShowAgentFlightModal(false);
-    setTripType(isOneWay ? 'one-way' : 'round-trip');
-    setSearchData((prev) => ({
-      ...prev,
-      flights: {
-        ...prev.flights,
-        from,
-        to,
-        departDate,
-        returnDate: isOneWay ? null : returnDate,
-      },
-    }));
-
-    const searchPayload = {
-      from,
-      to,
-      departDate,
-      returnDate: isOneWay ? null : returnDate,
-      tripType: isOneWay ? 'one-way' : 'round-trip',
-    };
-    const promptText = buildAgentFlightPrompt(searchPayload);
-    const promptId = buildAgentFlightPromptId(searchPayload);
-
-    navigate('/flights', {
-      state: {
-        search: searchPayload,
-        agentMode: true,
-        agentInitialPrompt: promptText,
-        agentInitialPromptId: promptId,
-      },
-    });
-  };
-
-  // Close agent dropdowns when clicking outside
-  useEffect(() => {
-    const handler = (e) => {
-      if (agentFromDropdownRef.current && !agentFromDropdownRef.current.contains(e.target)) {
-        setAgentShowFromDropdown(false);
-      }
-      if (agentToDropdownRef.current && !agentToDropdownRef.current.contains(e.target)) {
-        setAgentShowToDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const handleAgentFromInputChange = (e) => {
-    const value = e.target.value;
-    setAgentFlightForm((prev) => ({ ...prev, from: value }));
-    if (value.trim()) {
-      loadFlightLocations(value, setAgentFromOptions);
-      setAgentShowFromDropdown(true);
-    } else {
-      setAgentFromOptions([]);
-      setAgentShowFromDropdown(false);
-    }
-  };
-
-  const handleAgentToInputChange = (e) => {
-    const value = e.target.value;
-    setAgentFlightForm((prev) => ({ ...prev, to: value }));
-    if (value.trim()) {
-      loadFlightLocations(value, setAgentToOptions);
-      setAgentShowToDropdown(true);
-    } else {
-      setAgentToOptions([]);
-      setAgentShowToDropdown(false);
-    }
-  };
-
-  const handleAgentFromSelect = (loc) => {
-    setAgentFlightForm((prev) => ({ ...prev, from: loc.code || loc.label || '' }));
-    setAgentShowFromDropdown(false);
-  };
-
-  const handleAgentToSelect = (loc) => {
-    setAgentFlightForm((prev) => ({ ...prev, to: loc.code || loc.label || '' }));
-    setAgentShowToDropdown(false);
-  };
 
   const getTravelersLabel = () => {
     const total = getTotalTravelers();
@@ -1166,249 +1002,46 @@ const navigate = useNavigate();
               </h1>
 
               {activeTab === 'agent' && (
-                <div ref={agentSectionRef} className="bg-base-100 rounded-lg shadow-xl border border-base-200 p-4 space-y-4">
-                  <p className="text-base-content/70">
-                    Pick a flow and the concierge will pair chat + results side-by-side.
+                <div className="bg-base-100 rounded-lg shadow-xl border border-base-200 p-6">
+                  <p className="text-base-content/70 text-center mb-6">
+                    Let our AI assistant help you book flights, hotels, or car rentals with natural conversation.
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
                     <button
                       type="button"
-                      className={`card shadow-sm transition-all ${
-                        selectedAgentFlow === 'flights'
-                          ? 'bg-primary/10 border border-primary/30'
-                          : 'bg-base-100 border border-base-300 hover:border-primary'
-                      }`}
+                      className="btn btn-lg btn-outline gap-2 flex-col h-auto py-6"
                       onClick={() => handleAgentPrompt('flights')}
                     >
-                      <div className="card-body gap-2 items-start">
-                        <div className={`badge ${selectedAgentFlow === 'flights' ? 'badge-primary badge-outline' : 'badge-outline'}`}>
-                          Flights
-                        </div>
-                        <h3 className="font-semibold text-left">Plan a flight</h3>
-                        <p className="text-sm text-left text-base-content/70">
-                          Choose dates with a calendar, then see chat + live fares together.
-                        </p>
+                      <FaPlane className="text-3xl" />
+                      <div>
+                        <div className="font-bold">Flights</div>
+                        <div className="text-xs opacity-70">Find and book flights</div>
                       </div>
                     </button>
                     <button
                       type="button"
-                      className={`card shadow-sm transition-all ${
-                        selectedAgentFlow === 'hotels'
-                          ? 'bg-primary/10 border border-primary/30'
-                          : 'bg-base-100 border border-base-300 hover:border-primary'
-                      }`}
+                      className="btn btn-lg btn-outline gap-2 flex-col h-auto py-6"
                       onClick={() => handleAgentPrompt('hotels')}
                     >
-                      <div className="card-body gap-2 items-start">
-                        <div className={`badge ${selectedAgentFlow === 'hotels' ? 'badge-primary badge-outline' : 'badge-outline'}`}>
-                          Stays
-                        </div>
-                        <h3 className="font-semibold text-left">Find a stay</h3>
-                        <p className="text-sm text-left text-base-content/70">
-                          Ask for neighborhoods, budgets, or vibe—agent will curate options.
-                        </p>
+                      <FaBed className="text-3xl" />
+                      <div>
+                        <div className="font-bold">Hotels</div>
+                        <div className="text-xs opacity-70">Search for stays</div>
                       </div>
                     </button>
                     <button
                       type="button"
-                      className={`card shadow-sm transition-all ${
-                        selectedAgentFlow === 'cars'
-                          ? 'bg-primary/10 border border-primary/30'
-                          : 'bg-base-100 border border-base-300 hover:border-primary'
-                      }`}
+                      className="btn btn-lg btn-outline gap-2 flex-col h-auto py-6"
                       onClick={() => handleAgentPrompt('cars')}
                     >
-                      <div className="card-body gap-2 items-start">
-                        <div className={`badge ${selectedAgentFlow === 'cars' ? 'badge-primary badge-outline' : 'badge-outline'}`}>
-                          Cars
-                        </div>
-                        <h3 className="font-semibold text-left">Grab a rental</h3>
-                        <p className="text-sm text-left text-base-content/70">
-                          Provide pick-up and drop-off vibes; agent compares the best deals.
-                        </p>
+                      <FaCar className="text-3xl" />
+                      <div>
+                        <div className="font-bold">Cars</div>
+                        <div className="text-xs opacity-70">Rent a vehicle</div>
                       </div>
                     </button>
                   </div>
-
-              <AgentInlineChat
-                initialPrompt={agentPrompt}
-                promptSuggestions={[
-                  { label: 'Track a route', text: 'Watch fares for SFO → JFK next month with one carry-on.' },
-                  { label: 'Family hotel', text: 'Find family-friendly stays in Orlando with a pool under $250/night.' },
-                  { label: 'One-way car', text: 'One-way SUV pickup in Denver, drop in Aspen this weekend.' },
-                ]}
-              />
-
-              {showAgentFlightModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-base-100 rounded-lg shadow-2xl w-full max-w-md p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">Flight details</h3>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setShowAgentFlightModal(false)}
-                      >
-                        
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3">
-                      <div className="form-control">
-                        <label className="label">
-                          <span className="label-text text-sm">From</span>
-                        </label>
-                        <div className="relative" ref={agentFromDropdownRef}>
-                          <input
-                            type="text"
-                            className="input input-bordered input-sm w-full"
-                            placeholder="e.g., SFO"
-                            value={agentFlightForm.from}
-                            onChange={handleAgentFromInputChange}
-                            onFocus={() => {
-                              if (agentFlightForm.from.trim()) {
-                                loadFlightLocations(agentFlightForm.from, setAgentFromOptions);
-                                setAgentShowFromDropdown(true);
-                              }
-                            }}
-                            onBlur={() => setTimeout(() => setAgentShowFromDropdown(false), 120)}
-                            autoComplete="off"
-                            maxLength={60}
-                          />
-                          {agentShowFromDropdown && agentFromOptions.length > 0 && (
-                            <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-full max-h-60 overflow-y-auto z-50">
-                              {agentFromOptions.map((loc, index) => (
-                                <button
-                                  key={`agent-from-${loc.code || index}`}
-                                  type="button"
-                                  className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    handleAgentFromSelect(loc);
-                                  }}
-                                >
-                                  <div className="flex flex-col">
-                                    <span className="font-semibold text-base">{loc.label || loc.code}</span>
-                                    {loc.city && (
-                                      <span className="text-xs text-base-content/60">{loc.city}</span>
-                                    )}
-                                  </div>
-                                  <span className="badge badge-ghost badge-sm">{loc.code}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="form-control">
-                        <label className="label">
-                          <span className="label-text text-sm">To</span>
-                        </label>
-                        <div className="relative" ref={agentToDropdownRef}>
-                          <input
-                            type="text"
-                            className="input input-bordered input-sm w-full"
-                            placeholder="e.g., JFK"
-                            value={agentFlightForm.to}
-                            onChange={handleAgentToInputChange}
-                            onFocus={() => {
-                              if (agentFlightForm.to.trim()) {
-                                loadFlightLocations(agentFlightForm.to, setAgentToOptions);
-                                setAgentShowToDropdown(true);
-                              }
-                            }}
-                            onBlur={() => setTimeout(() => setAgentShowToDropdown(false), 120)}
-                            autoComplete="off"
-                            maxLength={60}
-                          />
-                          {agentShowToDropdown && agentToOptions.length > 0 && (
-                            <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-full max-h-60 overflow-y-auto z-50">
-                              {agentToOptions.map((loc, index) => (
-                                <button
-                                  key={`agent-to-${loc.code || index}`}
-                                  type="button"
-                                  className="w-full text-left px-4 py-3 hover:bg-primary/10 flex items-center justify-between border-b border-base-200 last:border-b-0"
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    handleAgentToSelect(loc);
-                                  }}
-                                >
-                                  <div className="flex flex-col">
-                                    <span className="font-semibold text-base">{loc.label || loc.code}</span>
-                                    {loc.city && (
-                                      <span className="text-xs text-base-content/60">{loc.city}</span>
-                                    )}
-                                  </div>
-                                  <span className="badge badge-ghost badge-sm">{loc.code}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="form-control">
-                        <label className="label">
-                          <span className="label-text text-sm">Trip type</span>
-                        </label>
-                        <select
-                          className="select select-bordered select-sm"
-                          value={agentFlightForm.tripType}
-                          onChange={(e) => setAgentFlightForm((prev) => ({ ...prev, tripType: e.target.value }))}
-                        >
-                          <option value="round-trip">Round-trip</option>
-                          <option value="one-way">One-way</option>
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="form-control">
-                          <label className="label">
-                            <span className="label-text text-sm">Depart</span>
-                          </label>
-                          <input
-                            type="date"
-                            className="input input-bordered input-sm"
-                            value={agentFlightForm.departDate}
-                            onChange={(e) => setAgentFlightForm((prev) => ({ ...prev, departDate: e.target.value }))}
-                          />
-                        </div>
-                        <div className="form-control">
-                          <label className="label">
-                            <span className="label-text text-sm">Return</span>
-                          </label>
-                          <input
-                            type="date"
-                            className="input input-bordered input-sm"
-                            value={agentFlightForm.returnDate}
-                            onChange={(e) => setAgentFlightForm((prev) => ({ ...prev, returnDate: e.target.value }))}
-                            disabled={agentFlightForm.tripType === 'one-way'}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    {agentFlightError && (
-                      <div className="alert alert-error py-2 text-sm">
-                        <span>{agentFlightError}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setShowAgentFlightModal(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={handleAgentFlightSubmit}
-                      >
-                        Start search
-                      </button>
-                    </div>
-                  </div>
                 </div>
-              )}
-            </div>
               )}
 
               {activeTab === 'flights' && (
@@ -2404,43 +2037,43 @@ const navigate = useNavigate();
             <div className="grid grid-cols-1 gap-3">
               <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-1`}
+                  key={`${activeMediaTab}-1`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight1
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays1
                       : carImages.cars1
                   }
-                  alt={`${activeTab} 1`}
+                  alt={`${activeMediaTab} 1`}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-2`}
+                  key={`${activeMediaTab}-2`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight2
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays2
                       : carImages.cars2
                   }
-                  alt={`${activeTab} 2`}
+                  alt={`${activeMediaTab} 2`}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-3`}
+                  key={`${activeMediaTab}-3`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight3
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays3
                       : carImages.cars3
                   }
-                  alt={`${activeTab} 3`}
+                  alt={`${activeMediaTab} 3`}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -2452,43 +2085,43 @@ const navigate = useNavigate();
             <div className="grid grid-cols-1 gap-3">
               <div className="h-56 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-4`}
+                  key={`${activeMediaTab}-4`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight4
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays4
                       : carImages.cars4
                   }
-                  alt={`${activeTab} 4`}
+                  alt={`${activeMediaTab} 4`}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="h-40 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-5`}
+                  key={`${activeMediaTab}-5`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight5
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays5
                       : carImages.cars5
                   }
-                  alt={`${activeTab} 5`}
+                  alt={`${activeMediaTab} 5`}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="h-48 rounded-3xl overflow-hidden shadow-lg">
                 <img
-                  key={`${activeTab}-6`}
+                  key={`${activeMediaTab}-6`}
                   src={
-                    activeTab === 'flights'
+                    activeMediaTab === 'flights'
                       ? flightImages.flight6
-                      : activeTab === 'hotels'
+                      : activeMediaTab === 'hotels'
                       ? stayImages.stays6
                       : carImages.cars6
                   }
-                  alt={`${activeTab} 6`}
+                  alt={`${activeMediaTab} 6`}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -2496,6 +2129,14 @@ const navigate = useNavigate();
           </div>
         </div>
       </section>
+
+      {/* New Agent Container */}
+      {showAgentContainer && (
+        <AgentContainer
+          initialFlow={agentInitialFlow}
+          onClose={() => setShowAgentContainer(false)}
+        />
+      )}
 
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-6xl mx-auto">
@@ -2804,6 +2445,7 @@ const navigate = useNavigate();
           </div>
         </div>
       )}
+      <BookingChatWidget />
     </div>
   );
 };

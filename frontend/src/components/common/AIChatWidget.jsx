@@ -3,7 +3,14 @@ import { FaComments, FaTimes, FaPaperPlane, FaSpinner } from 'react-icons/fa';
 import { useAuth } from '../../hooks/useAuth';
 import { aiAgentApi } from '../../services/api/ai-agent';
 
-const AIChatWidget = () => {
+const AIChatWidget = ({
+  title = 'AI Travel Concierge',
+  initialMessageOverride = null,
+  welcomeMessageOverride = null,
+  showDeals = true,
+  showBundles = true,
+  chatMode = null,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -76,11 +83,13 @@ const AIChatWidget = () => {
       setError(null);
       
       // Create session with welcome message
-      const welcomeMessage = isAuthenticated
-        ? `Hello ${user?.firstName || 'there'}! I'm your travel concierge. I can help you with your bookings, find flights, hotels, and cars, or answer any questions. How can I assist you today?`
-        : 'Hello! I\'m your travel concierge. I can help you find flights, hotels, and cars. How can I assist you today?';
+      const welcomeMessage = welcomeMessageOverride || (
+        isAuthenticated
+          ? `Hello ${user?.firstName || 'there'}! I'm your travel concierge. I can help you with your bookings, find flights, hotels, and cars, or answer any questions. How can I assist you today?`
+          : 'Hello! I can help you find flights, hotels, and cars. How can I assist you today?'
+      );
 
-      const response = await aiAgentApi.createSession();
+      const response = await aiAgentApi.createSession(initialMessageOverride, chatMode);
       
       if (response.session_id) {
         setSessionId(response.session_id);
@@ -130,8 +139,8 @@ const AIChatWidget = () => {
         setMessages(prev => [...prev, { role: 'assistant', content: response.response }]);
       }
 
-      // Handle bundles if provided
-      if (response.bundles && response.bundles.length > 0) {
+      // Handle bundles if provided and enabled
+      if (showBundles && response.bundles && response.bundles.length > 0) {
         const bundleMessage = {
           role: 'assistant',
           content: `I found ${response.bundles.length} bundle(s) for you!`,
@@ -176,7 +185,7 @@ const AIChatWidget = () => {
           {/* Header */}
           <div className="bg-primary text-primary-content p-4 rounded-t-lg flex justify-between items-center">
             <div>
-              <h3 className="font-bold text-lg">AI Travel Concierge</h3>
+              <h3 className="font-bold text-lg">{title}</h3>
               {isAuthenticated && user && (
                 <p className="text-sm opacity-90">
                   {user.firstName} {user.lastName}
@@ -216,7 +225,7 @@ const AIChatWidget = () => {
                   <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                   
                   {/* Display deals if available */}
-                  {msg.deals && msg.deals.length > 0 && (
+                  {showDeals && msg.deals && msg.deals.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {msg.deals.map((deal, dealIndex) => (
                         <div
@@ -322,4 +331,3 @@ const AIChatWidget = () => {
 };
 
 export default AIChatWidget;
-

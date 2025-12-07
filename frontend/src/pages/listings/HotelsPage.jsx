@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
@@ -9,6 +9,7 @@ import L from 'leaflet';
 import { listingsApi } from '../../services/api/listings';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { US_STATES } from '../../constants/usStates';
+import AgentInlineChat from '../../components/agent/AgentInlineChat';
 
 // Fix for default marker icon in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -81,6 +82,12 @@ const HotelsPage = () => {
   const { isAuthenticated, user } = useAuth();
   const toast = useToast();
   const searchData = location.state?.search;
+  const agentMode = Boolean(location.state?.agentMode);
+  const initialAgentPrompt = useMemo(() => {
+    const text = location.state?.agentInitialPrompt;
+    const id = location.state?.agentInitialPromptId;
+    return text ? { text, id: id || `hotels-agent-${Date.now()}` } : null;
+  }, [location.state]);
   
   // Initialize filters with search data from HomePage if available
   // Extract just the city name from full location string (e.g., "New York, New York, United States" -> "New York")
@@ -118,6 +125,26 @@ const HotelsPage = () => {
   const [tempMinPrice, setTempMinPrice] = useState('');
   const [tempMaxPrice, setTempMaxPrice] = useState('');
   const [selectedPriceRange, setSelectedPriceRange] = useState('');
+
+  const navigateAgentTo = (mode) => {
+    if (!agentMode) return;
+    if (mode === 'flights') {
+      navigate('/agent/flights', { state: { agentMode: true } });
+      return;
+    }
+    if (mode === 'cars') {
+      const today = new Date().toISOString().split('T')[0];
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      navigate('/cars', {
+        state: {
+          agentMode: true,
+          search: { location: filters.city, pickUp: today, dropOff: tomorrow },
+        },
+      });
+      return;
+    }
+    // already on hotels
+  };
   const priceDropdownRef = useRef(null);
   const [showAllFilters, setShowAllFilters] = useState(false);
   const [selectedFilterSection, setSelectedFilterSection] = useState('price');

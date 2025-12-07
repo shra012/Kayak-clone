@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """LangChain/LangGraph agent that can call Supabase MCP, Tavily Search, and Weather API."""
 
 import json

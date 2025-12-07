@@ -68,14 +68,14 @@ const defaultFilters = {
   sort: 'price-asc', // Combined sort: 'price-asc', 'price-desc', 'duration-asc'
 };
 
-const FlightsPage = () => {
+const FlightsPage = ({ forceAgentMode = false }) => {
   useDocumentTitle('Search Flights');
   
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated } = useAuth();
   const toast = useToast();
-  const agentMode = Boolean(location.state?.agentMode);
+  const agentMode = forceAgentMode || Boolean(location.state?.agentMode);
   const initialAgentPromptRef = useRef(null);
   const [filters, setFilters] = useState(defaultFilters);
   const [page, setPage] = useState(1);
@@ -114,8 +114,12 @@ const FlightsPage = () => {
     const isMultiCity = location.state?.search?.tripType === 'multi-city';
     if (isMultiCity) return true;
     if (!activeFilters.from || !activeFilters.to) {
-      setError('Please enter both origin and destination to search flights.');
-      toast.showError('Add both origin and destination to search flights.');
+      if (!agentMode) {
+        setError('Please enter both origin and destination to search flights.');
+        toast.showError('Add both origin and destination to search flights.');
+      } else {
+        setError(null);
+      }
       return false;
     }
     setError(null);
@@ -793,12 +797,42 @@ const FlightsPage = () => {
     { label: 'Bags included', text: 'List options that include a carry-on and checked bag without extra fees.' },
   ];
 
+  const navigateAgentTo = (mode) => {
+    if (mode === 'flights') return; // already here
+    if (mode === 'hotels') {
+      navigate('/hotels', {
+        state: {
+          search: {
+            location: filters.to || filters.from || '',
+          },
+          agentMode: true,
+        },
+      });
+      return;
+    }
+    if (mode === 'cars') {
+      const today = new Date().toISOString().split('T')[0];
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      navigate('/cars', {
+        state: {
+          search: {
+            location: filters.to || filters.from || '',
+            pickUp: today,
+            dropOff: tomorrow,
+          },
+          agentMode: true,
+        },
+      });
+    }
+  };
+
   const handleAgentAssistantResponse = (agentReply) => {
     if (!agentMode) return false;
 
     const content = (agentReply?.response || '').toLowerCase();
+    const zeroMatch = content.match(/fetched\s*(\d+)\s+flights?/);
     const mentionsZeroFlights =
-      /\bfetched\s*0\s+flights?/.test(content) ||
+      (zeroMatch && Number(zeroMatch[1]) === 0) ||
       content.includes('no flights found');
 
     if (!mentionsZeroFlights) return false;
@@ -837,7 +871,7 @@ const FlightsPage = () => {
               <span className="text-xl"></span>
               <span className="font-semibold">New Search</span>
             </button>
-            
+
             <div className="flex gap-2">
               <button
                 type="button"
@@ -1457,10 +1491,36 @@ const FlightsPage = () => {
                                             month: 'short',
                                             day: 'numeric',
                                           })}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
+            </div>
+          </div>
+
+          {agentMode && (
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                type="button"
+                className="btn btn-xs btn-primary"
+                onClick={() => navigateAgentTo('flights')}
+              >
+                Flights
+              </button>
+              <button
+                type="button"
+                className="btn btn-xs btn-ghost"
+                onClick={() => navigateAgentTo('hotels')}
+              >
+                Stays
+              </button>
+              <button
+                type="button"
+                className="btn btn-xs btn-ghost"
+                onClick={() => navigateAgentTo('cars')}
+              >
+                Cars
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
                                   {/* Price and Book Button */}
                                   <div className="flex flex-row md:flex-col items-center md:items-end gap-2 justify-between w-full md:w-auto">
