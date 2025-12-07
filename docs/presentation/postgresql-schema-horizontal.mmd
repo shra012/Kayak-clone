@@ -1,0 +1,27 @@
+graph LR
+    subgraph "PostgreSQL Database Schema"
+        direction TB
+        
+        U[USERS<br/>━━━━━━━━━━━━━━━━━━━━<br/>• id PK<br/>• email UK<br/>• first_name<br/>• last_name<br/>• password_hash<br/>• phone_number<br/>• address fields<br/>• profile_type<br/>• role<br/>• created_at]
+        
+        B[BOOKINGS<br/>━━━━━━━━━━━━━━━━━━━━<br/>• id PK<br/>• user_id FK → USERS<br/>• booking_type<br/>• status<br/>• price_amount<br/>• price_currency<br/>• itinerary JSON<br/>• created_at]
+        
+        P[PAYMENTS<br/>━━━━━━━━━━━━━━━━━━━━<br/>• id PK<br/>• booking_id FK → BOOKINGS<br/>• user_id FK → USERS<br/>• status<br/>• amount<br/>• currency<br/>• transaction_reference<br/>• idempotency_key UK<br/>• created_at]
+        
+        R[REVIEWS<br/>━━━━━━━━━━━━━━━━━━━━<br/>• id PK<br/>• user_id FK → USERS<br/>• listing_type<br/>• listing_id<br/>• rating<br/>• title<br/>• body<br/>• created_at]
+    end
+    
+    U -->|1:N| B
+    U -->|1:N| P
+    U -->|1:N| R
+    B -->|1:1| P
+    
+    style U fill:#4CAF50,color:#fff,stroke:#388E3C,stroke-width:2px
+    style B fill:#2196F3,color:#fff,stroke:#1976D2,stroke-width:2px
+    style P fill:#FF9800,color:#fff,stroke:#F57C00,stroke-width:2px
+    style R fill:#9C27B0,color:#fff,stroke:#7B1FA2,stroke-width:2px
+
+
+
+
+

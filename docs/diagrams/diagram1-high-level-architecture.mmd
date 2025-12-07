@@ -1,0 +1,78 @@
+graph TB
+    subgraph "Client Layer"
+        UI[React Frontend<br/>Port 5173]
+    end
+    
+    subgraph "API Gateway Layer"
+        API[Express.js Backend<br/>Port 3000<br/>API Gateway]
+    end
+    
+    subgraph "Service Layer"
+        Auth[User & Auth Service]
+        List[Listings Service]
+        Book[Bookings Service]
+        Pay[Billing & Payments Service]
+        Admin[Admin Service]
+        Conc[Concierge Service]
+        Anal[Analytics Service]
+    end
+    
+    subgraph "Data Layer"
+        PG[(PostgreSQL<br/>Supabase)]
+        Mongo[(MongoDB<br/>Atlas)]
+        Redis[(Redis<br/>Cloud)]
+    end
+    
+    subgraph "Message Queue"
+        Kafka[Kafka Event Bus<br/>Aiven Cloud]
+    end
+    
+    subgraph "External Services"
+        Firebase[Firebase Storage<br/>Images]
+        AI[AI Agent Service<br/>FastAPI :8000]
+    end
+    
+    UI -->|HTTP/REST| API
+    API --> Auth
+    API --> List
+    API --> Book
+    API --> Pay
+    API --> Admin
+    API --> Conc
+    API --> Anal
+    
+    Auth --> PG
+    Book --> PG
+    Pay --> PG
+    Admin --> PG
+    
+    List --> Mongo
+    Conc --> Mongo
+    Anal --> Mongo
+    
+    List --> Redis
+    Auth --> Redis
+    
+    Book --> Kafka
+    Pay --> Kafka
+    Admin --> Kafka
+    
+    Kafka --> Anal
+    Kafka --> Conc
+    
+    API --> Firebase
+    Conc --> AI
+    
+    style UI fill:#e1f5ff
+    style API fill:#fff4e1
+    style PG fill:#e8f5e9
+    style Mongo fill:#fff3e0
+    style Redis fill:#fce4ec
+    style Kafka fill:#f3e5f5
+    style Firebase fill:#e0f2f1
+    style AI fill:#e8eaf6
+
+
+
+
+

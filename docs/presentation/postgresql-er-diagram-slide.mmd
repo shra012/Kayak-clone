@@ -1,0 +1,60 @@
+erDiagram
+    USERS ||--o{ BOOKINGS : "has"
+    USERS ||--o{ PAYMENTS : "makes"
+    USERS ||--o{ REVIEWS : "writes"
+    BOOKINGS ||--|| PAYMENTS : "has"
+    
+    USERS {
+        uuid id PK
+        varchar email UK
+        varchar first_name
+        varchar last_name
+        varchar password_hash
+        varchar phone_number
+        varchar address_line1
+        varchar address_city
+        char address_state
+        varchar address_zip_code
+        varchar profile_type
+        varchar role
+        timestamp created_at
+    }
+    
+    BOOKINGS {
+        uuid id PK
+        uuid user_id FK
+        varchar booking_type
+        varchar status
+        decimal price_amount
+        char price_currency
+        jsonb itinerary
+        timestamp created_at
+    }
+    
+    PAYMENTS {
+        uuid id PK
+        uuid booking_id FK
+        uuid user_id FK
+        varchar status
+        decimal amount
+        char currency
+        varchar transaction_reference
+        varchar idempotency_key UK
+        timestamp created_at
+    }
+    
+    REVIEWS {
+        uuid id PK
+        uuid user_id FK
+        varchar listing_type
+        varchar listing_id
+        integer rating
+        varchar title
+        text body
+        timestamp created_at
+    }
+
+
+
+
+

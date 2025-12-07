@@ -13,6 +13,8 @@ router.get('/flights/:flightId', listingsController.getFlight);
 // Hotels - IMPORTANT: specific routes before parameterized routes
 router.get('/hotels/search', listingsController.searchHotels);
 router.get('/hotels/locations', listingsController.searchHotelLocations);
+router.get('/hotels/amenities', listingsController.getAvailableAmenities);
+router.get('/hotels/property-types', listingsController.getAvailablePropertyTypes);
 router.get('/hotels/:hotelId', listingsController.getHotel);
 
 // Cars

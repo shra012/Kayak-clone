@@ -1,0 +1,55 @@
+graph TB
+    subgraph Layer1["🌐 PRESENTATION LAYER"]
+        UI[React 18 Frontend<br/>Vite + Redux + React Query<br/>Port: 5173]
+    end
+    
+    subgraph Layer2["🚪 API GATEWAY LAYER"]
+        Gateway[Express.js API Gateway<br/>Middleware Stack<br/>Port: 3000]
+    end
+    
+    subgraph Layer3["⚙️ BUSINESS LOGIC LAYER"]
+        direction LR
+        Services[7 Microservices<br/>━━━━━━━━━━━━━━━━━━━━<br/>User | Listings | Bookings<br/>Payments | Admin<br/>Concierge | Analytics]
+    end
+    
+    subgraph Layer4["💾 DATA PERSISTENCE LAYER"]
+        direction LR
+        PG[(PostgreSQL<br/>Supabase<br/>Relational Data)]
+        MONGO[(MongoDB<br/>Atlas<br/>Document Store)]
+        REDIS[(Redis<br/>Cloud<br/>Cache)]
+    end
+    
+    subgraph Layer5["📨 EVENT STREAMING"]
+        KAFKA[Kafka Event Bus<br/>Aiven Cloud<br/>Async Communication]
+    end
+    
+    subgraph Layer6["🔗 EXTERNAL SERVICES"]
+        direction LR
+        FB[Firebase Storage<br/>Images]
+        AI[AI Agent Service<br/>FastAPI :8000]
+    end
+    
+    UI -->|HTTP/REST| Gateway
+    Gateway --> Services
+    Services --> PG
+    Services --> MONGO
+    Services --> REDIS
+    Services -->|Publish| KAFKA
+    KAFKA -->|Consume| Services
+    Gateway --> FB
+    Services --> AI
+    
+    style UI fill:#2196F3,color:#fff,stroke:#1976D2,stroke-width:3px
+    style Gateway fill:#FF9800,color:#fff,stroke:#F57C00,stroke-width:3px
+    style Services fill:#4CAF50,color:#fff,stroke:#388E3C,stroke-width:2px
+    style PG fill:#336791,color:#fff,stroke:#2C5F7A,stroke-width:2px
+    style MONGO fill:#47A248,color:#fff,stroke:#3D8B40,stroke-width:2px
+    style REDIS fill:#DC382D,color:#fff,stroke:#C62828,stroke-width:2px
+    style KAFKA fill:#231F20,color:#fff,stroke:#000,stroke-width:2px
+    style FB fill:#FFA000,color:#fff,stroke:#F57C00,stroke-width:2px
+    style AI fill:#00BCD4,color:#fff,stroke:#0097A7,stroke-width:2px
+
+
+
+
+

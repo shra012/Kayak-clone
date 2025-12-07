@@ -475,13 +475,25 @@ export const searchHotels = async (query) => {
       checkOut,
       guests = 1,
       minRating,
+      minPrice,
       maxPrice,
       amenities,
+      propertyType,
       page = 1,
-      limit = 20,
-      sort = 'price',
+      limit: limitParam,
+      pageSize,
+      sort = 'pricePerNight',
+      sortBy,
       order = 'asc',
+      sortOrder,
     } = query;
+
+    // Support both 'limit' and 'pageSize' query parameters
+    const limit = limitParam || pageSize || 20;
+    
+    // Support both 'sort'/'order' and 'sortBy'/'sortOrder'
+    const sortField = sortBy || sort || 'pricePerNight';
+    const sortDirection = sortOrder || order || 'asc';
 
     // Try to get cached results
     const cached = await getCachedSearchResults('hotel', query);
@@ -498,30 +510,124 @@ export const searchHotels = async (query) => {
     if (city) filter.city = new RegExp(city, 'i');
     if (state) filter.state = state;
     if (minRating) filter.rating = { $gte: parseFloat(minRating) };
-    if (maxPrice) filter.pricePerNight = { $lte: parseFloat(maxPrice) };
+    if (minPrice) {
+      filter.pricePerNight = filter.pricePerNight || {};
+      filter.pricePerNight.$gte = parseFloat(minPrice);
+    }
+    if (maxPrice) {
+      filter.pricePerNight = filter.pricePerNight || {};
+      filter.pricePerNight.$lte = parseFloat(maxPrice);
+    }
     if (amenities) {
-      const amenitiesList = amenities.split(',');
+      const amenitiesList = Array.isArray(amenities) ? amenities : amenities.split(',');
       filter.amenities = { $all: amenitiesList };
     }
+    if (propertyType) {
+      filter.propertyType = propertyType;
+    }
 
-    // Build sort
+    // Build sort - map common field names and handle special sort cases
     const sortObj = {};
-    sortObj[sort] = order === 'desc' ? -1 : 1;
+    let resolvedSortField = sortField;
+    let useAggregation = false;
+    
+    // Map common field names
+    if (sortField === 'price') resolvedSortField = 'pricePerNight';
+    if (sortField === 'rating') resolvedSortField = 'rating';
+    
+    // Handle special sort cases that require aggregation
+    if (sortField === 'bookingsCount' || sortField === 'mostPopular') {
+      // Sort by bookings count - will use aggregation
+      useAggregation = true;
+      resolvedSortField = 'bookingsCount';
+    } else if (sortField === 'amenitiesCount' || sortField === 'topAmenities') {
+      // Sort by number of amenities - use $size operator
+      useAggregation = true;
+      resolvedSortField = 'amenitiesCount';
+    } else if (sortField === 'createdAt' || sortField === 'newestListings') {
+      // Sort by creation date - use _id (MongoDB ObjectId contains timestamp)
+      resolvedSortField = '_id';
+    }
+    
+    if (!useAggregation) {
+      sortObj[resolvedSortField] = sortDirection === 'desc' ? -1 : 1;
+    }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
-    const [items, totalItems] = await Promise.all([
-      collection.find(filter).sort(sortObj).skip(skip).limit(parseInt(limit)).toArray(),
-      collection.countDocuments(filter),
-    ]);
+    // Convert RegExp to string for logging
+    const filterForLogging = { ...filter };
+    if (filterForLogging.city instanceof RegExp) {
+      filterForLogging.city = filterForLogging.city.toString();
+    }
+    logger.debug('searchHotels query filter:', JSON.stringify(filterForLogging));
+    logger.debug('searchHotels sort:', sortObj);
+    
+    let items, totalItems;
+    
+    if (useAggregation) {
+      // Fetch all matching items first (we'll sort in memory)
+      items = await collection.find(filter).toArray();
+      totalItems = items.length;
+      
+      if (resolvedSortField === 'bookingsCount') {
+        // Get booking counts from bookings collection
+        const bookingsCollection = db.collection('bookings');
+        const bookingCounts = await bookingsCollection.aggregate([
+          { $match: { booking_type: 'hotel', status: { $ne: 'CANCELLED' } } },
+          { $group: { _id: '$listing_id', count: { $sum: 1 } } }
+        ]).toArray();
+        
+        const bookingCountMap = {};
+        bookingCounts.forEach(bc => {
+          bookingCountMap[bc._id] = bc.count;
+        });
+        
+        // Add booking counts and sort
+        items = items.map(item => ({
+          ...item,
+          bookingsCount: bookingCountMap[item.id] || 0
+        }));
+        items.sort((a, b) => {
+          const aCount = bookingCountMap[a.id] || 0;
+          const bCount = bookingCountMap[b.id] || 0;
+          return sortDirection === 'desc' ? bCount - aCount : aCount - bCount;
+        });
+      } else if (resolvedSortField === 'amenitiesCount') {
+        // Calculate amenities count and sort
+        items = items.map(item => ({
+          ...item,
+          amenitiesCount: Array.isArray(item.amenities) ? item.amenities.length : 0
+        }));
+        items.sort((a, b) => {
+          const aCount = Array.isArray(a.amenities) ? a.amenities.length : 0;
+          const bCount = Array.isArray(b.amenities) ? b.amenities.length : 0;
+          return sortDirection === 'desc' ? bCount - aCount : aCount - bCount;
+        });
+      }
+      
+      // Apply pagination after sorting
+      items = items.slice(skip, skip + parseInt(limit));
+    } else {
+      // Standard query with MongoDB sort
+      [items, totalItems] = await Promise.all([
+        collection.find(filter).sort(sortObj).skip(skip).limit(parseInt(limit)).toArray(),
+        collection.countDocuments(filter),
+      ]);
+    }
 
+    const currentPage = parseInt(page);
+    const totalPages = Math.ceil(totalItems / parseInt(limit));
+    
     const results = {
       items,
       pagination: {
-        page: parseInt(page),
+        page: currentPage,
         limit: parseInt(limit),
         totalItems,
-        totalPages: Math.ceil(totalItems / parseInt(limit)),
+        totalPages,
+        hasNextPage: currentPage < totalPages,
+        hasPrevPage: currentPage > 1,
       },
     };
 
@@ -581,6 +687,50 @@ export const getHotelCities = async (query, limit = 10) => {
     return results.slice(0, limit);
   } catch (error) {
     logger.error('Error in getHotelCities service:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all distinct amenities from hotels in the database
+ */
+export const getAvailableAmenities = async () => {
+  try {
+    const db = await getMongoDB();
+    const collection = db.collection('hotels');
+    
+    // Get all distinct amenities from all hotels
+    const amenities = await collection.distinct('amenities');
+    
+    // Flatten the array of arrays and get unique values
+    const allAmenities = [...new Set(amenities.flat().filter(Boolean))];
+    
+    // Normalize to lowercase and remove duplicates
+    const normalizedAmenities = [...new Set(allAmenities.map(a => String(a).toLowerCase()))];
+    
+    // Sort alphabetically
+    return normalizedAmenities.sort();
+  } catch (error) {
+    logger.error('Error in getAvailableAmenities service:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all distinct property types from hotels in the database
+ */
+export const getAvailablePropertyTypes = async () => {
+  try {
+    const db = await getMongoDB();
+    const collection = db.collection('hotels');
+    
+    // Get all distinct property types
+    const propertyTypes = await collection.distinct('propertyType');
+    
+    // Filter out null/undefined and sort
+    return propertyTypes.filter(Boolean).sort();
+  } catch (error) {
+    logger.error('Error in getAvailablePropertyTypes service:', error);
     throw error;
   }
 };

@@ -798,6 +798,26 @@ export const getHotel = async (req, res, next) => {
   }
 };
 
+export const getAvailableAmenities = async (req, res, next) => {
+  try {
+    const amenities = await listingsService.getAvailableAmenities();
+    res.json({ amenities });
+  } catch (error) {
+    logger.error('Error in getAvailableAmenities controller:', error);
+    next(error);
+  }
+};
+
+export const getAvailablePropertyTypes = async (req, res, next) => {
+  try {
+    const propertyTypes = await listingsService.getAvailablePropertyTypes();
+    res.json({ propertyTypes });
+  } catch (error) {
+    logger.error('Error in getAvailablePropertyTypes controller:', error);
+    next(error);
+  }
+};
+
 export const searchCars = async (req, res, next) => {
   try {
     const result = await listingsService.searchCars(req.query);

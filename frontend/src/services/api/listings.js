@@ -49,6 +49,18 @@ export const listingsApi = {
     return data;
   },
 
+  // Get all available amenities from the database
+  getAvailableAmenities: async () => {
+    const { data } = await apiClient.get('/hotels/amenities');
+    return data;
+  },
+
+  // Get all available property types from the database
+  getAvailablePropertyTypes: async () => {
+    const { data } = await apiClient.get('/hotels/property-types');
+    return data;
+  },
+
   searchCars: async (params = {}) => {
     const { data } = await apiClient.get('/cars/search', { params });
     return data;

@@ -1,0 +1,29 @@
+graph TB
+    subgraph "MongoDB Collections - Document Store"
+        direction LR
+        
+        subgraph Listings["Listings Collections"]
+            F[FLIGHTS<br/>━━━━━━━━━━━━━━━━━━━━<br/>Flight Listings<br/>• Airline, Routes<br/>• Schedules, Pricing<br/>• Seat Availability<br/>• Ratings]
+            
+            H[HOTELS<br/>━━━━━━━━━━━━━━━━━━━━<br/>Hotel Listings<br/>• Name, Address<br/>• Rooms, Amenities<br/>• Pricing<br/>• Ratings]
+            
+            C[CARS<br/>━━━━━━━━━━━━━━━━━━━━<br/>Car Rentals<br/>• Provider, Model<br/>• Type, Pricing<br/>• Availability<br/>• Location]
+        end
+        
+        subgraph Analytics["Analytics Collections"]
+            CS[CONCIERGE_SESSIONS<br/>━━━━━━━━━━━━━━━━━━━━<br/>AI Conversations<br/>• User Context<br/>• Messages<br/>• Bundles]
+            
+            UT[USER_TRACES<br/>━━━━━━━━━━━━━━━━━━━━<br/>Behavior Analytics<br/>• User Events<br/>• Cohort Data<br/>• Journey Steps]
+        end
+    end
+    
+    style F fill:#FF9800,color:#fff,stroke:#F57C00,stroke-width:2px
+    style H fill:#FF9800,color:#fff,stroke:#F57C00,stroke-width:2px
+    style C fill:#FF9800,color:#fff,stroke:#F57C00,stroke-width:2px
+    style CS fill:#9C27B0,color:#fff,stroke:#7B1FA2,stroke-width:2px
+    style UT fill:#9C27B0,color:#fff,stroke:#7B1FA2,stroke-width:2px
+
+
+
+
+

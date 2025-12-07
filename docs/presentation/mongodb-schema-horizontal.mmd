@@ -1,0 +1,25 @@
+graph LR
+    subgraph "MongoDB Database Schema"
+        direction TB
+        
+        F[FLIGHTS<br/>━━━━━━━━━━━━━━━━━━━━<br/>• _id: 'AA123'<br/>• airline<br/>• departure {airport, city, datetime}<br/>• arrival {airport, city, datetime}<br/>• durationMinutes<br/>• seats {economy, business}<br/>• basePrice {amount, currency}<br/>• fareClass<br/>• rating]
+        
+        H[HOTELS<br/>━━━━━━━━━━━━━━━━━━━━<br/>• _id: 'hotel_123'<br/>• name<br/>• address {street, city, state, coordinates}<br/>• rooms [{type, capacity, price, amenities}]<br/>• amenities []<br/>• rating<br/>• availableRooms]
+        
+        C[CARS<br/>━━━━━━━━━━━━━━━━━━━━<br/>• _id: 'car_ABC'<br/>• provider<br/>• model, year<br/>• type, transmission<br/>• seats<br/>• pricePerDay<br/>• availabilityStatus<br/>• location {pickup, return}]
+        
+        CS[CONCIERGE_SESSIONS<br/>━━━━━━━━━━━━━━━━━━━━<br/>• _id: ObjectId<br/>• userId<br/>• status<br/>• context {}<br/>• messages [{role, content, timestamp}]<br/>• bundles []<br/>• createdAt]
+        
+        UT[USER_TRACES<br/>━━━━━━━━━━━━━━━━━━━━<br/>• _id: ObjectId<br/>• userId<br/>• cohort<br/>• steps [{event, timestamp, data}]<br/>• createdAt]
+    end
+    
+    style F fill:#FF9800,color:#fff,stroke:#F57C00,stroke-width:2px
+    style H fill:#FF9800,color:#fff,stroke:#F57C00,stroke-width:2px
+    style C fill:#FF9800,color:#fff,stroke:#F57C00,stroke-width:2px
+    style CS fill:#9C27B0,color:#fff,stroke:#7B1FA2,stroke-width:2px
+    style UT fill:#9C27B0,color:#fff,stroke:#7B1FA2,stroke-width:2px
+
+
+
+
+

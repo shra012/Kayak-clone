@@ -1,0 +1,46 @@
+graph LR
+    subgraph "PostgreSQL - Supabase"
+        Users[Users Table<br/>- User profiles<br/>- Authentication<br/>- Roles]
+        Bookings[Bookings Table<br/>- Booking records<br/>- Status tracking<br/>- Itinerary]
+        Payments[Payments Table<br/>- Transactions<br/>- Status<br/>- Idempotency]
+        Reviews[Reviews Table<br/>- Ratings<br/>- Feedback]
+        
+        Users -->|1:N| Bookings
+        Users -->|1:N| Payments
+        Users -->|1:N| Reviews
+        Bookings -->|1:1| Payments
+    end
+    
+    subgraph "MongoDB - Atlas"
+        Flights[Flights Collection<br/>- Flight listings<br/>- Schedules<br/>- Pricing]
+        Hotels[Hotels Collection<br/>- Hotel listings<br/>- Rooms<br/>- Amenities]
+        Cars[Cars Collection<br/>- Car rentals<br/>- Availability<br/>- Pricing]
+        Sessions[Concierge Sessions<br/>- AI conversations<br/>- Context]
+        Traces[User Traces<br/>- Analytics<br/>- Behavior]
+    end
+    
+    subgraph "Redis - Cloud"
+        Cache[Listing Cache<br/>TTL: 300s]
+        UserCache[User Cache<br/>TTL: 600s]
+        SearchCache[Search Cache<br/>TTL: 60s]
+        RateLimit[Rate Limiting<br/>Counters]
+    end
+    
+    style Users fill:#4caf50
+    style Bookings fill:#4caf50
+    style Payments fill:#4caf50
+    style Reviews fill:#4caf50
+    style Flights fill:#ff9800
+    style Hotels fill:#ff9800
+    style Cars fill:#ff9800
+    style Sessions fill:#ff9800
+    style Traces fill:#ff9800
+    style Cache fill:#e91e63
+    style UserCache fill:#e91e63
+    style SearchCache fill:#e91e63
+    style RateLimit fill:#e91e63
+
+
+
+
+
