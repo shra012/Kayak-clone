@@ -155,25 +155,16 @@ export const getUserById = async (userId) => {
 
   // Try PostgreSQL first
   const pool = getPostgresPool();
-  let user = null;
-  try {
-    const result = await pool.query(
-      `SELECT id, ssn, first_name, last_name, email, phone_number,
-       address_line1, address_line2, address_city, address_state, address_zip_code,
-       profile_image_url, role, loyalty_tier, profile_type, ssn_verified_at,
-       partner_details, created_at, updated_at, last_login
-       FROM users WHERE id = $1`,
-      [userId]
-    );
+  const result = await pool.query(
+    `SELECT id, ssn, first_name, last_name, email, phone_number,
+     address_line1, address_line2, address_city, address_state, address_zip_code,
+     profile_image_url, role, loyalty_tier, profile_type, ssn_verified_at,
+     partner_details, created_at, updated_at, last_login
+     FROM users WHERE id = $1`,
+    [userId]
+  );
 
-    user = result.rows[0] ? { ...result.rows[0], data_source: 'postgres' } : null;
-  } catch (error) {
-    if (isUsersTableMissing(error)) {
-      logger.warn('PostgreSQL users table missing; falling back to MongoDB only');
-    } else {
-      logger.error(`PostgreSQL users lookup failed for ${userId}: ${error.message}`);
-    }
-  }
+  let user = result.rows[0] ? { ...result.rows[0], data_source: 'postgres' } : null;
 
   // If not found in PostgreSQL, fall back to MongoDB
   if (!user) {

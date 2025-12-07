@@ -98,8 +98,14 @@ const FlightsPage = () => {
   const [showToDropdown, setShowToDropdown] = useState(false);
   const [fromOptions, setFromOptions] = useState([]);
   const [toOptions, setToOptions] = useState([]);
-  const [fromSelected, setFromSelected] = useState(false);
-  const [toSelected, setToSelected] = useState(false);
+  const formatLocationDisplay = (location) => {
+    if (!location) return '';
+    if (location.label) return location.label;
+    if (location.city) {
+      return `${location.code} - ${location.city}`;
+    }
+    return location.code;
+  };
   const fromDropdownRef = useRef(null);
   const toDropdownRef = useRef(null);
   const fromSearchTimeoutRef = useRef(null);
@@ -178,16 +184,19 @@ const FlightsPage = () => {
     });
   };
 
-  // Extract airport code from label format (e.g., "LAX - Los Angeles..." -> "LAX")
+  // Extract airport code (handles labels like "LAX - Los Angeles" or lowercase input)
   const extractAirportCode = (value) => {
     if (!value) return null;
-    // If it's already just a code (3 letters), return it
-    if (/^[A-Z]{3}$/.test(value.trim())) {
-      return value.trim();
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const upper = trimmed.toUpperCase();
+    if (/^[A-Z]{3}$/.test(upper)) {
+      return upper;
     }
-    // Extract code from format like "LAX - Los Angeles (Los Angeles International)"
-    const match = value.match(/^([A-Z]{3})/);
-    return match ? match[1] : value.trim();
+
+    const match = upper.match(/^([A-Z]{3})/);
+    return match ? match[1] : trimmed;
   };
 
   // Load flight location options from API
@@ -210,18 +219,17 @@ const FlightsPage = () => {
 
   // Handle from input change
   const handleFromInputChange = (e) => {
-    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
+    const value = e.target.value;
     setFilters((prev) => ({ ...prev, from: value }));
-    setFromSelected(false);
     
-    // Debounced search
     if (fromSearchTimeoutRef.current) {
       clearTimeout(fromSearchTimeoutRef.current);
     }
     
     fromSearchTimeoutRef.current = setTimeout(() => {
-      if (value.trim()) {
-        loadFlightLocations(value, setFromOptions);
+      const query = value.trim();
+      if (query) {
+        loadFlightLocations(query, setFromOptions);
         setShowFromDropdown(true);
       } else {
         setFromOptions([]);
@@ -232,18 +240,17 @@ const FlightsPage = () => {
 
   // Handle to input change
   const handleToInputChange = (e) => {
-    const value = e.target.value.toUpperCase(); // Convert to uppercase for airport codes
+    const value = e.target.value;
     setFilters((prev) => ({ ...prev, to: value }));
-    setToSelected(false);
     
-    // Debounced search
     if (toSearchTimeoutRef.current) {
       clearTimeout(toSearchTimeoutRef.current);
     }
     
     toSearchTimeoutRef.current = setTimeout(() => {
-      if (value.trim()) {
-        loadFlightLocations(value, setToOptions);
+      const query = value.trim();
+      if (query) {
+        loadFlightLocations(query, setToOptions);
         setShowToDropdown(true);
       } else {
         setToOptions([]);
@@ -254,17 +261,15 @@ const FlightsPage = () => {
 
   // Handle from select
   const handleFromSelect = (location) => {
-    setFilters((prev) => ({ ...prev, from: location.code }));
+    setFilters((prev) => ({ ...prev, from: formatLocationDisplay(location) }));
     setShowFromDropdown(false);
-    setFromSelected(true);
     setFromOptions([]);
   };
 
   // Handle to select
   const handleToSelect = (location) => {
-    setFilters((prev) => ({ ...prev, to: location.code }));
+    setFilters((prev) => ({ ...prev, to: formatLocationDisplay(location) }));
     setShowToDropdown(false);
-    setToSelected(true);
     setToOptions([]);
   };
 
@@ -272,10 +277,6 @@ const FlightsPage = () => {
   const handleFromBlur = () => {
     // Delay to allow click events to fire first
     setTimeout(() => {
-      if (!fromSelected && filters.from.trim() && !/^[A-Z]{3}$/.test(filters.from.trim())) {
-        // Clear invalid input
-        setFilters((prev) => ({ ...prev, from: '' }));
-      }
       setShowFromDropdown(false);
     }, 200);
   };
@@ -284,10 +285,6 @@ const FlightsPage = () => {
   const handleToBlur = () => {
     // Delay to allow click events to fire first
     setTimeout(() => {
-      if (!toSelected && filters.to.trim() && !/^[A-Z]{3}$/.test(filters.to.trim())) {
-        // Clear invalid input
-        setFilters((prev) => ({ ...prev, to: '' }));
-      }
       setShowToDropdown(false);
     }, 200);
   };
@@ -757,8 +754,6 @@ const FlightsPage = () => {
   const swapLocations = () => {
     const newFilters = { ...filters, from: filters.to, to: filters.from };
     setFilters(newFilters);
-    setFromSelected(false);
-    setToSelected(false);
     setFromOptions([]);
     setToOptions([]);
     setShowFromDropdown(false);
@@ -781,7 +776,7 @@ const FlightsPage = () => {
   return (
     <div className="min-h-screen bg-base-100">
       {/* Compact Sticky Header */}
-      <div className="bg-base-100 text-base-content border-b border-base-300 shadow-sm sticky top-0 z-40">
+      <div className="bg-base-100 text-base-content border-b border-base-300 shadow-sm sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <button
@@ -932,8 +927,8 @@ const FlightsPage = () => {
             <div className="relative" ref={fromDropdownRef}>
               <input
                 type="text"
-                placeholder="From (e.g., LAX)"
-                className="input input-sm input-bordered w-32"
+                placeholder="From (city or airport)"
+                className="input input-sm input-bordered w-56"
                 value={filters.from}
                 onChange={handleFromInputChange}
                 onFocus={() => {
@@ -944,7 +939,6 @@ const FlightsPage = () => {
                 }}
                 onBlur={handleFromBlur}
                 autoComplete="off"
-                maxLength={3}
               />
               {showFromDropdown && fromOptions.length > 0 && (
                 <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-64 max-h-72 overflow-y-auto z-50">
@@ -982,8 +976,8 @@ const FlightsPage = () => {
             <div className="relative" ref={toDropdownRef}>
               <input
                 type="text"
-                placeholder="To (e.g., SFO)"
-                className="input input-sm input-bordered w-32"
+                placeholder="To (city or airport)"
+                className="input input-sm input-bordered w-56"
                 value={filters.to}
                 onChange={handleToInputChange}
                 onFocus={() => {
@@ -994,7 +988,6 @@ const FlightsPage = () => {
                 }}
                 onBlur={handleToBlur}
                 autoComplete="off"
-                maxLength={3}
               />
               {showToDropdown && toOptions.length > 0 && (
                 <div className="absolute top-full left-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-xl w-64 max-h-72 overflow-y-auto z-50">

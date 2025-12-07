@@ -46,7 +46,7 @@ const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-base-100 text-base-content">
-      <div className="navbar bg-base-100 border-b border-base-300 shadow-sm">
+      <div className="navbar bg-base-100 border-b border-base-300 shadow-sm sticky top-0 z-50">
         <div className="navbar-start">
           <div className="dropdown">
             <div tabIndex={0} role="button" className="btn btn-ghost lg:hidden">
