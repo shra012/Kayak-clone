@@ -44,22 +44,22 @@ const AgentChat = ({
 
   const quickActions = {
     flights: [
-      'Find flights from SFO to NYC on December 15',
-      'Show me weekend trips under $500',
-      'Compare business class options to London',
-      'Help me book a round-trip flight'
+      'Find flights from SFO to JFK on December 15',
+      'Show me flights from LAX to ATL on December 20',
+      'Find flights from BOS to LAX on December 22',
+      'Direct flights from PHX to SEA on December 16'
     ],
     hotels: [
-      'Find hotels in Paris with a pool',
-      'Budget-friendly stay near Times Square',
-      '5-star resort in Maldives for honeymoon',
-      'Pet-friendly hotels in San Diego'
+      'Find hotels in New York from Dec 15-17',
+      'Show me hotels in Miami from Dec 20-25',
+      'Budget-friendly hotels in Boston from Dec 15-17',
+      'Pet-friendly hotels in Philadelphia from Dec 20-22'
     ],
     cars: [
-      'Rent an SUV in Los Angeles for a week',
-      'Compact car for weekend getaway',
-      'Luxury car rental for business meeting',
-      'One-way rental from SF to LA'
+      'Rent an SUV in New York from Dec 15-20',
+      'Economy car in Boston from Dec 22-25',
+      'Luxury car rental in Miami from Dec 20-27',
+      'Compact car in Philadelphia from Dec 15-18'
     ]
   };
 

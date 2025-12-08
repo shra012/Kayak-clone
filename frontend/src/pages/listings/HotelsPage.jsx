@@ -455,10 +455,10 @@ const HotelsPage = () => {
   ].join(' ');
 
   const agentPromptSuggestions = [
-    'Find hotels in New York for 2 nights',
-    'Show me 5-star hotels in Miami',
-    'Hotels near downtown Austin',
-    'Budget hotels in San Francisco',
+    { label: 'New York hotels', text: 'Find hotels in New York from Dec 15-17' },
+    { label: 'Miami stays', text: 'Show me hotels in Miami from Dec 20-25' },
+    { label: 'Boston budget', text: 'Budget-friendly hotels in Boston from Dec 15-17' },
+    { label: 'Philly pets', text: 'Pet-friendly hotels in Philadelphia from Dec 20-22' },
   ];
 
   const handleAgentAssistantResponse = (agentReply) => {

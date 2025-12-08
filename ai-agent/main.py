@@ -397,6 +397,7 @@ class ChatSessionRequest(BaseModel):
     user_id: Optional[str] = Field(default="anonymous", description="User ID (optional; defaults to 'anonymous')")
     initial_message: Optional[str] = Field(None, description="Initial user message")
     chat_mode: Optional[str] = Field(None, description="Chat mode: None (default booking agent) or 'booking_chat' (floating chat agent)")
+    flow_type: Optional[str] = Field(None, description="Flow type: 'flights', 'hotels', 'cars' - sets the intent_type context")
 
 class ChatSessionResponse(BaseModel):
     session_id: str
@@ -546,6 +547,16 @@ async def create_chat_session(request: ChatSessionRequest):
     if request.chat_mode:
         context["chat_mode"] = request.chat_mode
     
+    # Set intent_type from flow_type if provided
+    if request.flow_type:
+        # Map plural flow_type to singular intent_type
+        flow_to_intent = {
+            "flights": "flight",
+            "hotels": "hotel",
+            "cars": "car"
+        }
+        context["intent_type"] = flow_to_intent.get(request.flow_type, request.flow_type.rstrip('s'))
+    
     if request.initial_message:
         messages.append(ChatMessage(role="user", content=request.initial_message))
         # Parse intent
@@ -660,7 +671,13 @@ async def send_message(session_id: str, request: ChatMessageRequest):
     ])
     
     # Continue travel planning if we already have intent_type from previous messages
-    in_travel_flow = context.get("intent_type") is not None
+    # OR if the intent parser detected any travel-related information (dates, locations, etc.)
+    in_travel_flow = (
+        context.get("intent_type") is not None or
+        context.get("check_in") is not None or
+        context.get("origin") is not None or
+        context.get("destination") is not None
+    )
     
     # For travel intent, check if we have enough info before querying
     search_params = None
@@ -777,6 +794,74 @@ async def send_message(session_id: str, request: ChatMessageRequest):
                         })
                 else:
                     ai_response = "I couldn't find any hotels matching your criteria."
+            
+            elif intent_type == "car":
+                # Query MongoDB directly for cars
+                # For cars, the location could be in destination or origin
+                destination = context.get("destination") or context.get("origin")
+                
+                # Handle city names (convert "New York" to just the city name for MongoDB)
+                # MongoDB has exact city names, so we need to match them
+                city_mapping = {
+                    "New York": "New York",
+                    "NYC": "New York",
+                    "JFK": "New York",
+                    "Boston": "Boston",
+                    "BOS": "Boston",
+                    "Miami": "Miami",
+                    "MIA": "Miami",
+                    "Philadelphia": "Philadelphia",
+                    "Chicago": "Chicago",
+                    "ORD": "Chicago",
+                    "Los Angeles": "Los Angeles",
+                    "LAX": "Los Angeles",
+                    "San Francisco": "San Francisco",
+                    "SFO": "San Francisco"
+                }
+                city = city_mapping.get(destination, destination)
+                
+                matching_cars = await search_cars_mongo(
+                    city=city,
+                    limit=20
+                )
+                
+                if matching_cars:
+                    date_context = ""
+                    check_in = context.get('check_in')
+                    check_out = context.get('check_out')
+                    if check_in and check_out:
+                        date_context = f" from {check_in} to {check_out}"
+                    
+                    prices = [c.get("pricePerDay", 0) for c in matching_cars if c.get("pricePerDay")]
+                    ai_response = f"Found {len(matching_cars)} rental car{'s' if len(matching_cars) > 1 else ''} in {city}{date_context}. Prices range from ${min(prices):.0f} to ${max(prices):.0f}/day. Check the results →"
+                    
+                    # Convert MongoDB car docs to bundle format
+                    bundle_data = []
+                    for car in matching_cars:
+                        bundle_data.append({
+                            "type": "car",
+                            "deal": {
+                                "deal_id": car.get("id") or str(car.get("_id")),
+                                "deal_type": "car",
+                                "destination": car.get("city"),
+                                "price": car.get("pricePerDay"),
+                                "currency": "USD",
+                                "availability": car.get("available", True),
+                                "deal_metadata": {
+                                    "city": car.get("city"),
+                                    "vendor": car.get("vendor"),
+                                    "type": car.get("type"),
+                                    "seats": car.get("seats"),
+                                    "transmission": car.get("transmission"),
+                                    "features": car.get("features", []),
+                                    "pickup_date": check_in,
+                                    "dropoff_date": check_out
+                                },
+                                "tags": [car.get("type"), car.get("transmission")]
+                            }
+                        })
+                else:
+                    ai_response = "I couldn't find any rental cars matching your criteria."
             
             else:
                 # Build bundles for multi-component trips

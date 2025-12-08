@@ -792,9 +792,10 @@ const FlightsPage = ({ forceAgentMode = false }) => {
   };
 
   const agentPromptSuggestions = [
-    { label: 'Cheapest week', text: `Find the cheapest week to fly from ${filters.from || 'SFO'} to ${filters.to || 'JFK'} this month.` },
-    { label: 'Short layovers', text: `Show flights from ${filters.from || 'SFO'} to ${filters.to || 'JFK'} with short layovers only.` },
-    { label: 'Bags included', text: 'List options that include a carry-on and checked bag without extra fees.' },
+    { label: 'SFO to JFK', text: 'Find flights from SFO to JFK on December 15' },
+    { label: 'LAX to ATL', text: 'Show me flights from LAX to ATL on December 20' },
+    { label: 'BOS to LAX', text: 'Find flights from BOS to LAX on December 22' },
+    { label: 'Direct flights', text: `Direct flights from ${filters.from || 'PHX'} to ${filters.to || 'SEA'} on December 16` },
   ];
 
   const navigateAgentTo = (mode) => {

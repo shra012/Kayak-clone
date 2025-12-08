@@ -225,3 +225,64 @@ class BundleBuilder:
         # Sort by fit score and return top results
         bundles.sort(key=lambda b: b.fit_score, reverse=True)
         return bundles[:max_results]
+    
+    @staticmethod
+    def build_car_results(
+        cars: List[Deal],
+        user_constraints: Dict[str, Any],
+        max_results: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Build car rental results from MongoDB deals
+        
+        Args:
+            cars: List of car rental deals from MongoDB
+            user_constraints: User preferences (budget, type, city, etc.)
+            max_results: Maximum number of cars to return
+        
+        Returns:
+            List of car deal dictionaries formatted for response
+        """
+        car_results = []
+        user_budget = user_constraints.get("budget", float('inf'))
+        preferred_type = user_constraints.get("car_type", "").lower()
+        
+        # Filter and score cars
+        for car in cars:
+            # Skip if over budget
+            if car.price > user_budget:
+                continue
+            
+            # Calculate score based on preferences
+            score = 50.0  # Base score
+            
+            # Price scoring (better prices = higher score)
+            if car.price < user_budget * 0.7:
+                score += 30
+            elif car.price < user_budget * 0.85:
+                score += 20
+            elif car.price < user_budget * 1.0:
+                score += 10
+            
+            # Type matching
+            car_type = car.deal_metadata.get("type", "").lower()
+            if preferred_type and preferred_type in car_type:
+                score += 20
+            
+            # Add tags for features
+            tags = car.tags or []
+            if "GPS" in tags or "gps" in car.deal_metadata.get("features", []):
+                score += 5
+            if "4WD" in tags or "4wd" in car.deal_metadata.get("features", []):
+                score += 5
+            
+            car_results.append({
+                "deal": car,
+                "score": score
+            })
+        
+        # Sort by score
+        car_results.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Return top results
+        return car_results[:max_results]
