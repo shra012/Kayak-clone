@@ -1,206 +1,138 @@
 """
-Natural Language Understanding for user intent parsing
+Natural Language Understanding for user intent parsing using LLM
 """
 
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+from datetime import datetime
 import re
+import os
+from openai import OpenAI
+import json
 
 
 class IntentParser:
-    """Parses user intent from natural language"""
+    """Parses user intent from natural language using OpenAI"""
     
-    @staticmethod
-    def parse_travel_request(message: str, session_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def __init__(self):
+        """Initialize OpenAI client"""
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.model = "gpt-4o-mini"  # Fast and cost-effective
+    
+    def parse_travel_request(self, message: str, session_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Parse user travel request from natural language
+        Parse user travel request from natural language using LLM
         Example: "I've got Oct 25–27, SFO to anywhere warm, total budget $1,000 for two"
         """
-        message_lower = message.lower()
         constraints = session_context.copy() if session_context else {}
+        # Build context string from session
+        context_str = ""
+        if session_context:
+            context_parts = []
+            if session_context.get("intent_type"):
+                context_parts.append(f"Looking for: {session_context['intent_type']}")
+            if session_context.get("origin"):
+                context_parts.append(f"From: {session_context['origin']}")
+            if session_context.get("destination"):
+                context_parts.append(f"To: {session_context['destination']}")
+            if session_context.get("check_in"):
+                context_parts.append(f"Departure: {session_context['check_in']}")
+            if session_context.get("check_out"):
+                context_parts.append(f"Return: {session_context['check_out']}")
+            if context_parts:
+                context_str = "Previous conversation context:\n" + "\n".join(context_parts) + "\n\n"
         
-        # Parse dates
-        dates = IntentParser._parse_dates(message)
-        if dates:
-            constraints.update(dates)
+        # Create the prompt for extraction
+        system_prompt = """You are a travel booking assistant that extracts structured information from user messages.
+
+Extract the following information from the user's message:
+- intent_type: "flight", "hotel", "car", or "bundle" (infer from context)
+- origin: Airport code or city name (for flights/bundles only)
+- destination: Airport code or city name (for flights, hotels, cars - the place they're going to or staying in)
+- check_in: Departure date or check-in date in ISO format (YYYY-MM-DD)
+- check_out: Return date or check-out date in ISO format (YYYY-MM-DD) - optional for one-way trips
+- trip_type: "one-way", "round-trip", or "multi-city"
+- travelers: Number of people traveling
+- budget: Total budget amount in USD (number only)
+- amenities: List of amenities/preferences (e.g., ["Pet-friendly", "Breakfast"])
+- prefer_direct: Boolean - prefers non-stop flights
+- avoid_redeye: Boolean - wants to avoid red-eye flights
+- weekend: Boolean - prefers weekend travel
+
+Current date is {current_date}.
+
+For dates:
+- If only month/day given, assume current year (or next year if date has passed)
+- Accept formats like "Dec 15", "December 15", "12/15", "on December 15"
+- For ranges: "Dec 15-20", "from Dec 15 to Dec 20"
+- If user says "round-trip" but no return date, note needs_return_date: true
+
+For locations:
+- Convert city names to airport codes when obvious (e.g., "San Francisco" -> "SFO")
+- Accept both 3-letter codes and full names
+- Handle phrases like "from LAX to NYC"
+
+For answers to previous questions:
+- If user just answers with a code/city/date, fill in the missing field from context
+- Example: If asking for destination and user says "NYC", set destination to "NYC"
+
+Return ONLY valid JSON with extracted fields. Omit fields that aren't mentioned or can't be inferred.""".format(
+            current_date=datetime.now().strftime("%B %d, %Y")
+        )
         
-        # Parse origin
-        origin = IntentParser._parse_origin(message)
-        if origin:
-            constraints["origin"] = origin
+        user_prompt = context_str + f"User message: {message}\n\nExtract travel information as JSON:"
         
-        # Parse destination
-        destination = IntentParser._parse_destination(message)
-        if destination:
-            constraints["destination"] = destination
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1,  # Low temperature for consistent extraction
+                max_tokens=500
+            )
+            
+            extracted = json.loads(response.choices[0].message.content)
+            
+            # Merge with existing constraints, preferring new values
+            for key, value in extracted.items():
+                if value is not None and value != "":
+                    constraints[key] = value
+            
+            # Post-processing: normalize dates to ISO format without time
+            if constraints.get("check_in") and "T" in str(constraints["check_in"]):
+                constraints["check_in"] = constraints["check_in"].split("T")[0]
+            if constraints.get("check_out") and "T" in str(constraints["check_out"]):
+                constraints["check_out"] = constraints["check_out"].split("T")[0]
+            
+            return constraints
+            
+        except Exception as e:
+            print(f"LLM parsing failed, falling back to regex: {e}")
+            # Fallback to minimal regex parsing
+            return self._parse_with_regex(message, constraints)
+    
+    def _parse_with_regex(self, message: str, constraints: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Minimal fallback parsing - just handles simple airport codes
+        The LLM should handle everything else
+        """
+        message_stripped = message.strip()
         
-        # Parse budget
-        budget = IntentParser._parse_budget(message)
-        if budget:
-            constraints["budget"] = budget
+        # Only handle the simplest case: user answers with just an airport code
+        if re.match(r"^[A-Z]{3}$", message_stripped):
+            if not constraints.get("origin"):
+                constraints["origin"] = message_stripped
+                return constraints
+            elif not constraints.get("destination"):
+                constraints["destination"] = message_stripped
+                return constraints
         
-        # Parse number of travelers
-        travelers = IntentParser._parse_travelers(message)
-        if travelers:
-            constraints["travelers"] = travelers
-        
-        # Parse amenities/constraints
-        amenities = IntentParser._parse_amenities(message)
-        if amenities:
-            constraints["amenities"] = amenities
-        
-        # Parse preferences
-        preferences = IntentParser._parse_preferences(message)
-        constraints.update(preferences)
-        
+        # For everything else, return what we have and let clarification handle it
         return constraints
     
-    @staticmethod
-    def _parse_dates(text: str) -> Optional[Dict[str, Any]]:
-        """Parse dates from text"""
-        # Simple date patterns
-        month_patterns = {
-            "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-            "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
-        }
-        
-        # Look for month + day patterns
-        for month_name, month_num in month_patterns.items():
-            pattern = rf"{month_name}\s+(\d{{1,2}})[\s–-]+(\d{{1,2}})"
-            match = re.search(pattern, text.lower())
-            if match:
-                start_day = int(match.group(1))
-                end_day = int(match.group(2))
-                year = datetime.now().year
-                if month_num < datetime.now().month:
-                    year += 1
-                return {
-                    "check_in": datetime(year, month_num, start_day).isoformat(),
-                    "check_out": datetime(year, month_num, end_day).isoformat()
-                }
-        
-        return None
-    
-    @staticmethod
-    def _parse_origin(text: str) -> Optional[str]:
-        """Parse origin airport/city"""
-        # Look for "from X" or "X to" patterns
-        patterns = [
-            r"from\s+([A-Z]{3})",  # Airport code
-            r"from\s+([A-Z][a-z]+)",  # City name
-            r"([A-Z]{3})\s+to",  # Airport code before "to"
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1).upper()
-        
-        return None
-    
-    @staticmethod
-    def _parse_destination(text: str) -> Optional[str]:
-        """Parse destination"""
-        # Look for "to X" or "anywhere X" patterns
-        patterns = [
-            r"to\s+([A-Z]{3})",  # Airport code
-            r"to\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",  # City name
-            r"anywhere\s+([a-z]+)",  # "anywhere warm", "anywhere sunny"
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                dest = match.group(1)
-                # Handle "anywhere warm" -> return None (any destination)
-                if "warm" in dest or "sunny" in dest or "beach" in dest:
-                    return None  # Any warm destination
-                return dest.upper() if len(dest) == 3 else dest.title()
-        
-        return None
-    
-    @staticmethod
-    def _parse_budget(text: str) -> Optional[float]:
-        """Parse budget amount"""
-        # Look for "$X" or "budget $X" patterns
-        patterns = [
-            r"\$(\d{1,3}(?:,\d{3})*)",
-            r"budget\s+\$?(\d{1,3}(?:,\d{3})*)",
-            r"under\s+\$?(\d{1,3}(?:,\d{3})*)",
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, text)
-            if match:
-                amount_str = match.group(1).replace(",", "")
-                return float(amount_str)
-        
-        return None
-    
-    @staticmethod
-    def _parse_travelers(text: str) -> Optional[int]:
-        """Parse number of travelers"""
-        patterns = [
-            r"for\s+(\d+)\s+(?:people|travelers|guests|persons)",
-            r"(\d+)\s+(?:people|travelers|guests|persons)",
-            r"for\s+(\d+)",
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, text)
-            if match:
-                return int(match.group(1))
-        
-        return None
-    
-    @staticmethod
-    def _parse_amenities(text: str) -> List[str]:
-        """Parse amenities/constraints"""
-        amenities = []
-        text_lower = text.lower()
-        
-        amenity_map = {
-            "pet": "Pet-friendly",
-            "pet-friendly": "Pet-friendly",
-            "pets": "Pet-friendly",
-            "breakfast": "Breakfast",
-            "transit": "Near transit",
-            "public transport": "Near transit",
-            "metro": "Near transit",
-            "refundable": "Refundable",
-            "refund": "Refundable",
-            "cancellation": "Refundable",
-            "cancel": "Refundable",
-        }
-        
-        for keyword, tag in amenity_map.items():
-            if keyword in text_lower:
-                amenities.append(tag)
-        
-        return amenities
-    
-    @staticmethod
-    def _parse_preferences(text: str) -> Dict[str, Any]:
-        """Parse other preferences"""
-        preferences = {}
-        text_lower = text.lower()
-        
-        # Avoid red-eye flights
-        if "red-eye" in text_lower or "redeye" in text_lower:
-            preferences["avoid_redeye"] = True
-        
-        # Direct flights preference
-        if "direct" in text_lower or "nonstop" in text_lower:
-            preferences["prefer_direct"] = True
-        
-        # Weekend preference
-        if "weekend" in text_lower:
-            preferences["weekend"] = True
-        
-        return preferences
-    
-    @staticmethod
-    def needs_clarification(constraints: Dict[str, Any]) -> Optional[str]:
+    def needs_clarification(self, constraints: Dict[str, Any]) -> Optional[str]:
         """
         Determine if we need to ask a clarifying question
         Maximum of one clarifying question

@@ -3,7 +3,14 @@ import { FaComments, FaTimes, FaPaperPlane, FaSpinner } from 'react-icons/fa';
 import { useAuth } from '../../hooks/useAuth';
 import { aiAgentApi } from '../../services/api/ai-agent';
 
-const AIChatWidget = () => {
+const AIChatWidget = ({
+  title = 'AI Travel Concierge',
+  initialMessageOverride = null,
+  welcomeMessageOverride = null,
+  showDeals = true,
+  showBundles = true,
+  chatMode = null,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -11,6 +18,7 @@ const AIChatWidget = () => {
   const [sessionId, setSessionId] = useState(null);
   const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
+  const wsRef = useRef(null);
   const { isAuthenticated, user } = useAuth();
 
   // Scroll to bottom when messages change
@@ -25,17 +33,63 @@ const AIChatWidget = () => {
     }
   }, [isOpen]);
 
+  // Connect to WebSocket for real-time deal notifications
+  useEffect(() => {
+    if (sessionId && isOpen) {
+      const ws = new WebSocket(`ws://localhost:8000/events?session_id=${sessionId}`);
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected for deals');
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          // Handle deal notifications as assistant messages
+          if (data.type === 'message' && data.role === 'assistant') {
+            setMessages(prev => [...prev, {
+              role: 'assistant',
+              content: data.content,
+              deals: data.deals || []
+            }]);
+          }
+        } catch (err) {
+          console.error('WebSocket message error:', err);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+      };
+      
+      wsRef.current = ws;
+      
+      return () => {
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+      };
+    }
+  }, [sessionId, isOpen]);
+
   const initializeSession = async () => {
     try {
       setLoading(true);
       setError(null);
       
       // Create session with welcome message
-      const welcomeMessage = isAuthenticated
-        ? `Hello ${user?.firstName || 'there'}! I'm your travel concierge. I can help you with your bookings, find flights, hotels, and cars, or answer any questions. How can I assist you today?`
-        : 'Hello! I\'m your travel concierge. I can help you find flights, hotels, and cars. How can I assist you today?';
+      const welcomeMessage = welcomeMessageOverride || (
+        isAuthenticated
+          ? `Hello ${user?.firstName || 'there'}! I'm your travel concierge. I can help you with your bookings, find flights, hotels, and cars, or answer any questions. How can I assist you today?`
+          : 'Hello! I can help you find flights, hotels, and cars. How can I assist you today?'
+      );
 
-      const response = await aiAgentApi.createSession();
+      const response = await aiAgentApi.createSession(initialMessageOverride, chatMode);
       
       if (response.session_id) {
         setSessionId(response.session_id);
@@ -85,8 +139,8 @@ const AIChatWidget = () => {
         setMessages(prev => [...prev, { role: 'assistant', content: response.response }]);
       }
 
-      // Handle bundles if provided
-      if (response.bundles && response.bundles.length > 0) {
+      // Handle bundles if provided and enabled
+      if (showBundles && response.bundles && response.bundles.length > 0) {
         const bundleMessage = {
           role: 'assistant',
           content: `I found ${response.bundles.length} bundle(s) for you!`,
@@ -131,7 +185,7 @@ const AIChatWidget = () => {
           {/* Header */}
           <div className="bg-primary text-primary-content p-4 rounded-t-lg flex justify-between items-center">
             <div>
-              <h3 className="font-bold text-lg">AI Travel Concierge</h3>
+              <h3 className="font-bold text-lg">{title}</h3>
               {isAuthenticated && user && (
                 <p className="text-sm opacity-90">
                   {user.firstName} {user.lastName}
@@ -169,6 +223,47 @@ const AIChatWidget = () => {
                   }`}
                 >
                   <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  
+                  {/* Display deals if available */}
+                  {showDeals && msg.deals && msg.deals.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {msg.deals.map((deal, dealIndex) => (
+                        <div
+                          key={dealIndex}
+                          className="bg-base-100 rounded-lg p-3 text-sm border border-primary/20 hover:border-primary/50 transition-colors"
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="font-semibold text-primary">
+                              {deal.deal_type === 'flight' && 'Flight'}
+                              {deal.deal_type === 'hotel' && 'Hotel'}
+                              {deal.deal_type === 'car' && 'Car Rental'}
+                            </span>
+                            {deal.is_limited && (
+                              <span className="badge badge-error badge-xs">Limited!</span>
+                            )}
+                          </div>
+                          <p className="text-xs opacity-75 mb-2">
+                            {deal.deal_type === 'flight' 
+                              ? `${deal.origin} to ${deal.destination}`
+                              : deal.destination}
+                          </p>
+                          <div className="flex justify-between items-center">
+                            <span className="text-lg font-bold">${deal.price}</span>
+                            {deal.avg_30d_price && (
+                              <span className="text-xs line-through opacity-50">
+                                ${deal.avg_30d_price}
+                              </span>
+                            )}
+                          </div>
+                          {deal.availability && (
+                            <p className="text-xs opacity-60 mt-1">
+                              {deal.availability} {deal.deal_type === 'flight' ? 'seats' : deal.deal_type === 'hotel' ? 'rooms' : 'cars'} available
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   
                   {/* Display bundles if available */}
                   {msg.bundles && msg.bundles.length > 0 && (
@@ -236,4 +331,3 @@ const AIChatWidget = () => {
 };
 
 export default AIChatWidget;
-

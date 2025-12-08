@@ -5,6 +5,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { toggleSidebar, setTheme } from "../../store/slices/uiSlice";
 import { FaBars, FaHotel, FaCar, FaHome, FaChartLine } from "react-icons/fa";
 import AnimatedIcon from "../common/AnimatedIcon";
+import BookingChatWidget from "../common/BookingChatWidget";
 
 const Layout = ({ children }) => {
   const { isAuthenticated, logout, isAdmin, user } = useAuth();
@@ -13,11 +14,6 @@ const Layout = ({ children }) => {
   const { theme, sidebarOpen } = useSelector((state) => state.ui);
   
   const isOwner = user?.profileType === 'owner';
-
-  // Debug: Log auth state changes
-  useEffect(() => {
-    console.log('Layout: Auth state changed', { isAuthenticated, user: user?.email, profileType: user?.profileType });
-  }, [isAuthenticated, user]);
 
   const handleLogout = () => {
     logout();
@@ -51,7 +47,7 @@ const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-base-100 text-base-content">
-      <div className="navbar bg-base-100 border-b border-base-300 shadow-sm">
+      <div className="navbar bg-base-100 border-b border-base-300 shadow-sm sticky top-0 z-50">
         <div className="navbar-start">
           <div className="dropdown">
             <div tabIndex={0} role="button" className="btn btn-ghost lg:hidden">
@@ -245,6 +241,19 @@ const Layout = ({ children }) => {
                   >
                     Payments
                   </NavLink>
+                  <NavLink 
+                    to="/analytics"
+                    className={({ isActive }) => 
+                      `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        isActive 
+                          ? 'bg-primary text-primary-content font-semibold' 
+                          : 'hover:bg-base-200'
+                      }`
+                    }
+                  >
+                    <FaChartLine className="w-4 h-4" />
+                    Analytics
+                  </NavLink>
                 </>
               )}
             </div>
@@ -279,7 +288,7 @@ const Layout = ({ children }) => {
               </button>
               <ul
                 tabIndex={0}
-                className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52 max-h-[80vh] overflow-y-auto"
+                className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
               >
                 <li className="menu-title">
                   <span className="text-xs font-normal text-base-content/60">
@@ -337,9 +346,12 @@ const Layout = ({ children }) => {
 
       <footer className="footer footer-center p-4 bg-base-200 text-base-content">
         <aside>
-          <p>© 2024 Kayak Simulation Platform. All rights reserved.</p>
+          <p> 2024 Kayak Simulation Platform. All rights reserved.</p>
         </aside>
       </footer>
+
+      {/* Floating bookings chat available on all screens */}
+      <BookingChatWidget />
     </div>
   );
 };

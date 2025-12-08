@@ -4,7 +4,7 @@ import { bookingsApi } from '../../services/api/bookings';
 import { reviewsApi } from '../../services/api/reviews';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
-import { FaPlane, FaBed, FaCar, FaArrowLeft, FaSpinner } from 'react-icons/fa';
+import { FaPlane, FaBed, FaCar, FaArrowLeft, FaSpinner, FaCreditCard } from 'react-icons/fa';
 
 const iconByType = {
   flight: FaPlane,
@@ -90,6 +90,17 @@ const BookingDetailPage = () => {
 
   const Icon = iconByType[booking?.bookingType] || FaPlane;
 
+  const handleContinueToPayment = () => {
+    if (!booking) return;
+    navigate('/payments', {
+      state: {
+        bookingId: booking.id,
+        amount: booking.price?.amount || 0,
+        currency: booking.price?.currency || 'USD',
+      },
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -155,19 +166,21 @@ const BookingDetailPage = () => {
                   {booking.itinerary.car.vendor} - {booking.itinerary.car.type}
                 </p>
               )}
-              {booking.metadata && Object.keys(booking.metadata).length > 0 && (
-                <pre className="bg-base-200 p-2 rounded text-xs overflow-x-auto">
-                  {JSON.stringify(booking.metadata, null, 2)}
-                </pre>
+              {booking.status === 'PENDING' && (
+                <div className="card-actions justify-end mt-4">
+                  <button className="btn btn-primary" onClick={handleContinueToPayment}>
+                    Continue to Payment <FaCreditCard className="ml-2" />
+                  </button>
+                </div>
               )}
             </div>
           </div>
         </div>
 
-        {(booking.status === 'COMPLETED' || booking.status === 'CONFIRMED') && (
+        {booking.status === 'COMPLETED' && (
           <div className="card bg-base-100 shadow-md border border-base-300">
             <div className="card-body space-y-3">
-              <h3 className="card-title">Leave a Review</h3>
+              <h3 className="card-title">Leave a review</h3>
               <form className="space-y-3" onSubmit={handleCreateReview}>
                 <div className="form-control">
                   <label className="label">

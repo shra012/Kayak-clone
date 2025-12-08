@@ -1,22 +1,21 @@
 services:
-  # MongoDB service removed - using MongoDB Atlas from .env file
-  # mongodb:
-  #   image: mongo:7.0
-  #   container_name: kayak-mongodb
-  #   restart: unless-stopped
-  #   ports:
-  #     - "27017:27017"
-  #   environment:
-  #     MONGO_INITDB_ROOT_USERNAME: root
-  #     MONGO_INITDB_ROOT_PASSWORD: password
-  #   volumes:
-  #     - mongodb_data:/data/db
-  #   healthcheck:
-  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 10s
+  mongodb:
+    image: mongo:7.0
+    container_name: kayak-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   backend:
     build:
@@ -26,16 +25,22 @@ services:
         - node:20-alpine
     container_name: kayak-backend
     restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      ai-agent:
+        condition: service_healthy
     ports:
       - "3000:3000"
     env_file:
       - ./backend/.env
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:-fallback-secret-change-me}
+      SESSION_SECRET: ${SESSION_SECRET:-fallback-session-secret-change-me}
       AI_AGENT_URL: ${AI_AGENT_URL:-http://ai-agent:8000}
-      JWT_SECRET: ${JWT_SECRET:-b43f4a193e86813cc7aa32ce4f83b447840b8c3f5a1dade416134d40ac4f3e6fd008783af612878efbd1ebdc0844a56171bdbd46efd4721f9fc4036c3320593c}
-      SESSION_SECRET: ${SESSION_SECRET:-ea087358888b1bcd38b05b73d545878c532cb9615617dd896863fc7088620cb056ba0c1f0b9276e2c871e60ddca1c27f7bde5e88427587bd756f293c47b0a376}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://root:password@mongodb:27017/kayak?authSource=admin}
     volumes:
       - ./backend/kafka:/app/kafka:ro
     healthcheck:
@@ -94,5 +99,5 @@ services:
       retries: 5
       start_period: 30s
 
-# volumes:
-#   mongodb_data:
+volumes:
+  mongodb_data:
