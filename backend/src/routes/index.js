@@ -22,7 +22,7 @@ router.use(requestId);
 
 router.use(`/${API_VERSION}/auth`, authRoutes);
 router.use(`/${API_VERSION}/users`, userRoutes);
-router.use(`/${API_VERSION}`, listingsRoutes);
+router.use(`/${API_VERSION}/listings`, listingsRoutes);
 router.use(`/${API_VERSION}/bookings`, bookingsRoutes);
 router.use(`/${API_VERSION}/payments`, paymentsRoutes);
 router.use(`/${API_VERSION}/admin`, adminRoutes);
