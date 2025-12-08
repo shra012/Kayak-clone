@@ -16,7 +16,7 @@ echo "Created session: $SESSION_ID"
 echo ""
 
 if [ -z "$SESSION_ID" ]; then
-    echo "❌ Failed to create session. Response:"
+    echo "Failed to create session. Response:"
     echo "$SESSION_RESPONSE"
     exit 1
 fi
@@ -37,7 +37,7 @@ test_prompt() {
     # Check if response contains results or clarification
     if echo "$response" | grep -q '"bundles"'; then
         count=$(echo "$response" | grep -o '"deal_id"' | wc -l)
-        echo "✅ WORKING - Returns $count results"
+        echo "WORKING - Returns $count results"
         # Extract response message
         agent_msg=$(echo "$response" | grep -o '"response":"[^"]*' | head -1 | cut -d'"' -f4)
         if [ ! -z "$agent_msg" ]; then
@@ -49,26 +49,26 @@ test_prompt() {
             echo "   First price: \$$price"
         fi
     elif echo "$response" | grep -q 'need_clarification'; then
-        echo "⚠️  CLARIFICATION - Needs more info"
+        echo "CLARIFICATION - Needs more info"
         clarification=$(echo "$response" | grep -o '"response":"[^"]*' | head -1 | cut -d'"' -f4)
         echo "   Agent asks: $clarification"
     else
-        echo "❌ UNEXPECTED - Check response"
+        echo "UNEXPECTED - Check response"
         echo "$response" | head -c 200
     fi
     echo ""
 }
 
-echo "🛫 FLIGHT SUGGESTIONS (All should return results)"
-echo "=================================================="
+echo "FLIGHT SUGGESTIONS (All should return results)"
+echo "================================================"
 test_prompt "Flights" "Find flights from SFO to JFK on December 15"
 test_prompt "Flights" "Show me flights from LAX to ATL on December 20"
 test_prompt "Flights" "Find flights from BOS to LAX on December 22"
 test_prompt "Flights" "Direct flights from PHX to SEA on December 16"
 
 echo ""
-echo "🏨 HOTEL SUGGESTIONS (All should return results)"
-echo "================================================="
+echo "HOTEL SUGGESTIONS (All should return results)"
+echo "================================================"
 test_prompt "Hotels" "Find hotels in New York from Dec 15-17"
 test_prompt "Hotels" "Show me hotels in Miami from Dec 20-25"
 test_prompt "Hotels" "Budget-friendly hotels in Boston from Dec 15-17"
