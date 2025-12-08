@@ -115,6 +115,7 @@ from langchain_agent import (
     is_mongo_question,
 )
 from deal_ingestor import DealIngestor
+from mongo_service import MongoService
 
 # SQLModel setup
 from sqlmodel import SQLModel, create_engine, Session, select, delete
@@ -235,6 +236,70 @@ SEARCH_KEYWORDS = [
 
 # Initialize LLM-based IntentParser
 intent_parser = IntentParser()
+
+# Initialize MongoDB service for direct queries
+mongo_service = MongoService()
+
+
+async def search_flights_mongo(origin: str = None, destination: str = None, depart_date: str = None, limit: int = 20) -> List[Dict[str, Any]]:
+    """Search flights directly from MongoDB"""
+    filters = {}
+    if origin:
+        filters["from"] = origin
+    if destination:
+        filters["to"] = destination
+    if depart_date:
+        filters["departDate"] = depart_date
+    
+    print(f"[MongoDB Flight Search] Filters: {filters}")
+    
+    results = await mongo_service.query(
+        collection="flights",
+        filters=filters,
+        sort=[["price", 1]],  # Sort by price ascending
+        limit=limit
+    )
+    
+    print(f"[MongoDB Flight Search] Found {len(results)} flights")
+    return results
+
+
+async def search_hotels_mongo(city: str = None, limit: int = 20) -> List[Dict[str, Any]]:
+    """Search hotels directly from MongoDB"""
+    filters = {}
+    if city:
+        filters["city"] = city
+    
+    print(f"[MongoDB Hotel Search] Filters: {filters}")
+    
+    results = await mongo_service.query(
+        collection="hotels",
+        filters=filters,
+        sort=[["pricePerNight", 1]],  # Sort by price ascending
+        limit=limit
+    )
+    
+    print(f"[MongoDB Hotel Search] Found {len(results)} hotels")
+    return results
+
+
+async def search_cars_mongo(city: str = None, limit: int = 20) -> List[Dict[str, Any]]:
+    """Search cars directly from MongoDB"""
+    filters = {}
+    if city:
+        filters["city"] = city
+    
+    print(f"[MongoDB Car Search] Filters: {filters}")
+    
+    results = await mongo_service.query(
+        collection="cars",
+        filters=filters,
+        sort=[["pricePerDay", 1]],  # Sort by price ascending
+        limit=limit
+    )
+    
+    print(f"[MongoDB Car Search] Found {len(results)} cars")
+    return results
 
 
 def looks_like_db_question(message: str) -> bool:
@@ -611,32 +676,105 @@ async def send_message(session_id: str, request: ChatMessageRequest):
             intent_type = context.get("intent_type")
             
             if intent_type == "flight":
-                # Return flight deals only
-                flights = [d for d in deal_cache.values() if d.deal_type == DealType.FLIGHT]
-                matching_flights = [f for f in flights 
-                                   if (not context.get("origin") or f.origin == context.get("origin"))
-                                   and (not context.get("destination") or f.destination == context.get("destination"))][:3]
+                # Query MongoDB directly for flights
+                origin = context.get("origin")
+                destination = context.get("destination")
+                depart_date = context.get("check_in")
+                
+                matching_flights = await search_flights_mongo(
+                    origin=origin,
+                    destination=destination,
+                    depart_date=depart_date,
+                    limit=20
+                )
                 
                 if matching_flights:
-                    date_context = f" on {context.get('check_in')}" if context.get('check_in') else ""
+                    date_context = f" on {depart_date}" if depart_date else ""
                     trip_type = context.get('trip_type', 'one-way')
-                    ai_response = f"Found {len(matching_flights)} {trip_type} flight{'s' if len(matching_flights) > 1 else ''} from {matching_flights[0].origin} to {matching_flights[0].destination}{date_context}. Prices range from ${min(f.price for f in matching_flights):.0f} to ${max(f.price for f in matching_flights):.0f}. Check the results →"
-                    bundle_data = [{"type": "flight", "deal": flight.dict()} for flight in matching_flights]
+                    prices = [f.get("price", 0) for f in matching_flights if f.get("price")]
+                    
+                    ai_response = f"Found {len(matching_flights)} {trip_type} flight{'s' if len(matching_flights) > 1 else ''} from {origin} to {destination}{date_context}. Prices range from ${min(prices):.0f} to ${max(prices):.0f}. Check the results →"
+                    
+                    # Convert MongoDB flight docs to bundle format
+                    bundle_data = []
+                    for flight in matching_flights:
+                        bundle_data.append({
+                            "type": "flight",
+                            "deal": {
+                                "deal_id": flight.get("id") or flight.get("_id"),
+                                "deal_type": "flight",
+                                "origin": flight.get("from"),
+                                "destination": flight.get("to"),
+                                "price": flight.get("price"),
+                                "currency": flight.get("currency", "USD"),
+                                "availability": flight.get("availableSeats"),
+                                "deal_metadata": {
+                                    "airline": flight.get("airline"),
+                                    "flight_number": flight.get("flightNumber"),
+                                    "depart_date": flight.get("departDate"),
+                                    "departure_time": flight.get("departureTime"),
+                                    "arrival_time": flight.get("arrivalTime"),
+                                    "duration_hours": flight.get("durationMinutes", 0) / 60,
+                                    "stops": flight.get("stops", 0),
+                                    "nonstop": flight.get("nonstop", False),
+                                    "class": flight.get("class", "economy"),
+                                    "trip_type": trip_type
+                                },
+                                "tags": []
+                            }
+                        })
+                        if flight.get("nonstop"):
+                            bundle_data[-1]["deal"]["tags"].append("Direct")
+                        if flight.get("isDeal"):
+                            bundle_data[-1]["deal"]["tags"].append("BestValue")
                 else:
                     ai_response = "I couldn't find any flights matching your criteria."
             
             elif intent_type == "hotel":
-                # Return hotel deals only
-                hotels = [d for d in deal_cache.values() if d.deal_type == DealType.HOTEL]
-                matching_hotels = [h for h in hotels 
-                                  if (not context.get("destination") or h.destination == context.get("destination"))][:3]
+                # Query MongoDB directly for hotels
+                destination = context.get("destination")
+                
+                matching_hotels = await search_hotels_mongo(
+                    city=destination,
+                    limit=20
+                )
                 
                 if matching_hotels:
                     date_context = ""
-                    if context.get('check_in') and context.get('check_out'):
-                        date_context = f" for {context.get('check_in')} to {context.get('check_out')}"
-                    ai_response = f"Found {len(matching_hotels)} hotel{'s' if len(matching_hotels) > 1 else ''} in {matching_hotels[0].destination}{date_context}. Prices range from ${min(h.price for h in matching_hotels):.0f} to ${max(h.price for h in matching_hotels):.0f}/night. Check the results →"
-                    bundle_data = [{"type": "hotel", "deal": hotel.dict()} for hotel in matching_hotels]
+                    check_in = context.get('check_in')
+                    check_out = context.get('check_out')
+                    if check_in and check_out:
+                        date_context = f" for {check_in} to {check_out}"
+                    
+                    prices = [h.get("pricePerNight", 0) for h in matching_hotels if h.get("pricePerNight")]
+                    ai_response = f"Found {len(matching_hotels)} hotel{'s' if len(matching_hotels) > 1 else ''} in {destination}{date_context}. Prices range from ${min(prices):.0f} to ${max(prices):.0f}/night. Check the results →"
+                    
+                    # Convert MongoDB hotel docs to bundle format
+                    bundle_data = []
+                    for hotel in matching_hotels:
+                        bundle_data.append({
+                            "type": "hotel",
+                            "deal": {
+                                "deal_id": hotel.get("id") or hotel.get("_id"),
+                                "deal_type": "hotel",
+                                "destination": hotel.get("city"),
+                                "price": hotel.get("pricePerNight"),
+                                "currency": "USD",
+                                "availability": hotel.get("availableRooms"),
+                                "deal_metadata": {
+                                    "name": hotel.get("name"),
+                                    "city": hotel.get("city"),
+                                    "state": hotel.get("state"),
+                                    "country": hotel.get("country"),
+                                    "neighbourhood": hotel.get("neighbourhood"),
+                                    "rating": hotel.get("rating"),
+                                    "amenities": hotel.get("amenities", []),
+                                    "check_in": check_in,
+                                    "check_out": check_out
+                                },
+                                "tags": hotel.get("amenities", [])[:3]  # First 3 amenities as tags
+                            }
+                        })
                 else:
                     ai_response = "I couldn't find any hotels matching your criteria."
             

@@ -118,7 +118,11 @@ const AgentChat = ({
                   : 'bg-base-200 text-base-content'
               }`}
             >
-              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              {message.element ? (
+                <div className="text-sm">{message.element}</div>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              )}
               {message.timestamp && (
                 <p className="text-xs opacity-60 mt-1">
                   {new Date(message.timestamp).toLocaleTimeString()}
