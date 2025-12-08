@@ -152,14 +152,15 @@ app.use(session({
   }
 }));
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: NODE_ENV === 'production' ? 100 : 10000, // 10000 requests per 15 min in dev, 100 in production
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api/', limiter);
+// Rate limiter disabled for development/testing
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: NODE_ENV === 'production' ? 100 : 10000, // 10000 requests per 15 min in dev, 100 in production
+//   message: 'Too many requests from this IP, please try again later.',
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
+// app.use('/api/', limiter);
 
 if (NODE_ENV === 'development') {
   app.use(morgan('dev'));

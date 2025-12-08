@@ -50,11 +50,11 @@ export const getKafkaClient = () => {
 
     if (sslCaPath && sslCertPath && sslKeyPath) {
       try {
-        // Resolve paths relative to backend root (one level up from src/config)
+        // Use absolute paths if they start with /, otherwise resolve relative to backend root
         const backendRoot = join(__dirname, '../..');
-        const caPath = join(backendRoot, sslCaPath);
-        const certPath = join(backendRoot, sslCertPath);
-        const keyPath = join(backendRoot, sslKeyPath);
+        const caPath = sslCaPath.startsWith('/') ? sslCaPath : join(backendRoot, sslCaPath);
+        const certPath = sslCertPath.startsWith('/') ? sslCertPath : join(backendRoot, sslCertPath);
+        const keyPath = sslKeyPath.startsWith('/') ? sslKeyPath : join(backendRoot, sslKeyPath);
 
         config.ssl = {
           ca: readFileSync(caPath, 'utf-8'),
