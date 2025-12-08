@@ -80,7 +80,7 @@ Get these from [Firebase Console](https://console.firebase.google.com/):
 ```env
 FIREBASE_PROJECT_ID=your-firebase-project-id
 FIREBASE_PRIVATE_KEY_ID=your-private-key-id
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nyour-private-key-here\n-----END PRIVATE KEY-----\n"
+FIREBASE_PRIVATE_KEY="your-firebase-private-key-here"
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
 FIREBASE_CLIENT_ID=your-client-id
 FIREBASE_STORAGE_BUCKET=your-project.appspot.com

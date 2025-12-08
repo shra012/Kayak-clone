@@ -43,7 +43,7 @@ SESSION_SECRET=<generate with: node scripts/generate-secrets.js>
 AI_AGENT_URL=http://localhost:8000
 CACHE_ENABLED=false
 FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIREBASE_PRIVATE_KEY="your-firebase-private-key-here"
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
 FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 ```
