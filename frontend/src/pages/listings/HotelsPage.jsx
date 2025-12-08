@@ -43,7 +43,10 @@ const MAX_CITY_SUGGESTIONS = 18;
 
 const mapHotelLocationToOption = (item) => {
   if (!item) return null;
-  const baseCity = item.city || item.name || '';
+  
+  // For location types: name is the city
+  // For property types: city field has the actual city, name is the property name
+  const baseCity = item.type === 'property' ? item.city : (item.name || item.city);
   if (!baseCity) return null;
 
   const regionParts = [];
@@ -270,7 +273,10 @@ const HotelsPage = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const newFilters = { ...filters, city: cityInput };
+    // Extract city name from input - if it contains comma, take last part before comma
+    // "Sunset Paradise Resort, Miami" -> search for the input as-is to match hotel name
+    const searchTerm = cityInput.trim();
+    const newFilters = { ...filters, city: searchTerm };
     setFilters(newFilters);
     setShowCityDropdown(false);
     loadHotels(1, newFilters);
@@ -308,9 +314,14 @@ const HotelsPage = () => {
   }, [cityInput, fetchCityOptions, popularCities]);
 
   const handleCitySelect = (cityOption) => {
+    // Extract the city from the option
     const selectedCity = cityOption?.city || cityOption?.name;
     if (!selectedCity) return;
+    
+    // For display, show the label, but for search use just the city name
     setCityInput(cityOption.label || selectedCity);
+    
+    // When searching, use only the city name, not the full display text
     const newFilters = { ...filters, city: selectedCity };
     setFilters(newFilters);
     setShowCityDropdown(false);
@@ -622,7 +633,7 @@ const HotelsPage = () => {
               className="btn btn-primary btn-sm btn-circle"
               disabled={loading}
             >
-              
+              🔍
             </button>
           </form>
           

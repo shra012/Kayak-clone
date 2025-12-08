@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { FaHotel, FaCar, FaChartLine, FaDollarSign, FaUsers, FaChartBar } from 'react-icons/fa';
 import { getHomePageStayImages } from '../../services/backgroundImages.service';
+import { ownerApi } from '../../services/api/owner';
 
 const OwnerDashboard = () => {
   useDocumentTitle('Owner Dashboard');
@@ -12,20 +13,20 @@ const OwnerDashboard = () => {
   // Get hotel/stay background images
   const stayImages = getHomePageStayImages();
 
-  // TODO: Replace with actual API calls when backend endpoints are ready
-  const { data: stats, isLoading } = useQuery({
+  const { data: dashboardData, isLoading } = useQuery({
     queryKey: ['owner-stats'],
     queryFn: async () => {
-      // Placeholder - replace with actual API call
-      return {
-        totalHotels: 0,
-        totalCars: 0,
-        totalBookings: 0,
-        totalRevenue: 0,
-        pendingApprovals: 0,
-      };
+      const response = await ownerApi.getDashboardStats();
+      return response.stats;
     },
   });
+
+  const stats = dashboardData || {
+    totalHotels: 0,
+    totalCars: 0,
+    totalBookings: 0,
+    totalRevenue: 0,
+  };
 
   if (isLoading) {
     return (
