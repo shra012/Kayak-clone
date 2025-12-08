@@ -666,7 +666,7 @@ const CarsPage = () => {
                 </div>
 
                 {/* Price & Sort Section */}
-                <div className="collapse collapse-arrow bg-base-200 mb-2">
+                <div className="collapse collapse-arrow bg-base-200 mb-2" style={{ overflow: 'visible' }}>
                   <input
                     type="checkbox"
                     checked={expandedFilterSections.priceSort}
@@ -675,7 +675,7 @@ const CarsPage = () => {
                   <div className="collapse-title text-sm font-semibold px-3 py-2 min-h-0">
                     💰 Price & Sort
                   </div>
-                  <div className="collapse-content px-3 pb-3 space-y-3">
+                  <div className="collapse-content px-3 pb-3 space-y-3" style={{ overflow: 'visible' }}>
                 {/* Price Range Filter */}
                     <div className="form-control">
                       <label className="label py-1">
@@ -718,7 +718,7 @@ const CarsPage = () => {
                       <label className="label py-1">
                         <span className="label-text text-xs">Sort By</span>
                   </label>
-                      <div className="dropdown dropdown-end w-full">
+                      <div className="dropdown dropdown-top dropdown-end w-full">
                         <label tabIndex={0} className="btn btn-sm btn-outline w-full justify-between">
                           <span className="flex items-center gap-2">
                             {filters.sort === 'price-asc' && <>💰 Lowest Price</>}
@@ -731,7 +731,7 @@ const CarsPage = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
                         </label>
-                        <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-64 p-2 shadow-lg border border-base-300">
+                        <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[9999] w-full p-2 shadow-lg border border-base-300 mb-2">
                           <li>
                             <a
                               onClick={() => {
@@ -832,9 +832,9 @@ const CarsPage = () => {
                 <h1 className="text-xl sm:text-2xl font-bold">
                 {pagination ? `${pagination.totalItems} Car${pagination.totalItems !== 1 ? 's' : ''} Found` : 'Search Results'}
               </h1>
-            </div>
+              </div>
               
-              {/* Sort Dropdown - Desktop */}
+              {/* Sort Dropdown - Always Visible */}
               <div className="dropdown dropdown-end">
                 <label tabIndex={0} className="btn btn-sm btn-outline">
                   <span className="flex items-center gap-2">
@@ -842,6 +842,7 @@ const CarsPage = () => {
                     {filters.sort === 'price-desc' && <>💸 Highest Price</>}
                     {filters.sort === 'seats-desc' && <>👥 Most Seats</>}
                     {filters.sort === 'vendor-asc' && <>🏢 Vendor A-Z</>}
+                    {!['price-asc', 'price-desc', 'seats-desc', 'vendor-asc'].includes(filters.sort) && <>Sort By</>}
                   </span>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
