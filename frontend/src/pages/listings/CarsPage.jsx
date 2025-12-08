@@ -587,50 +587,40 @@ const CarsPage = () => {
                                 </div>
                                 <button 
                                   className="btn btn-primary"
-                                  onClick={() => {
-                                    // Check if user is authenticated
-                                    if (!isAuthenticated) {
-                                      toast.showError('Please log in to continue with booking');
-                                      // Save booking data to sessionStorage to restore after login
-                                      const pickupDate = pickUpDate || searchData?.pickUp || new Date().toISOString().split('T')[0];
-                                      const dropoffDate = dropOffDate || searchData?.dropOff || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-                                      const pickupDateObj = new Date(pickupDate);
-                                      const dropoffDateObj = new Date(dropoffDate);
-                                      const days = Math.ceil((dropoffDateObj - pickupDateObj) / (1000 * 60 * 60 * 24)) || 1;
-
-                                      const bookingData = {
-                                        type: 'car',
-                                        car,
-                                        pickupDate,
-                                        pickupTime: pickUpTime || searchData?.pickUpTime || '12:00',
-                                        dropoffDate,
-                                        dropoffTime: dropOffTime || searchData?.dropOffTime || '12:00',
-                                        days,
-                                      };
-                                      sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
-                                      sessionStorage.setItem('returnPath', '/bookings');
-                                      navigate('/login');
-                                      return;
+                                  onClick={async () => {
+                                    // Track the click
+                                    try {
+                                      await listingsApi.trackClick({
+                                        listingId: car.id || car._id,
+                                        listingType: 'car',
+                                        action: 'click',
+                                        page: 'car-search',
+                                        metadata: {
+                                          carModel: car.model,
+                                          vendor: car.vendor,
+                                          city: car.city,
+                                          price: car.pricePerDay
+                                        }
+                                      });
+                                    } catch (error) {
+                                      console.error('Failed to track click:', error);
                                     }
 
-                                    // Calculate days between pickup and dropoff
+                                    // Navigate to car detail page
                                     const pickupDate = pickUpDate || searchData?.pickUp || new Date().toISOString().split('T')[0];
                                     const dropoffDate = dropOffDate || searchData?.dropOff || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-                                    const pickupDateObj = new Date(pickupDate);
-                                    const dropoffDateObj = new Date(dropoffDate);
-                                    const days = Math.ceil((dropoffDateObj - pickupDateObj) / (1000 * 60 * 60 * 24)) || 1;
 
-                                    const bookingData = {
-                                      type: 'car',
-                                      car,
-                                      pickupDate,
-                                      pickupTime: pickUpTime || searchData?.pickUpTime || '12:00',
-                                      dropoffDate,
-                                      dropoffTime: dropOffTime || searchData?.dropOffTime || '12:00',
-                                      days,
-                                    };
-
-                                    navigate('/bookings', { state: { bookingData } });
+                                    navigate(`/cars/${car.id || car._id}`, {
+                                      state: {
+                                        searchData: {
+                                          location: filters.location,
+                                          pickupDate,
+                                          dropoffDate,
+                                          pickupTime: pickUpTime || searchData?.pickUpTime || '12:00',
+                                          dropoffTime: dropOffTime || searchData?.dropOffTime || '12:00',
+                                        }
+                                      }
+                                    });
                                   }}
                                 >
                                   View Deal

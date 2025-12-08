@@ -610,8 +610,10 @@ const navigate = useNavigate();
   // Load hotel location options (cities and property names)
   const loadHotelLocationOptions = async (searchTerm) => {
     try {
-      const { items } = await listingsApi.searchHotelLocations(searchTerm, 10);
-      setHotelLocationOptions(items || []);
+      const result = await listingsApi.searchHotelLocations(searchTerm, 10);
+      // Handle both { items: [...] } and direct array response
+      const items = result.items || result || [];
+      setHotelLocationOptions(items);
     } catch (error) {
       console.error('Failed to load hotel locations', error);
       setHotelLocationOptions([]);

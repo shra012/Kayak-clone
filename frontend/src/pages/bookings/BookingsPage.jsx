@@ -5,9 +5,10 @@ import { usersApi } from '../../services/api/users';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
-import { FaPlane, FaBed, FaCar, FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaCreditCard, FaArrowRight } from 'react-icons/fa';
+import { FaPlane, FaBed, FaCar, FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaCreditCard, FaArrowRight, FaStar } from 'react-icons/fa';
 import { US_STATES, getStateCode } from '../../constants/usStates';
 import { formatPhoneForDisplay, formatUsPhoneInput, getE164UsPhone, isValidUsPhone } from '../../utils/phone';
+import apiClient from '../../config/api';
 
 const US_CITIES = [
   'New York City', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
@@ -28,6 +29,10 @@ const BookingsPage = () => {
   const [loading, setLoading] = useState(false);
   const [bookingData, setBookingData] = useState(null);
   const [existingBookings, setExistingBookings] = useState([]);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [selectedBookingForReview, setSelectedBookingForReview] = useState(null);
+  const [reviewData, setReviewData] = useState({ rating: 5, comment: '' });
+  const [submittingReview, setSubmittingReview] = useState(false);
   const [billingInfo, setBillingInfo] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -93,6 +98,63 @@ const BookingsPage = () => {
       toast.showError('Failed to load bookings');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenReviewModal = (booking) => {
+    setSelectedBookingForReview(booking);
+    setReviewData({ rating: 5, comment: '' });
+    setReviewModalOpen(true);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!selectedBookingForReview) return;
+    
+    if (!reviewData.comment.trim()) {
+      toast.showError('Please write a review comment');
+      return;
+    }
+
+    try {
+      setSubmittingReview(true);
+      
+      // Determine listing ID and type from booking
+      let listingId, listingType;
+      if (selectedBookingForReview.bookingType === 'hotel') {
+        listingId = selectedBookingForReview.itinerary?.hotelId;
+        listingType = 'hotel';
+      } else if (selectedBookingForReview.bookingType === 'car') {
+        listingId = selectedBookingForReview.itinerary?.carId;
+        listingType = 'car';
+      } else if (selectedBookingForReview.bookingType === 'flight') {
+        listingId = selectedBookingForReview.itinerary?.flightId;
+        listingType = 'flight';
+      }
+
+      if (!listingId) {
+        toast.showError('Cannot submit review: listing information missing');
+        return;
+      }
+
+      await apiClient.post('/reviews', {
+        listingId,
+        listingType,
+        rating: reviewData.rating,
+        comment: reviewData.comment,
+      });
+
+      toast.showSuccess('Review submitted successfully!');
+      setReviewModalOpen(false);
+      setSelectedBookingForReview(null);
+      setReviewData({ rating: 5, comment: '' });
+      
+      // Reload bookings to update review status
+      await loadBookings();
+    } catch (error) {
+      console.error('Error submitting review:', error);
+      toast.showError(error.response?.data?.message || 'Failed to submit review');
+    } finally {
+      setSubmittingReview(false);
     }
   };
 
@@ -508,12 +570,23 @@ const BookingsPage = () => {
                           <p className="text-2xl font-bold text-primary">
                             {booking.price?.currency || 'USD'} {booking.price?.amount?.toFixed(2) || '0.00'}
                           </p>
-                          <button
-                            className="btn btn-sm btn-ghost mt-2"
-                            onClick={() => navigate(`/bookings/${booking.id}`)}
-                          >
-                            View Details
-                          </button>
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              onClick={() => navigate(`/bookings/${booking.id}`)}
+                            >
+                              View Details
+                            </button>
+                            {booking.status === 'confirmed' && booking.timeline === 'past' && (
+                              <button
+                                className="btn btn-sm btn-primary"
+                                onClick={() => handleOpenReviewModal(booking)}
+                              >
+                                <FaStar className="w-3 h-3" />
+                                Write Review
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -523,6 +596,86 @@ const BookingsPage = () => {
             </div>
           )}
         </div>
+
+        {/* Review Modal */}
+        {reviewModalOpen && (
+          <div className="modal modal-open">
+            <div className="modal-box max-w-2xl">
+              <h3 className="font-bold text-lg mb-4">Write a Review</h3>
+              
+              {selectedBookingForReview && (
+                <div className="mb-4 p-4 bg-base-200 rounded-lg">
+                  <p className="font-semibold">
+                    {selectedBookingForReview.itinerary?.hotelName || 
+                     selectedBookingForReview.itinerary?.vendor ||
+                     'Your Booking'}
+                  </p>
+                  {selectedBookingForReview.itinerary?.city && (
+                    <p className="text-sm text-base-content/70">{selectedBookingForReview.itinerary.city}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Star Rating */}
+              <div className="form-control mb-4">
+                <label className="label">
+                  <span className="label-text font-semibold">Rating</span>
+                </label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewData({ ...reviewData, rating: star })}
+                      className={`text-3xl ${star <= reviewData.rating ? 'text-warning' : 'text-base-300'}`}
+                    >
+                      <FaStar />
+                    </button>
+                  ))}
+                  <span className="ml-2 self-center">{reviewData.rating} / 5</span>
+                </div>
+              </div>
+
+              {/* Review Comment */}
+              <div className="form-control mb-4">
+                <label className="label">
+                  <span className="label-text font-semibold">Your Review</span>
+                </label>
+                <textarea
+                  className="textarea textarea-bordered h-32"
+                  placeholder="Share your experience..."
+                  value={reviewData.comment}
+                  onChange={(e) => setReviewData({ ...reviewData, comment: e.target.value })}
+                  maxLength={1000}
+                />
+                <label className="label">
+                  <span className="label-text-alt">{reviewData.comment.length} / 1000 characters</span>
+                </label>
+              </div>
+
+              <div className="modal-action">
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setReviewModalOpen(false);
+                    setSelectedBookingForReview(null);
+                    setReviewData({ rating: 5, comment: '' });
+                  }}
+                  disabled={submittingReview}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSubmitReview}
+                  disabled={submittingReview || !reviewData.comment.trim()}
+                >
+                  {submittingReview ? 'Submitting...' : 'Submit Review'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

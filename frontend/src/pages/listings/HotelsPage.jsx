@@ -334,56 +334,39 @@ const HotelsPage = () => {
     loadHotels(newPage);
   };
 
-  const handleViewDeal = (hotel) => {
+  const handleViewDeal = async (hotel) => {
     console.log('=== View Deal clicked ===');
     console.log('Hotel:', hotel);
-    console.log('isAuthenticated:', isAuthenticated);
-    console.log('searchData:', searchData);
     
-    // Check if user is authenticated
-    if (!isAuthenticated) {
-      console.log('User not authenticated, redirecting to login');
-      toast.showError('Please log in to continue with booking');
-      // Save booking data to sessionStorage to restore after login
-      const checkIn = searchData?.checkIn || new Date().toISOString().split('T')[0];
-      const checkOut = searchData?.checkOut || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-      const checkInDate = new Date(checkIn);
-      const checkOutDate = new Date(checkOut);
-      const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
-
-      const bookingData = {
-        type: 'hotel',
-        hotel,
-        checkIn,
-        checkOut,
-        nights,
-        guests: searchData?.guests || 1,
-      };
-      sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
-      sessionStorage.setItem('returnPath', '/bookings');
-      navigate('/login');
-      return;
+    // Track the click analytics
+    try {
+      await listingsApi.trackClick({
+        listingId: hotel.id || hotel._id,
+        listingType: 'hotel',
+        action: 'click',
+        page: 'hotels',
+        metadata: {
+          hotelName: hotel.name,
+          city: hotel.city,
+          price: hotel.pricePerNight
+        }
+      });
+      console.log('Click tracked successfully');
+    } catch (error) {
+      console.error('Failed to track click:', error);
     }
-
-    // Calculate nights between check-in and check-out
-    // Use searchData first, then fallback to today/tomorrow
-    const checkIn = searchData?.checkIn || new Date().toISOString().split('T')[0];
-    const checkOut = searchData?.checkOut || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-    const checkInDate = new Date(checkIn);
-    const checkOutDate = new Date(checkOut);
-    const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
-
-    const bookingData = {
-      type: 'hotel',
-      hotel,
-      checkIn,
-      checkOut,
-      nights,
-      guests: searchData?.guests || 1,
-    };
-
-    console.log('Navigating to /bookings with bookingData:', bookingData);
-    navigate('/bookings', { state: { bookingData } });
+    
+    // Navigate to hotel detail page with search data
+    navigate(`/hotels/${hotel.id || hotel._id}`, {
+      state: {
+        searchData: {
+          checkIn: searchData?.checkIn,
+          checkOut: searchData?.checkOut,
+          guests: searchData?.guests || 1,
+          location: searchData?.location,
+        }
+      }
+    });
   };
 
   const handlePriceFilterApply = () => {
