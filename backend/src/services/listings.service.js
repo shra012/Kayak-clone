@@ -894,37 +894,28 @@ export const getCarLocations = async (query, limit = 10) => {
     const db = await getMongoDB();
     const collection = db.collection('cars');
     
-    const regex = new RegExp(query, 'i');
+    // Use distinct to get unique cities, then manually count
+    const cities = await collection.distinct('city', {
+      city: { $regex: query, $options: 'i' }
+    });
     
-    // Get cities with car counts using aggregation
-    const locations = await collection.aggregate([
-      {
-        $match: { city: regex }
-      },
-      {
-        $group: {
-          _id: '$city',
-          carCount: { $sum: 1 },
-          state: { $first: '$state' }
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          name: '$_id',
-          carCount: 1,
-          state: 1
-        }
-      },
-      {
-        $sort: { carCount: -1 }
-      },
-      {
-        $limit: limit
-      }
-    ]).toArray();
+    // Get car counts for each city
+    const locationsWithCounts = await Promise.all(
+      cities.slice(0, limit).map(async (city) => {
+        const count = await collection.countDocuments({ city });
+        const carDoc = await collection.findOne({ city });
+        return {
+          name: city,
+          carCount: count,
+          state: carDoc?.state || ''
+        };
+      })
+    );
     
-    return locations;
+    // Sort by car count descending
+    locationsWithCounts.sort((a, b) => b.carCount - a.carCount);
+    
+    return locationsWithCounts;
   } catch (error) {
     logger.error('Error in getCarLocations service:', error);
     throw error;
