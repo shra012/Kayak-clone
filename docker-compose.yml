@@ -32,6 +32,10 @@ services:
       - ./backend/.env
     environment:
       NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      AI_AGENT_URL: ${AI_AGENT_URL:-http://ai-agent:8000}
+      JWT_SECRET: ${JWT_SECRET:-b43f4a193e86813cc7aa32ce4f83b447840b8c3f5a1dade416134d40ac4f3e6fd008783af612878efbd1ebdc0844a56171bdbd46efd4721f9fc4036c3320593c}
+      SESSION_SECRET: ${SESSION_SECRET:-ea087358888b1bcd38b05b73d545878c532cb9615617dd896863fc7088620cb056ba0c1f0b9276e2c871e60ddca1c27f7bde5e88427587bd756f293c47b0a376}
     volumes:
       - ./backend/kafka:/app/kafka:ro
     healthcheck:
