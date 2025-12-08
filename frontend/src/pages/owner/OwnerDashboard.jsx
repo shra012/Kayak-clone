@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
-import { FaHotel, FaCar, FaChartLine, FaDollarSign, FaUsers, FaChartBar, FaCalendar, FaBell } from 'react-icons/fa';
+import { FaHotel, FaCar, FaChartLine, FaDollarSign, FaUsers, FaChartBar } from 'react-icons/fa';
 import { getHomePageStayImages } from '../../services/backgroundImages.service';
 import { ownerApi } from '../../services/api/owner';
 
@@ -20,19 +20,6 @@ const OwnerDashboard = () => {
       return response.stats;
     },
   });
-
-  // Fetch booking requests
-  const { data: bookingRequestsData } = useQuery({
-    queryKey: ['owner-booking-requests'],
-    queryFn: async () => {
-      const response = await ownerApi.getBookingRequests();
-      return response;
-    },
-    refetchInterval: 30000, // Refresh every 30 seconds
-  });
-
-  const pendingBookings = bookingRequestsData?.items?.filter(b => b.status?.toUpperCase() === 'PENDING') || [];
-  const pendingCount = pendingBookings.length;
 
   const stats = dashboardData || {
     totalHotels: 0,
@@ -142,22 +129,8 @@ const OwnerDashboard = () => {
           </div>
         </div>
 
-        {/* Pending Booking Requests Alert */}
-        {pendingCount > 0 && (
-          <div className="alert alert-warning shadow-lg mb-6">
-            <FaBell className="w-5 h-5" />
-            <div>
-              <h3 className="font-bold">New Booking Requests!</h3>
-              <div className="text-sm">You have {pendingCount} pending booking request{pendingCount !== 1 ? 's' : ''} waiting for approval</div>
-            </div>
-            <Link to="/owner/bookings" className="btn btn-sm btn-warning">
-              Review Now
-            </Link>
-          </div>
-        )}
-
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="card bg-base-100/95 backdrop-blur-sm shadow-xl">
             <div className="card-body">
               <h2 className="card-title">
@@ -193,26 +166,6 @@ const OwnerDashboard = () => {
                 </Link>
                 <Link to="/owner/cars/new" className="btn btn-outline">
                   Add New Car
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          <div className="card bg-base-100/95 backdrop-blur-sm shadow-xl">
-            <div className="card-body">
-              <h2 className="card-title">
-                <FaCalendar className="text-primary" />
-                Booking Requests
-                {pendingCount > 0 && (
-                  <span className="badge badge-warning badge-sm">{pendingCount}</span>
-                )}
-              </h2>
-              <p className="text-base-content/70 mb-4">
-                Review and manage booking requests from travelers for your properties.
-              </p>
-              <div className="card-actions">
-                <Link to="/owner/bookings" className="btn btn-primary">
-                  View Requests
                 </Link>
               </div>
             </div>

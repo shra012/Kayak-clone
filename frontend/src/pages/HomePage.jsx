@@ -647,8 +647,10 @@ const navigate = useNavigate();
   const loadCarLocations = async (value, setter) => {
     try {
       const trimmed = value.trim();
-      const { items } = await listingsApi.searchCarLocations(trimmed, 10);
-      setter(items || []);
+      const result = await listingsApi.searchCarLocations(trimmed, 10);
+      // Handle the response - result should be { items: [...] }
+      const items = result?.items || result || [];
+      setter(items);
     } catch (err) {
       console.error('Failed to load car locations', err);
       setter([]);
@@ -1753,7 +1755,7 @@ const navigate = useNavigate();
                       {showHotelLocationDropdown && hotelLocationOptions.length > 0 && (
                         <div className="absolute top-full left-0 mt-1 bg-base-100 border-2 border-primary/20 rounded-lg shadow-2xl w-full max-w-lg max-h-96 overflow-y-auto z-50">
                           <div className="sticky top-0 bg-base-200 px-4 py-2 text-xs font-semibold text-base-content/70 border-b border-base-300">
-                            {hotelLocationOptions.length} location{hotelLocationOptions.length === 1 ? '' : 's'} found
+                            {hotelLocationOptions.length} {hotelLocationOptions.length === 1 ? 'location' : 'locations'} found
                           </div>
                           {hotelLocationOptions.map((loc, index) => {
                             const isLocation = loc.type === 'location';
@@ -1777,15 +1779,15 @@ const navigate = useNavigate();
                               }}
                             >
                                 <div className="flex-1">
-                                  <div className="text-base font-medium text-base-content">{loc.displayName || loc.name}</div>
+                                  <div className="text-sm font-semibold text-base-content">{loc.displayName || loc.name}</div>
                                   {isProperty && loc.city && (
-                                    <div className="text-sm text-base-content/70 mt-1">{loc.city}{loc.state ? `, ${loc.state}` : ''}</div>
+                                    <div className="text-xs text-base-content/60 mt-0.5">{loc.city}{loc.state ? `, ${loc.state}` : ''}</div>
                                   )}
                                   {isLocation && loc.state && loc.country && (
-                                    <div className="text-sm text-base-content/70 mt-1">{loc.state}, {loc.country}</div>
+                                    <div className="text-xs text-base-content/60 mt-0.5">{loc.state}, {loc.country}</div>
                                   )}
                                 </div>
-                                <span className="badge badge-sm badge-primary badge-outline uppercase tracking-wide font-semibold">
+                                <span className="badge badge-xs badge-outline uppercase tracking-wide">
                                   {isProperty ? 'Property' : 'City'}
                                 </span>
                             </button>

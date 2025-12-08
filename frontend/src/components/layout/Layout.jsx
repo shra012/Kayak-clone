@@ -214,10 +214,7 @@ const Layout = ({ children }) => {
                     Analytics
                   </NavLink>
                 </>
-              ) : (
-                <>
-                </>
-              )}
+              ) : null}
             </div>
           )}
         </div>
