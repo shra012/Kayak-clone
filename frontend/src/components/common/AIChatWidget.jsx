@@ -36,7 +36,10 @@ const AIChatWidget = ({
   // Connect to WebSocket for real-time deal notifications
   useEffect(() => {
     if (sessionId && isOpen) {
-      const ws = new WebSocket(`ws://localhost:8000/events?session_id=${sessionId}`);
+      // Use current host and upgrade to WebSocket protocol
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws/events?session_id=${sessionId}`;
+      const ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
         console.log('WebSocket connected for deals');

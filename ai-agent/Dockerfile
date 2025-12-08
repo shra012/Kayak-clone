@@ -18,6 +18,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copy application code (this layer will be rebuilt only when code changes)
 COPY *.py ./
 
+# Copy data directory for deals feed
+COPY data/ ./data/
+
 # Expose port
 EXPOSE 8000
 

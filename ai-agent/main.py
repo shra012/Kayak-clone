@@ -176,6 +176,19 @@ class ConnectionManager:
             # Clean up disconnected connections
             for conn in disconnected:
                 self.disconnect(conn, session_id)
+    
+    async def broadcast_to_all(self, message: dict):
+        """Broadcast message to all connected WebSocket clients"""
+        disconnected = []
+        for session_id, connections in list(self.active_connections.items()):
+            for connection in list(connections):
+                try:
+                    await connection.send_json(message)
+                except:
+                    disconnected.append((connection, session_id))
+        # Clean up disconnected connections
+        for conn, sess_id in disconnected:
+            self.disconnect(conn, sess_id)
 
 manager = ConnectionManager()
 
@@ -483,6 +496,47 @@ class WebSocketEvent(BaseModel):
     event_type: str  # "deal_update", "watch_alert", "price_drop", "inventory_low"
     data: Dict[str, Any]
     timestamp: datetime
+
+class PushDealRequest(BaseModel):
+    deal_id: str = Field(..., description="Unique deal identifier")
+    deal_type: str = Field(..., description="Type: 'flight', 'hotel', or 'car'")
+    origin: Optional[str] = Field(None, description="Origin city/airport code (for flights/cars)")
+    destination: str = Field(..., description="Destination city/airport code")
+    city: Optional[str] = Field(None, description="City name (for hotels/cars)")
+    listing_id: Optional[str] = Field(None, description="External listing ID")
+    price: float = Field(..., description="Deal price")
+    currency: str = Field(default="USD", description="Currency code")
+    avg_30d_price: Optional[float] = Field(None, description="30-day average price for comparison")
+    availability: Optional[int] = Field(None, description="Number of available seats/rooms/cars")
+    is_limited: bool = Field(default=False, description="Whether this is a limited-time deal")
+    tags: Optional[str] = Field(None, description="Pipe-separated tags (e.g., 'Flash Sale|Refundable')")
+    airline: Optional[str] = Field(None, description="Airline name (for flights)")
+    stops: Optional[int] = Field(None, description="Number of stops (for flights)")
+    duration_hours: Optional[float] = Field(None, description="Flight duration in hours")
+    neighborhood: Optional[str] = Field(None, description="Neighborhood (for hotels)")
+    amenities: Optional[str] = Field(None, description="Pipe-separated amenities")
+    pet_friendly: Optional[bool] = Field(None, description="Pet-friendly accommodation")
+    breakfast_included: Optional[bool] = Field(None, description="Breakfast included")
+    near_transit: Optional[bool] = Field(None, description="Near public transit")
+    refundable: Optional[bool] = Field(None, description="Refundable booking")
+    transit_score: Optional[int] = Field(None, description="Transit accessibility score")
+    cancellation_policy: Optional[str] = Field(None, description="Cancellation policy name")
+    refund_deadline: Optional[str] = Field(None, description="Refund deadline ISO timestamp")
+    parking: Optional[str] = Field(None, description="Parking information")
+    price_history: Optional[str] = Field(None, description="Pipe-separated price history")
+    car_vendor: Optional[str] = Field(None, description="Car rental vendor")
+    car_type: Optional[str] = Field(None, description="Car type (sedan, SUV, etc.)")
+    transmission: Optional[str] = Field(None, description="Transmission type")
+    fuel: Optional[str] = Field(None, description="Fuel type")
+    limited_mileage: Optional[bool] = Field(None, description="Limited mileage plan")
+    pickup_location: Optional[str] = Field(None, description="Pickup location")
+
+class PushDealResponse(BaseModel):
+    success: bool
+    deal_id: str
+    message: str
+    deals_refreshed: int
+    broadcast_sent: bool
 
 # Startup event
 start_time = time.time()
@@ -1097,6 +1151,142 @@ async def detailed_health_check():
         memory_total_mb=memory.total / (1024 * 1024)
     )
 
+@app.get("/deals", tags=["Deals"])
+async def get_deals(
+    deal_type: Optional[str] = None,
+    destination: Optional[str] = None,
+    max_price: Optional[float] = None,
+    limit: Optional[int] = None
+):
+    """Get current list of active deals with optional filters"""
+    deals = list(deal_cache.values())
+    
+    # Apply filters
+    if deal_type:
+        try:
+            deal_type_enum = DealType(deal_type.lower())
+            deals = [d for d in deals if d.deal_type == deal_type_enum]
+        except ValueError:
+            pass
+    
+    if destination:
+        deals = [d for d in deals if d.destination and destination.upper() in d.destination.upper()]
+    
+    if max_price:
+        deals = [d for d in deals if d.price <= max_price]
+    
+    # Apply limit
+    if limit and limit > 0:
+        deals = deals[:limit]
+    
+    # Format deals for response
+    deals_data = []
+    for deal in deals:
+        deal_data = {
+            "deal_id": deal.deal_id,
+            "deal_type": deal.deal_type.value if hasattr(deal.deal_type, 'value') else str(deal.deal_type),
+            "origin": deal.origin,
+            "destination": deal.destination,
+            "listing_id": deal.listing_id,
+            "price": deal.price,
+            "currency": deal.currency,
+            "avg_30d_price": deal.avg_30d_price,
+            "availability": deal.availability,
+            "is_limited": deal.is_limited,
+            "tags": deal.tags or [],
+            "deal_score": deal.deal_score,
+            "status": deal.status.value if hasattr(deal.status, 'value') else str(deal.status) if deal.status else None,
+            "metadata": deal.deal_metadata or {}
+        }
+        deals_data.append(deal_data)
+    
+    return {
+        "total": len(deals_data),
+        "deals": deals_data,
+        "cache_size": len(deal_cache),
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.post("/deals/push", response_model=PushDealResponse, tags=["Deals"])
+async def push_deal(deal: PushDealRequest):
+    """Push a new deal to the CSV feed and broadcast to all WebSocket clients immediately"""
+    import csv
+    from pathlib import Path
+    
+    try:
+        # Build CSV row from request
+        csv_row = [
+            deal.deal_id, deal.deal_type, deal.origin or "", deal.destination, deal.city or "",
+            deal.listing_id or "", str(deal.price), deal.currency,
+            str(deal.avg_30d_price) if deal.avg_30d_price else "",
+            str(deal.availability) if deal.availability else "",
+            "true" if deal.is_limited else "false", deal.tags or "", "", "active", "",
+            deal.airline or "", str(deal.stops) if deal.stops is not None else "",
+            str(deal.duration_hours) if deal.duration_hours else "",
+            deal.neighborhood or "", deal.amenities or "",
+            "true" if deal.pet_friendly else "", "true" if deal.breakfast_included else "",
+            "true" if deal.near_transit else "", "true" if deal.refundable else "",
+            str(deal.transit_score) if deal.transit_score else "",
+            deal.cancellation_policy or "", deal.refund_deadline or "",
+            deal.parking or "", deal.price_history or "",
+            deal.car_vendor or "", deal.car_type or "", deal.transmission or "",
+            deal.fuel or "", "true" if deal.limited_mileage else "",
+            deal.pickup_location or ""
+        ]
+        
+        # Append to CSV file
+        base_dir = Path(__file__).resolve().parent / "data"
+        csv_path = base_dir / "deals_feed.csv"
+        
+        with open(csv_path, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(csv_row)
+        
+        # Immediately refresh deals from feed
+        deals_count = refresh_deals_from_feed(reason="push_api")
+        
+        # Get the newly added deal from cache
+        new_deal = deal_cache.get(deal.deal_id)
+        
+        # Broadcast to all connected WebSocket clients
+        if new_deal:
+            deal_type_str = new_deal.deal_type.value if hasattr(new_deal.deal_type, 'value') else str(new_deal.deal_type)
+            deal_data = {
+                "deal_id": new_deal.deal_id,
+                "deal_type": deal_type_str,
+                "origin": new_deal.origin,
+                "destination": new_deal.destination,
+                "price": new_deal.price,
+                "currency": new_deal.currency,
+                "avg_30d_price": new_deal.avg_30d_price,
+                "availability": new_deal.availability,
+                "is_limited": new_deal.is_limited,
+                "tags": new_deal.tags or []
+            }
+            
+            await manager.broadcast_to_all({
+                "type": "message",
+                "role": "assistant",
+                "content": f"🔥 Hot Deal Alert! {deal_type_str.title()} to {new_deal.destination} for ${new_deal.price}!",
+                "deals": [deal_data],
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            broadcast_sent = True
+        else:
+            broadcast_sent = False
+        
+        return PushDealResponse(
+            success=True,
+            deal_id=deal.deal_id,
+            message=f"Deal added to feed and broadcast to {len(manager.active_connections)} active sessions",
+            deals_refreshed=deals_count,
+            broadcast_sent=broadcast_sent
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to push deal: {str(e)}")
+
 @app.get("/health/ready", tags=["Health"])
 async def readiness_check():
     """Readiness probe"""
@@ -1154,6 +1344,11 @@ def update_deal_cache(deals: List[Deal]) -> None:
     """Replace in-memory cache with latest deals and push to Redis."""
     deal_cache.clear()
     for deal in deals:
+        # Ensure deal_type and status are enums
+        if isinstance(deal.deal_type, str):
+            deal.deal_type = DealType(deal.deal_type)
+        if isinstance(deal.status, str):
+            deal.status = DealStatus(deal.status)
         deal_cache[deal.deal_id] = deal
     cache_deals_in_redis(deals)
 

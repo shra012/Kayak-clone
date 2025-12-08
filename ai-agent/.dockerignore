@@ -34,7 +34,7 @@ env/
 *~
 
 # Database
-data/
+# data/  # Commented out - we need this for deals_feed.csv
 *.db
 *.sqlite
 *.sqlite3
