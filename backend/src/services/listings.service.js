@@ -528,9 +528,15 @@ export const searchHotels = async (query) => {
       amenities,
       page = 1,
       limit = 20,
-      sort = 'price',
-      order = 'asc',
+      sortBy,
+      sortOrder,
+      sort,
+      order,
     } = query;
+    
+    // Support both sortBy/sortOrder and sort/order parameter names
+    const sortField = sortBy || sort || 'pricePerNight';
+    const sortDirection = sortOrder || order || 'asc';
 
     // Try to get cached results - TEMPORARILY DISABLED FOR DEBUGGING
     // const cached = await getCachedSearchResults('hotel', query);
@@ -565,7 +571,7 @@ export const searchHotels = async (query) => {
 
     // Build sort
     const sortObj = {};
-    sortObj[sort] = order === 'desc' ? -1 : 1;
+    sortObj[sortField] = sortDirection === 'desc' ? -1 : 1;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     

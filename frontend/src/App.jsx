@@ -10,7 +10,9 @@ import UsersPage from './pages/users/UsersPage';
 import UserDetailPage from './pages/users/UserDetailPage';
 import FlightsPage from './pages/listings/FlightsPage';
 import HotelsPage from './pages/listings/HotelsPage';
+import HotelDetailPage from './pages/listings/HotelDetailPage';
 import CarsPage from './pages/listings/CarsPage';
+import CarDetailPage from './pages/listings/CarDetailPage';
 import BookingsPage from './pages/bookings/BookingsPage';
 import BookingDetailPage from './pages/bookings/BookingDetailPage';
 import PaymentsPage from './pages/payments/PaymentsPage';
@@ -55,7 +57,9 @@ function App() {
         <Route path="/flights" element={<FlightsPage />} />
         <Route path="/agent/flights" element={<AgentFlightsPage />} />
         <Route path="/hotels" element={<HotelsPage />} />
+        <Route path="/hotels/:hotelId" element={<HotelDetailPage />} />
         <Route path="/cars" element={<CarsPage />} />
+        <Route path="/cars/:carId" element={<CarDetailPage />} />
         <Route
           path="/bookings"
           element={
