@@ -999,7 +999,7 @@ const navigate = useNavigate();
                 </button>
                 <button
                   type="button"
-                  className={`btn btn-sm ${activeTab === 'cars' ? 'btn-primary' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4`}
+                  className={`btn btn-sm ${activeTab === 'cars' ? 'btn-primary shadow-md' : 'btn-ghost'} rounded-full flex items-center gap-2 px-4 transition-all ${activeTab === 'cars' ? 'scale-105 font-semibold' : ''}`}
                   onClick={() => setActiveTab('cars')}
                 >
                   <FaCar className="w-4 h-4" />
@@ -1896,12 +1896,12 @@ const navigate = useNavigate();
               )}
 
               {activeTab === 'cars' && (
-                <div className="bg-base-100 rounded-lg shadow-xl">
-                  {/* Main search row */}
-                  <div className="flex items-end gap-2 p-4">
+                <div className="bg-base-100 rounded-xl shadow-lg border border-base-200 p-4">
+                  {/* Main search row - compact and centered */}
+                  <div className="flex items-end gap-3">
                     {/* Pick-up location */}
                     <div className="flex-[2] min-w-0 relative">
-                      <label className="block text-xs font-medium text-base-content/70 mb-1">
+                      <label className="block text-xs font-medium text-base-content/70 mb-1.5">
                         Pickup Location
                       </label>
                       <input
@@ -1971,7 +1971,7 @@ const navigate = useNavigate();
 
                     {/* Pick-up date */}
                     <div className="flex-1 min-w-0">
-                      <label className="block text-xs font-medium text-base-content/70 mb-1">
+                      <label className="block text-xs font-medium text-base-content/70 mb-1.5">
                         Pickup Date
                       </label>
                       <input
@@ -1991,7 +1991,7 @@ const navigate = useNavigate();
 
                     {/* Pick-up time */}
                     <div className="flex-1 min-w-0">
-                      <label className="block text-xs font-medium text-base-content/70 mb-1">
+                      <label className="block text-xs font-medium text-base-content/70 mb-1.5">
                         Pickup Time
                       </label>
                       <input
@@ -2010,7 +2010,7 @@ const navigate = useNavigate();
 
                     {/* Drop-off date */}
                     <div className="flex-1 min-w-0">
-                      <label className="block text-xs font-medium text-base-content/70 mb-1">
+                      <label className="block text-xs font-medium text-base-content/70 mb-1.5">
                         Drop Date
                       </label>
                       <input
@@ -2030,7 +2030,7 @@ const navigate = useNavigate();
 
                     {/* Drop-off time */}
                     <div className="flex-1 min-w-0">
-                      <label className="block text-xs font-medium text-base-content/70 mb-1">
+                      <label className="block text-xs font-medium text-base-content/70 mb-1.5">
                         Drop Time
                       </label>
                       <input
@@ -2045,22 +2045,23 @@ const navigate = useNavigate();
                           setCarTimeError('');
                         }}
                       />
-                  </div>
+                    </div>
 
-                    {/* Search button */}
+                    {/* Search button - larger with icon */}
                     <div className="flex-shrink-0">
                       <button
                         onClick={handleSearch}
-                        className="btn btn-primary btn-circle"
+                        className="btn btn-primary btn-lg gap-2 px-6"
                       >
                         <FaSearch className="w-5 h-5" />
+                        <span className="hidden sm:inline">Search</span>
                       </button>
                     </div>
                   </div>
                   
                   {/* Error message - more prominent position */}
                   {carTimeError && (
-                    <div className="px-4 pb-4">
+                    <div className="mt-3">
                       <div className="alert alert-error text-sm py-3 shadow-lg">
                         <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
