@@ -116,21 +116,43 @@ const CarsPage = () => {
   const placeholderImage = 'https://via.placeholder.com/400x300/4A5568/FFFFFF?text=Car+Image';
 
   const resolveCarImageUrl = (rawUrl) => {
-    if (!rawUrl) return placeholderImage;
+    if (!rawUrl || rawUrl === 'null' || rawUrl === 'undefined') {
+      return placeholderImage;
+    }
 
     // If it's already a full URL, return it
-    if (rawUrl.startsWith('http')) {
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
       return rawUrl;
     }
 
     // If it's a Firebase storage path, construct the URL
     let path = rawUrl;
-    if (!path.startsWith('kayak/')) {
-      path = `kayak/cars/${path}`;
+    
+    // Handle different path formats
+    if (path.startsWith('kayak/product/cars/')) {
+      // Already in correct format
+    } else if (path.startsWith('kayak/cars/')) {
+      // Convert old format to new format
+      path = path.replace('kayak/cars/', 'kayak/product/cars/');
+    } else if (!path.startsWith('kayak/')) {
+      // Add kayak/product/cars/ prefix if not present
+      path = `kayak/product/cars/${path}`;
     }
 
     const encodedPath = encodeURIComponent(path);
     return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodedPath}?alt=media`;
+  };
+  
+  // Helper to get car image from multiple possible fields
+  const getCarImage = (car) => {
+    // Check all possible image fields in priority order
+    return car.imageStoragePath || 
+           car.imageUrl || 
+           car.images?.[0] || 
+           car.image ||
+           car.photo ||
+           car.photoUrl ||
+           null;
   };
 
   // Calculate rental duration in days
@@ -183,6 +205,17 @@ const CarsPage = () => {
       const data = await listingsApi.searchCars(params);
       
       let filteredResults = data.items || [];
+      
+      // Debug: Log first car to see what image fields are available
+      if (filteredResults.length > 0) {
+        console.log('Sample car data:', {
+          id: filteredResults[0].id,
+          imageStoragePath: filteredResults[0].imageStoragePath,
+          imageUrl: filteredResults[0].imageUrl,
+          images: filteredResults[0].images,
+          allKeys: Object.keys(filteredResults[0])
+        });
+      }
       
       // Apply seats filter on client side
       if (filtersToApply.seats && filtersToApply.seats !== 'any') {
@@ -1050,13 +1083,42 @@ const CarsPage = () => {
                               </div>
                             )}
                             <img
-                                src={resolveCarImageUrl(
-                                  car.imageStoragePath || car.imageUrl || car.images?.[0] || null
-                                )}
+                                src={(() => {
+                                  const imageSource = getCarImage(car);
+                                  const resolvedUrl = resolveCarImageUrl(imageSource);
+                                  if (!imageSource) {
+                                    console.warn(`Car ${car.id} (${car.vendor} ${car.type}) has no image fields:`, {
+                                      id: car.id,
+                                      imageStoragePath: car.imageStoragePath,
+                                      imageUrl: car.imageUrl,
+                                      images: car.images,
+                                      image: car.image,
+                                      photo: car.photo,
+                                      photoUrl: car.photoUrl,
+                                      allKeys: Object.keys(car).filter(k => k.toLowerCase().includes('image') || k.toLowerCase().includes('photo'))
+                                    });
+                                  } else {
+                                    console.log(`Car ${car.id} image source:`, imageSource, '→ resolved:', resolvedUrl);
+                                  }
+                                  return resolvedUrl;
+                                })()}
                                 alt={`${car.type} - ${car.vendor}`}
                                 className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded[car.id] ? 'opacity-100' : 'opacity-0'}`}
                                 onLoad={() => setImageLoaded(prev => ({ ...prev, [car.id]: true }))}
                                 onError={(e) => {
+                                  console.error(`Failed to load image for car ${car.id} (${car.vendor} ${car.type}):`, {
+                                    attemptedUrl: e.target.src,
+                                    imageSource: getCarImage(car),
+                                    car: { 
+                                      id: car.id,
+                                      imageStoragePath: car.imageStoragePath, 
+                                      imageUrl: car.imageUrl, 
+                                      images: car.images, 
+                                      image: car.image,
+                                      photo: car.photo,
+                                      photoUrl: car.photoUrl
+                                    }
+                                  });
                                   e.target.src = placeholderImage;
                                   setImageLoaded(prev => ({ ...prev, [car.id]: true }));
                                 }}

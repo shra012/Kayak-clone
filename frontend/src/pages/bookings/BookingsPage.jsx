@@ -24,14 +24,34 @@ const resolveHotelImageUrl = (rawUrl) => {
 };
 
 const resolveCarImageUrl = (rawUrl) => {
-  if (!rawUrl) return null;
-  if (rawUrl.startsWith('http')) return rawUrl;
+  if (!rawUrl || rawUrl === 'null' || rawUrl === 'undefined') return null;
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) return rawUrl;
+  
   let path = rawUrl;
-  if (!path.startsWith('kayak/')) {
-    path = `kayak/cars/${path}`;
+  // Handle different path formats
+  if (path.startsWith('kayak/product/cars/')) {
+    // Already in correct format
+  } else if (path.startsWith('kayak/cars/')) {
+    // Convert old format to new format
+    path = path.replace('kayak/cars/', 'kayak/product/cars/');
+  } else if (!path.startsWith('kayak/')) {
+    // Add kayak/product/cars/ prefix if not present
+    path = `kayak/product/cars/${path}`;
   }
+  
   const encodedPath = encodeURIComponent(path);
   return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodedPath}?alt=media`;
+};
+
+// Helper to get car image from multiple possible fields
+const getCarImage = (car) => {
+  return car?.imageStoragePath || 
+         car?.imageUrl || 
+         car?.images?.[0] || 
+         car?.image ||
+         car?.photo ||
+         car?.photoUrl ||
+         null;
 };
 
 const US_CITIES = [
@@ -777,9 +797,17 @@ const BookingsPage = () => {
                       <div className="w-full h-64 bg-base-200 rounded-lg overflow-hidden mb-4">
                         {(() => {
                           const car = bookingData.car;
-                          const imageUrl = car.imageStoragePath 
-                            ? resolveCarImageUrl(car.imageStoragePath)
-                            : car.imageUrl || car.images?.[0] || null;
+                          const imageSource = getCarImage(car);
+                          const imageUrl = imageSource ? resolveCarImageUrl(imageSource) : null;
+                          
+                          if (!imageSource) {
+                            console.warn(`Car booking image missing for ${car.vendor} ${car.type}:`, {
+                              imageStoragePath: car.imageStoragePath,
+                              imageUrl: car.imageUrl,
+                              images: car.images,
+                              image: car.image
+                            });
+                          }
                           
                           return imageUrl ? (
                             <img
@@ -787,6 +815,11 @@ const BookingsPage = () => {
                               alt={`${car.vendor} ${car.type}`}
                               className="w-full h-full object-cover"
                               onError={(e) => {
+                                console.error(`Failed to load car booking image:`, {
+                                  attemptedUrl: e.target.src,
+                                  imageSource,
+                                  car: { id: car.id, vendor: car.vendor, type: car.type }
+                                });
                                 e.target.style.display = 'none';
                                 e.target.nextSibling.style.display = 'flex';
                               }}
