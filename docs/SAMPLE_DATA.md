@@ -275,12 +275,6 @@ GET /api/v1/cars/search?city=Los Angeles&company=Hertz&seats=7
 - "Luxury car rental in Miami from Dec 20-27" - Returns 20 cars ($37-$67/day)
 - "Compact car in Philadelphia from Dec 15-18" - Returns 20 cars ($35-$74/day)
 
-**Bundles:** Working (Flight + Hotel Packages)
-- "Show me travel packages to New York" - Returns flight+hotel bundles
-- "Find flight and hotel bundles to Miami" - Returns combined deals
-- "Create a bundle to Boston from Dec 22-25" - Returns package options
-- "Package deals to Philadelphia from Dec 15-18" - Returns bundled offers
-
 **Test with AI Agent (Curl):**
 ```bash
 # Create session

@@ -166,10 +166,11 @@ class SupabaseLangGraph:
         context = state.get("context") or {}
         if is_supabase_question(question):
             return "supabase"
-        if self._should_use_mongo(question, context):
-            return "mongo"
+        # Check weather BEFORE mongo since weather keywords are more specific
         if is_weather_question(question):
             return "weather"
+        if self._should_use_mongo(question, context):
+            return "mongo"
         return "search"
 
     def _should_use_mongo(self, question: str, context: Dict[str, Any]) -> bool:
@@ -285,21 +286,25 @@ class SupabaseLangGraph:
             return
 
         rows = response.get("result") or response.get("rows") or response.get("data")
-        if rows is None:
+        # Don't skip if rows is empty list [] - we still want to generate a response
+        # Only skip if rows is truly None (not set at all)
+        if rows is None and "result" not in response and "rows" not in response and "data" not in response:
             return
 
         try:
-            rows_text = json.dumps(rows, indent=2)
+            rows_text = json.dumps(rows, indent=2) if rows is not None else "No data"
         except Exception:
-            rows_text = str(rows)
+            rows_text = str(rows) if rows is not None else "No data"
 
         query_text = response.get("query") or "Unknown SQL"
         explanation = response.get("explanation") or ""
 
         prompt = (
-            "You are a senior travel concierge. Summarize the SQL results so a traveler understands the answer. "
-            "Highlight totals, important fields, and next steps. If there are no rows, say so clearly."
-            f"\n\nUser question: {question}\nSQL: {query_text}\nExplanation: {explanation}\nRows: {rows_text}"
+            "You are a friendly travel assistant having a conversation with a customer. Answer their question based on the data provided. "
+            "Provide a clear, natural response (2-4 sentences). Don't mention SQL, queries, or technical details - just provide helpful information. "
+            "If there's no data, politely explain that you don't have that information yet or the customer hasn't made any bookings/payments. "
+            "Be conversational and helpful."
+            f"\n\nUser question: {question}\nData: {rows_text}"
         )
 
         try:
@@ -312,6 +317,80 @@ class SupabaseLangGraph:
         except Exception as exc:
             response.setdefault("warnings", []).append(
                 f"LLM summarization failed: {exc}"
+            )
+    
+    async def _augment_weather_with_llm(self, question: str, response: Dict[str, Any]) -> None:
+        """Generate natural language weather response using LLM"""
+        if not self.llm:
+            return
+
+        weather_data = response.get("result")
+        if not weather_data:
+            return
+
+        try:
+            weather_text = json.dumps(weather_data, indent=2)
+        except Exception:
+            weather_text = str(weather_data)
+
+        prompt = (
+            "You are a friendly travel assistant. Convert this weather data into a natural, conversational response. "
+            "Include temperature (convert to Fahrenheit too), conditions, and any travel tips based on the weather. "
+            "Keep it concise and helpful (2-3 sentences)."
+            f"\n\nUser question: {question}\nWeather data: {weather_text}"
+        )
+
+        try:
+            llm_response = await self.llm.ainvoke(prompt)
+            summary = getattr(llm_response, "content", None)
+            if isinstance(summary, list):
+                summary = "\n".join(str(chunk) for chunk in summary)
+            if summary:
+                response["llm_answer"] = summary
+        except Exception as exc:
+            response.setdefault("warnings", []).append(
+                f"Weather LLM summarization failed: {exc}"
+            )
+    
+    async def _augment_search_with_llm(self, question: str, response: Dict[str, Any]) -> None:
+        """Generate natural language search response using LLM"""
+        if not self.llm:
+            return
+
+        search_data = response.get("result")
+        if not search_data:
+            return
+
+        # Extract relevant information from Tavily results
+        try:
+            if isinstance(search_data, dict):
+                answer = search_data.get("answer", "")
+                results = search_data.get("results", [])[:3]  # Top 3 results
+                results_text = "\n".join([f"- {r.get('title', '')}: {r.get('content', '')[:200]}" for r in results])
+            else:
+                results_text = json.dumps(search_data, indent=2)
+                answer = ""
+        except Exception:
+            results_text = str(search_data)
+            answer = ""
+
+        prompt = (
+            "You are a helpful travel assistant. Answer the user's question based on the search results provided. "
+            "Provide a clear, concise answer (2-3 sentences) with relevant information. "
+            "Don't mention that you searched the web - just provide the helpful information naturally."
+            f"\n\nUser question: {question}\nSearch answer: {answer}\nTop results: {results_text}"
+        )
+
+        try:
+            llm_response = await self.llm.ainvoke(prompt)
+            summary = getattr(llm_response, "content", None)
+            if isinstance(summary, list):
+                summary = "\n".join(str(chunk) for chunk in summary)
+            if summary:
+                response["llm_answer"] = summary
+        except Exception as exc:
+            response.setdefault("warnings", []).append(
+                f"Search LLM summarization failed: {exc}"
             )
 
     async def _weather_tool(self, state: AgentState) -> AgentState:
@@ -344,11 +423,14 @@ class SupabaseLangGraph:
                     "wind_m_s": data.get("wind", {}).get("speed"),
                     "humidity": data.get("main", {}).get("humidity"),
                 }
-                responses.append({
+                response = {
                     "result": summary,
                     "explanation": f"Here is the current weather for {location.title()}.",
                     "source": "weather",
-                })
+                }
+                # Add natural language response using LLM
+                await self._augment_weather_with_llm(question, response)
+                responses.append(response)
         except Exception as exc:
             responses.append({"error": f"Weather lookup failed: {exc}", "source": "weather"})
 
@@ -380,11 +462,14 @@ class SupabaseLangGraph:
             search_result = self.tavily_client.search(
                 state["question"], search_depth="advanced"
             )
-            responses.append({
+            response = {
                 "result": search_result,
                 "explanation": "Here are the top web search results.",
                 "source": "search",
-            })
+            }
+            # Add natural language response using LLM
+            await self._augment_search_with_llm(state["question"], response)
+            responses.append(response)
         except Exception as exc:
             responses.append({"error": f"Tavily search failed: {exc}", "source": "search"})
 
