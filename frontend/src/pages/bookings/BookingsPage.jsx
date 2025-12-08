@@ -10,6 +10,30 @@ import { US_STATES, getStateCode } from '../../constants/usStates';
 import { formatPhoneForDisplay, formatUsPhoneInput, getE164UsPhone, isValidUsPhone } from '../../utils/phone';
 import apiClient from '../../config/api';
 
+const storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'firegram-1r.appspot.com';
+
+const resolveHotelImageUrl = (rawUrl) => {
+  if (!rawUrl) return null;
+  if (rawUrl.startsWith('http')) return rawUrl;
+  let path = rawUrl;
+  if (!path.startsWith('kayak/')) {
+    path = `kayak/hotels/${path}`;
+  }
+  const encodedPath = encodeURIComponent(path);
+  return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodedPath}?alt=media`;
+};
+
+const resolveCarImageUrl = (rawUrl) => {
+  if (!rawUrl) return null;
+  if (rawUrl.startsWith('http')) return rawUrl;
+  let path = rawUrl;
+  if (!path.startsWith('kayak/')) {
+    path = `kayak/cars/${path}`;
+  }
+  const encodedPath = encodeURIComponent(path);
+  return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodedPath}?alt=media`;
+};
+
 const US_CITIES = [
   'New York City', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
   'San Diego', 'Dallas', 'San Jose', 'Austin', 'Jacksonville', 'San Francisco', 'Columbus',
@@ -722,6 +746,59 @@ const BookingsPage = () => {
                   <div className="divider"></div>
 
                   <div className="space-y-4">
+                    {/* Hotel or Car Image */}
+                    {bookingData?.type === 'hotel' && bookingData?.hotel && (
+                      <div className="w-full h-64 bg-base-200 rounded-lg overflow-hidden mb-4">
+                        {(() => {
+                          const hotel = bookingData.hotel;
+                          const imageUrl = hotel.imageStoragePath 
+                            ? resolveHotelImageUrl(hotel.imageStoragePath)
+                            : hotel.imageUrl || hotel.images?.[0] || null;
+                          
+                          return imageUrl ? (
+                            <img
+                              src={imageUrl}
+                              alt={hotel.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                          ) : null;
+                        })()}
+                        <div className="w-full h-full flex items-center justify-center bg-base-200" style={{ display: 'none' }}>
+                          <FaBed className="text-6xl text-base-content/30" />
+                        </div>
+                      </div>
+                    )}
+
+                    {bookingData?.type === 'car' && bookingData?.car && (
+                      <div className="w-full h-64 bg-base-200 rounded-lg overflow-hidden mb-4">
+                        {(() => {
+                          const car = bookingData.car;
+                          const imageUrl = car.imageStoragePath 
+                            ? resolveCarImageUrl(car.imageStoragePath)
+                            : car.imageUrl || car.images?.[0] || null;
+                          
+                          return imageUrl ? (
+                            <img
+                              src={imageUrl}
+                              alt={`${car.vendor} ${car.type}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                          ) : null;
+                        })()}
+                        <div className="w-full h-full flex items-center justify-center bg-base-200" style={{ display: 'none' }}>
+                          <FaCar className="text-6xl text-base-content/30" />
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <h3 className="font-semibold text-lg mb-2">{summary.title}</h3>
                       <div className="space-y-2">

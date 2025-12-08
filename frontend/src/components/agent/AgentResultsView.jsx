@@ -55,9 +55,41 @@ const AgentResultsView = ({
         } 
       });
     } else if (flow === 'hotels') {
-      navigate('/booking/hotel', { state: { hotel: item } });
+      // Navigate to bookings page with hotel data
+      const checkIn = searchParams.checkIn || new Date().toISOString().split('T')[0];
+      const checkOut = searchParams.checkOut || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const checkInDateObj = new Date(checkIn);
+      const checkOutDateObj = new Date(checkOut);
+      const nights = Math.ceil((checkOutDateObj - checkInDateObj) / (1000 * 60 * 60 * 24)) || 1;
+      
+      const bookingData = {
+        type: 'hotel',
+        hotel: item,
+        checkIn,
+        checkOut,
+        nights,
+        guests: searchParams.guests || 1,
+      };
+      navigate('/bookings', { state: { bookingData } });
     } else if (flow === 'cars') {
-      navigate('/booking/car', { state: { car: item } });
+      // Navigate to bookings page with car data
+      const pickupDate = searchParams.pickupDate || new Date().toISOString().split('T')[0];
+      const dropoffDate = searchParams.dropoffDate || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const pickupDateObj = new Date(pickupDate);
+      const dropoffDateObj = new Date(dropoffDate);
+      const days = Math.ceil((dropoffDateObj - pickupDateObj) / (1000 * 60 * 60 * 24)) || 1;
+      
+      const bookingData = {
+        type: 'car',
+        car: item,
+        pickupDate,
+        dropoffDate,
+        pickupTime: searchParams.pickupTime || '12:00',
+        dropoffTime: searchParams.dropoffTime || '12:00',
+        days,
+        passengers: searchParams.passengers || 1,
+      };
+      navigate('/bookings', { state: { bookingData } });
     }
   };
 
