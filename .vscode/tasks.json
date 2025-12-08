@@ -33,6 +33,9 @@
       "label": "Install: AI-Agent",
       "type": "shell",
       "command": "./update-requirements.sh",
+      "windows": {
+        "command": "powershell.exe -ExecutionPolicy Bypass -File ./update-requirements.ps1"
+      },
       "options": {
         "cwd": "${workspaceFolder}/ai-agent"
       },
@@ -100,6 +103,16 @@
       "label": "Run: AI-Agent",
       "type": "shell",
       "command": "source .venv/bin/activate && uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          ".\\.venv\\Scripts\\Activate.ps1; uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+        ]
+      },
       "options": {
         "cwd": "${workspaceFolder}/ai-agent"
       },

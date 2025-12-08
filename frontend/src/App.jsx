@@ -3,7 +3,6 @@ import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AuthInitializer from './components/common/AuthInitializer';
 import ErrorBoundary from './components/common/ErrorBoundary';
-import AIChatWidget from './components/common/AIChatWidget';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -16,10 +15,10 @@ import BookingsPage from './pages/bookings/BookingsPage';
 import BookingDetailPage from './pages/bookings/BookingDetailPage';
 import PaymentsPage from './pages/payments/PaymentsPage';
 import AdminPage from './pages/admin/AdminPage';
-import ConciergePage from './pages/concierge/ConciergePage';
 import AnalyticsPage from './pages/analytics/AnalyticsPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
+import AgentFlightsPage from './pages/listings/AgentFlightsPage';
 
 // Owner Portal Pages
 import OwnerDashboard from './pages/owner/OwnerDashboard';
@@ -27,14 +26,11 @@ import OwnerHotelsPage from './pages/owner/OwnerHotelsPage';
 import OwnerCarsPage from './pages/owner/OwnerCarsPage';
 import AddHotelPage from './pages/owner/AddHotelPage';
 import AddCarPage from './pages/owner/AddCarPage';
-import EditHotelPage from './pages/owner/EditHotelPage';
-import EditCarPage from './pages/owner/EditCarPage';
 
 function App() {
   return (
     <ErrorBoundary>
       <AuthInitializer />
-      <AIChatWidget />
       <Layout>
       <Routes>
         <Route path="/" element={<HomePage />} />
@@ -57,6 +53,7 @@ function App() {
           }
         />
         <Route path="/flights" element={<FlightsPage />} />
+        <Route path="/agent/flights" element={<AgentFlightsPage />} />
         <Route path="/hotels" element={<HotelsPage />} />
         <Route path="/cars" element={<CarsPage />} />
         <Route
@@ -91,18 +88,11 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/concierge"
-          element={
-            <ProtectedRoute>
-              <ConciergePage />
-            </ProtectedRoute>
-          }
-        />
+
         <Route
           path="/analytics"
           element={
-            <ProtectedRoute requireOwner>
+            <ProtectedRoute>
               <AnalyticsPage />
             </ProtectedRoute>
           }
@@ -142,14 +132,6 @@ function App() {
           }
         />
         <Route
-          path="/owner/hotels/:hotelId/edit"
-          element={
-            <ProtectedRoute requireOwner>
-              <EditHotelPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/owner/cars"
           element={
             <ProtectedRoute requireOwner>
@@ -165,14 +147,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/owner/cars/:carId/edit"
-          element={
-            <ProtectedRoute requireOwner>
-              <EditCarPage />
-            </ProtectedRoute>
-          }
-        />
         
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
@@ -182,4 +156,3 @@ function App() {
 }
 
 export default App;
-

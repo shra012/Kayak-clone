@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """LangChain/LangGraph agent that can call Supabase MCP, Tavily Search, and Weather API."""
 
 import json
@@ -75,8 +73,25 @@ def is_supabase_question(question: str) -> bool:
     return any(keyword in lower for keyword in SUPABASE_KEYWORDS)
 
 def is_mongo_question(question: str) -> bool:
+    """Check if question requires MongoDB search (has sufficient details for a query)"""
     lower = question.lower()
-    return any(keyword in lower for keyword in MONGO_KEYWORDS)
+    
+    # Must have search intent
+    search_patterns = ["find", "show me", "show", "search for", "looking for", "list", "available", "get me", "what are"]
+    has_search_intent = any(pattern in lower for pattern in search_patterns)
+    
+    # Must have MongoDB entity
+    has_mongo_entity = any(keyword in lower for keyword in MONGO_KEYWORDS)
+    
+    # Must have specific details (location, route, etc)
+    has_city = any(city in lower for city in ["san francisco", "los angeles", "new york", "chicago", "miami", "seattle", "boston", "vegas"])
+    has_airport = any(code in lower for code in ["sfo", "lax", "jfk", "ord", "mia", "sea", "bos", "las"])
+    has_location_preposition = any(pattern in lower for pattern in [" in ", " near ", " around "])
+    has_route = " to " in lower and " from " in lower
+    
+    has_specifics = has_city or has_airport or has_location_preposition or has_route
+    
+    return has_mongo_entity and has_search_intent and has_specifics
 
 
 def is_weather_question(question: str) -> bool:
@@ -162,8 +177,10 @@ class SupabaseLangGraph:
 
     @staticmethod
     def _has_trip_context(context: Dict[str, Any]) -> bool:
+        """Check if context has enough trip info to query MongoDB (budget is optional)"""
         if not context:
             return False
+        intent_type = context.get("intent_type", "")
         destination = (
             context.get("destination")
             or context.get("city")
@@ -171,8 +188,14 @@ class SupabaseLangGraph:
             or context.get("destinations")
         )
         has_dates = bool(context.get("check_in") and context.get("check_out"))
-        has_budget = bool(context.get("budget"))
-        return bool(destination and has_budget and has_dates)
+        
+        # For flights, also need origin
+        if "flight" in intent_type or "fly" in intent_type:
+            origin = context.get("origin") or context.get("from")
+            return bool(origin and destination and has_dates)
+        
+        # For hotels and cars, just need destination and dates (budget optional)
+        return bool(destination and has_dates)
 
     async def _supabase_tool(self, state: AgentState) -> AgentState:
         question = state["question"]
@@ -235,7 +258,15 @@ class SupabaseLangGraph:
                 sort=spec.get("sort"),
                 limit=spec.get("limit", 20),
             )
+            
+            # DEBUG: Log query results
+            print(f"MongoDB Query Result: {len(rows)} documents found")
+            if len(rows) == 0:
+                print(f"   Zero results for collection: {spec.get('collection')}")
+                print(f"   Filters used: {spec.get('filters')}")
+                
         except Exception as exc:
+            print(f"MongoDB query failed: {exc}")
             responses.append({"error": f"MongoDB query failed: {exc}", "source": "mongo"})
             return {"responses": responses}
 

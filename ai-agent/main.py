@@ -157,6 +157,9 @@ SEARCH_KEYWORDS = [
     "top places",
 ]
 
+# Initialize LLM-based IntentParser
+intent_parser = IntentParser()
+
 
 def looks_like_db_question(message: str) -> bool:
     lower = message.lower()
@@ -400,13 +403,13 @@ async def create_chat_session(request: ChatSessionRequest):
     if request.initial_message:
         messages.append(ChatMessage(role="user", content=request.initial_message))
         # Parse intent
-        constraints = IntentParser.parse_travel_request(request.initial_message)
+        constraints = intent_parser.parse_travel_request(request.initial_message)
         context.update(constraints)
 
         if should_use_langgraph(request.initial_message, context):
             ai_response = await generate_ai_response(request.initial_message, context)
         else:
-            clarification = IntentParser.needs_clarification(constraints)
+            clarification = intent_parser.needs_clarification(constraints)
             if clarification:
                 ai_response = clarification
             else:
@@ -458,7 +461,7 @@ async def send_message(session_id: str, request: ChatMessageRequest):
                 context.setdefault("user_email", session.user_id)
         
         # Parse new constraints (refinement)
-        new_constraints = IntentParser.parse_travel_request(request.message, context)
+        new_constraints = intent_parser.parse_travel_request(request.message, context)
         context.update(new_constraints)
         
         # Update session context
@@ -469,10 +472,34 @@ async def send_message(session_id: str, request: ChatMessageRequest):
     
     # Generate response
     bundles = None
-    if should_use_langgraph(request.message, context):
-        ai_response = await generate_ai_response(request.message, context)
-    else:
-        clarification = IntentParser.needs_clarification(context)
+    message_lower = request.message.lower()
+    
+    # Booking-only chat mode: natural language answers, no actions
+    if context.get("chat_mode") == "booking_chat":
+        ai_response = await generate_booking_chat_response(request.message, context)
+        return ChatMessageResponse(
+            session_id=session_id,
+            response=ai_response,
+            bundles=None,
+            timestamp=datetime.now(),
+        )
+
+    # Check if message has travel planning intent OR if we're continuing a travel conversation
+    has_travel_intent = any(word in message_lower for word in [
+        "flight", "fly", "hotel", "stay", "car", "rental", "bundle", "package", 
+        "trip", "travel", "vacation", "book", "destination", "visit"
+    ])
+    
+    # Continue travel planning if we already have intent_type from previous messages
+    in_travel_flow = context.get("intent_type") is not None
+    
+    # For travel intent, check if we have enough info before querying
+    search_params = None
+    search_params_complete = False
+    
+    if has_travel_intent or in_travel_flow:
+        # First check if we need more information
+        clarification = intent_parser.needs_clarification(context)
         if clarification:
             ai_response = clarification
         else:
