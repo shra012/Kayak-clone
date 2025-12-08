@@ -41,7 +41,7 @@ export const listingsApi = {
     const { data } = await apiClient.get('/hotels/locations', {
       params: { q: query, limit },
     });
-    return data;
+    return data.items || data;
   },
 
   getHotel: async (hotelId) => {

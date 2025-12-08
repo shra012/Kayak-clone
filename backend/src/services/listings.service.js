@@ -532,19 +532,29 @@ export const searchHotels = async (query) => {
       order = 'asc',
     } = query;
 
-    // Try to get cached results
-    const cached = await getCachedSearchResults('hotel', query);
-    if (cached) {
-      logger.debug('Returning cached hotel search results');
-      return cached;
-    }
+    // Try to get cached results - TEMPORARILY DISABLED FOR DEBUGGING
+    // const cached = await getCachedSearchResults('hotel', query);
+    // if (cached) {
+    //   logger.debug('Returning cached hotel search results');
+    //   return cached;
+    // }
 
     const db = await getMongoDB();
     const collection = db.collection('hotels');
 
     // Build query filter
     const filter = {};
-    if (city) filter.city = new RegExp(city, 'i');
+    
+    // If city is provided, search in both city and hotel name fields
+    if (city) {
+      const cityRegex = new RegExp(city, 'i');
+      filter.$or = [
+        { city: cityRegex },
+        { name: cityRegex },
+        { neighbourhood: cityRegex }
+      ];
+    }
+    
     if (state) filter.state = state;
     if (minRating) filter.rating = { $gte: parseFloat(minRating) };
     if (maxPrice) filter.pricePerNight = { $lte: parseFloat(maxPrice) };
@@ -574,8 +584,8 @@ export const searchHotels = async (query) => {
       },
     };
 
-    // Cache the results
-    await cacheSearchResults('hotel', query, results);
+    // Cache the results - TEMPORARILY DISABLED FOR DEBUGGING
+    // await cacheSearchResults('hotel', query, results);
 
     return results;
   } catch (error) {
