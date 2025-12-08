@@ -1973,27 +1973,34 @@ const FlightsPage = ({ forceAgentMode = false }) => {
             >
               <FaTimes className="w-5 h-5" />
             </button>
-            <FlightPriceCalendar
-              selectedDate={filters.date}
-              onDateSelect={(date) => {
-                const newFilters = {
-                  ...filters,
-                  date: date
-                };
-                // If return date is before new depart date, adjust it
-                if (filters.returnDate && filters.returnDate < date) {
-                  newFilters.returnDate = addDaysToDateString(date, 7);
-                }
-                setFilters(newFilters);
-                setShowDepartCalendar(false);
-                if (ensureRouteSet(newFilters)) {
-                  loadFlights(1, newFilters);
-                }
-              }}
-              from={extractAirportCode(filters.from) || ''}
-              to={extractAirportCode(filters.to) || ''}
-              minDate={new Date().toISOString().split('T')[0]}
-            />
+            <div className="bg-base-100 rounded-lg shadow-xl">
+              <div className="p-6 pb-2">
+                <h3 className="text-lg font-semibold mb-4 uppercase tracking-wide">Departure</h3>
+              </div>
+              <div className="px-6 pb-6">
+                <FlightPriceCalendar
+                  selectedDate={filters.date}
+                  onDateSelect={(date) => {
+                    const newFilters = {
+                      ...filters,
+                      date: date
+                    };
+                    // If return date is before new depart date, adjust it
+                    if (filters.returnDate && filters.returnDate < date) {
+                      newFilters.returnDate = addDaysToDateString(date, 7);
+                    }
+                    setFilters(newFilters);
+                    setShowDepartCalendar(false);
+                    if (ensureRouteSet(newFilters)) {
+                      loadFlights(1, newFilters);
+                    }
+                  }}
+                  from={extractAirportCode(filters.from) || ''}
+                  to={extractAirportCode(filters.to) || ''}
+                  minDate={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2008,23 +2015,30 @@ const FlightsPage = ({ forceAgentMode = false }) => {
             >
               <FaTimes className="w-5 h-5" />
             </button>
-            <FlightPriceCalendar
-              selectedDate={filters.returnDate}
-              onDateSelect={(date) => {
-                const newFilters = {
-                  ...filters,
-                  returnDate: date
-                };
-                setFilters(newFilters);
-                setShowReturnCalendar(false);
-                if (ensureRouteSet(newFilters)) {
-                  loadFlights(1, newFilters);
-                }
-              }}
-              from={extractAirportCode(filters.to) || ''} // Reverse for return flight
-              to={extractAirportCode(filters.from) || ''}
-              minDate={filters.date || new Date().toISOString().split('T')[0]}
-            />
+            <div className="bg-base-100 rounded-lg shadow-xl">
+              <div className="p-6 pb-2">
+                <h3 className="text-lg font-semibold mb-4 uppercase tracking-wide">Return</h3>
+              </div>
+              <div className="px-6 pb-6">
+                <FlightPriceCalendar
+                  selectedDate={filters.returnDate}
+                  onDateSelect={(date) => {
+                    const newFilters = {
+                      ...filters,
+                      returnDate: date
+                    };
+                    setFilters(newFilters);
+                    setShowReturnCalendar(false);
+                    if (ensureRouteSet(newFilters)) {
+                      loadFlights(1, newFilters);
+                    }
+                  }}
+                  from={extractAirportCode(filters.to) || ''} // Reverse for return flight
+                  to={extractAirportCode(filters.from) || ''}
+                  minDate={filters.date || new Date().toISOString().split('T')[0]}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
