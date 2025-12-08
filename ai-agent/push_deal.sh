@@ -4,7 +4,7 @@
 # Usage: ./push_deal.sh --flight | --hotel | --car
 
 ALB_URL="${ALB_URL:-http://k8s-kayakdev-kayaking-98ae61f6c8-1320506053.us-east-1.elb.amazonaws.com}"
-# Use localhost:8000 (requires kubectl port-forward)
+# Use localhost:8000 (requires kubectl port-forward -n kayak-dev svc/ai-agent 8000:8000)
 API_ENDPOINT="${API_ENDPOINT:-http://localhost:8000/deals/push}"
 
 # Generate unique ID with timestamp

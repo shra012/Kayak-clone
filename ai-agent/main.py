@@ -1285,6 +1285,9 @@ async def push_deal(deal: PushDealRequest):
         )
         
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"ERROR in push_deal: {error_trace}")
         raise HTTPException(status_code=500, detail=f"Failed to push deal: {str(e)}")
 
 @app.get("/health/ready", tags=["Health"])
@@ -1391,9 +1394,16 @@ def refresh_deals_from_feed(reason: str = "manual") -> int:
         deal.updated_at = now
     
     with Session(engine) as db_session:
-        db_session.exec(delete(Deal))
+        # Upsert deals (update if exists, insert if new)
         for deal in selected:
-            db_session.add(deal)
+            existing = db_session.exec(select(Deal).where(Deal.deal_id == deal.deal_id)).first()
+            if existing:
+                # Update existing deal
+                for key, value in deal.dict(exclude_unset=True).items():
+                    setattr(existing, key, value)
+            else:
+                # Add new deal
+                db_session.add(deal)
         db_session.commit()
         persisted = db_session.exec(select(Deal)).all()
     

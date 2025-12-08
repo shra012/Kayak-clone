@@ -3,7 +3,7 @@ Deal processing and detection logic
 """
 
 from typing import List, Dict, Any
-from models import Deal
+from models import Deal, DealType, DealStatus
 import statistics
 
 
