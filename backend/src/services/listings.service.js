@@ -895,9 +895,36 @@ export const getCarLocations = async (query, limit = 10) => {
     const collection = db.collection('cars');
     
     const regex = new RegExp(query, 'i');
-    const cities = await collection.distinct('city', { city: regex });
     
-    return cities.slice(0, limit);
+    // Get cities with car counts using aggregation
+    const locations = await collection.aggregate([
+      {
+        $match: { city: regex }
+      },
+      {
+        $group: {
+          _id: '$city',
+          carCount: { $sum: 1 },
+          state: { $first: '$state' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          name: '$_id',
+          carCount: 1,
+          state: 1
+        }
+      },
+      {
+        $sort: { carCount: -1 }
+      },
+      {
+        $limit: limit
+      }
+    ]).toArray();
+    
+    return locations;
   } catch (error) {
     logger.error('Error in getCarLocations service:', error);
     throw error;
