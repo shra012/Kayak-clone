@@ -389,6 +389,48 @@ export const confirmBooking = async (bookingId) => {
 };
 
 /**
+ * Check if user is owner of the property/car for a booking
+ */
+export const checkBookingOwnership = async (bookingId, ownerId) => {
+  try {
+    const booking = await getBookingById(bookingId);
+    if (!booking) {
+      return false;
+    }
+
+    const db = await getMongoDB();
+    const listingId = booking.itinerary?.hotelId || booking.itinerary?.carId;
+
+    if (!listingId) {
+      return false;
+    }
+
+    // Convert listingId to ObjectId if it's a string
+    let listingObjectId;
+    try {
+      listingObjectId = typeof listingId === 'string' ? new ObjectId(listingId) : listingId;
+    } catch {
+      return false;
+    }
+
+    if (booking.bookingType === 'hotel') {
+      const hotelsCollection = db.collection('hotels');
+      const hotel = await hotelsCollection.findOne({ _id: listingObjectId, ownerId });
+      return !!hotel;
+    } else if (booking.bookingType === 'car') {
+      const carsCollection = db.collection('cars');
+      const car = await carsCollection.findOne({ _id: listingObjectId, ownerId });
+      return !!car;
+    }
+
+    return false;
+  } catch (error) {
+    logger.error('Error checking booking ownership:', error);
+    return false;
+  }
+};
+
+/**
  * Cancel booking
  */
 export const cancelBooking = async (bookingId) => {
