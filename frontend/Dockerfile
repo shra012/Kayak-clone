@@ -18,40 +18,22 @@ COPY . .
 # Build the application
 RUN npm run build
 
-FROM node:20-alpine
+FROM nginx:alpine
 
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install all dependencies (Vite + plugins are dev deps but required for preview)
-# Add retry logic for network issues
-RUN npm ci --prefer-offline --no-audit || \
-    (sleep 5 && npm ci --prefer-offline --no-audit) || \
-    (sleep 10 && npm ci --prefer-offline --no-audit) && \
-    npm cache clean --force
+WORKDIR /usr/share/nginx/html
 
 # Copy built application from builder
-COPY --from=builder /app/dist ./dist
-# Copy vite.config.js for preview server configuration
-COPY --from=builder /app/vite.config.js ./vite.config.js
+COPY --from=builder /app/dist .
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-# Change ownership
-RUN chown -R nodejs:nodejs /app
-
-USER nodejs
+# Copy custom nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port
-EXPOSE 5173
+EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:5173', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD wget --quiet --tries=1 --spider http://localhost:80/health || exit 1
 
-# Start preview server (serves built files)
-CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173"]
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

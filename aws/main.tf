@@ -55,6 +55,13 @@ module "eks" {
 
   cluster_endpoint_public_access  = true
   cluster_endpoint_private_access = true
+  
+  # Disable KMS key creation to avoid permission issues with existing keys
+  create_kms_key = false
+  cluster_encryption_config = {}
+  
+  # Control plane logging
+  cluster_enabled_log_types = ["api", "audit", "authenticator"]
 
   cluster_addons = {
     coredns    = { most_recent = true }
