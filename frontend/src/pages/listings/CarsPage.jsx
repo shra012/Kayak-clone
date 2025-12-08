@@ -7,6 +7,18 @@ import { useToast } from '../../hooks/useToast';
 import { FaCar, FaUsers, FaMapMarkerAlt, FaCalendarAlt, FaClock, FaTimes } from 'react-icons/fa';
 import { US_STATES } from '../../constants/usStates';
 
+// Helper function to get car type icon
+const getCarTypeIcon = (type) => {
+  const typeLower = type?.toLowerCase() || '';
+  if (typeLower.includes('economy') || typeLower.includes('compact')) return '🚗';
+  if (typeLower.includes('suv') || typeLower.includes('sport utility')) return '🚙';
+  if (typeLower.includes('sports') || typeLower.includes('premium') || typeLower.includes('luxury')) return '🏎️';
+  if (typeLower.includes('minivan') || typeLower.includes('van')) return '🚐';
+  if (typeLower.includes('full-size') || typeLower.includes('fullsize')) return '🚘';
+  if (typeLower.includes('convertible')) return '🚕';
+  return '🚗'; // Default
+};
+
 const defaultFilters = {
   location: '',
   state: '',
@@ -30,14 +42,22 @@ const CarsPage = () => {
   
   const location = useLocation();
   const navigate = useNavigate();
-  const searchData = location.state?.search;
+  const initialSearchData = location.state?.search;
+  const [searchData, setSearchData] = useState(initialSearchData);
   const { isAuthenticated } = useAuth();
   const toast = useToast();
+  
+  // Sync searchData when location.state changes
+  useEffect(() => {
+    if (location.state?.search) {
+      setSearchData(location.state.search);
+    }
+  }, [location.state?.search]);
 
   // Initialize filters with search data if available
   const initialFilters = {
     ...defaultFilters,
-    location: searchData?.location || '',
+    location: initialSearchData?.location || '',
   };
 
   const [filters, setFilters] = useState(initialFilters);
@@ -51,14 +71,46 @@ const CarsPage = () => {
   const [availableCarTypes, setAvailableCarTypes] = useState([]);
   const [availableVendors, setAvailableVendors] = useState([]);
   const [imageLoaded, setImageLoaded] = useState({});
+  const [expandedFilterSections, setExpandedFilterSections] = useState({
+    location: true,
+    vehicle: true,
+    vendors: false,
+    priceSort: false,
+  });
+  const [showFiltersDrawer, setShowFiltersDrawer] = useState(false);
+  const [isStickyCompact, setIsStickyCompact] = useState(false);
   
-  // Date states
-  const [pickUpDate, setPickUpDate] = useState(searchData?.pickUp || '');
-  const [dropOffDate, setDropOffDate] = useState(searchData?.dropOff || '');
-  const pickUpTime = searchData?.pickUpTime || '12:00';
-  const dropOffTime = searchData?.dropOffTime || '12:00';
+  // Date states - initialize from initialSearchData
+  const [pickUpDate, setPickUpDate] = useState(initialSearchData?.pickUp || '');
+  const [dropOffDate, setDropOffDate] = useState(initialSearchData?.dropOff || '');
   const [showPickUpCalendar, setShowPickUpCalendar] = useState(false);
   const [showDropOffCalendar, setShowDropOffCalendar] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [editingTime, setEditingTime] = useState(null); // 'pickup' or 'dropoff'
+
+  const pickUpTime = searchData?.pickUpTime || '12:00';
+  const dropOffTime = searchData?.dropOffTime || '12:00';
+
+  // Detect scroll for compact sticky mode
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      setIsStickyCompact(scrollY > 100);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+  
+  // Sync date states when searchData changes
+  useEffect(() => {
+    if (searchData?.pickUp && searchData.pickUp !== pickUpDate) {
+      setPickUpDate(searchData.pickUp);
+    }
+    if (searchData?.dropOff && searchData.dropOff !== dropOffDate) {
+      setDropOffDate(searchData.dropOff);
+    }
+  }, [searchData?.pickUp, searchData?.dropOff]);
 
   const storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'firegram-1r.appspot.com';
   const placeholderImage = 'https://via.placeholder.com/400x300/4A5568/FFFFFF?text=Car+Image';
@@ -178,6 +230,16 @@ const CarsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Sync local date states with searchData
+  useEffect(() => {
+    if (searchData?.pickUp && searchData.pickUp !== pickUpDate) {
+      setPickUpDate(searchData.pickUp);
+    }
+    if (searchData?.dropOff && searchData.dropOff !== dropOffDate) {
+      setDropOffDate(searchData.dropOff);
+    }
+  }, [searchData?.pickUp, searchData?.dropOff]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     const newFilters = { ...filters, [name]: value };
@@ -208,6 +270,8 @@ const CarsPage = () => {
   const applyFilters = () => {
     setActiveFilters(filters);
     loadCars(1, filters);
+    // Close mobile filter drawer after applying
+    setShowFiltersDrawer(false);
   };
 
   const handleReset = () => {
@@ -235,88 +299,251 @@ const CarsPage = () => {
   };
   
   const handlePickUpDateSelect = (dateStr) => {
-    setPickUpDate(dateStr);
-    setShowPickUpCalendar(false);
-    
     // If dropoff is before new pickup, adjust it
+    let newDropOffDate = dropOffDate;
     if (dropOffDate && dropOffDate < dateStr) {
       const nextDay = new Date(parseLocalDate(dateStr));
       nextDay.setDate(nextDay.getDate() + 1);
-      const nextDayStr = nextDay.toISOString().split('T')[0];
-      setDropOffDate(nextDayStr);
+      newDropOffDate = nextDay.toISOString().split('T')[0];
+      setDropOffDate(newDropOffDate);
     }
+    
+    setPickUpDate(dateStr);
+    setShowPickUpCalendar(false);
+    
+    // Update search data immediately
+    const updatedSearchData = {
+      ...searchData,
+      pickUp: dateStr,
+      dropOff: newDropOffDate || dropOffDate,
+    };
+    setSearchData(updatedSearchData);
+    
+    // Navigate with updated search data (for persistence and browser back button)
+    navigate('/cars', { state: { search: updatedSearchData }, replace: true });
+    
+    // Trigger new search immediately with updated dates
+    loadCars(1);
   };
   
   const handleDropOffDateSelect = (dateStr) => {
     setDropOffDate(dateStr);
     setShowDropOffCalendar(false);
+    
+    // Update search data immediately
+    const updatedSearchData = {
+      ...searchData,
+      pickUp: pickUpDate,
+      dropOff: dateStr,
+    };
+    setSearchData(updatedSearchData);
+    
+    // Navigate with updated search data (for persistence and browser back button)
+    navigate('/cars', { state: { search: updatedSearchData }, replace: true });
+    
+    // Trigger new search immediately with updated dates
+    loadCars(1);
+  };
+
+  const handleTimeSelect = (timeStr, timeType) => {
+    setShowTimePicker(false);
+    setEditingTime(null);
+    
+    // Update search data immediately
+    const updatedSearchData = {
+      ...searchData,
+      [timeType === 'pickup' ? 'pickUpTime' : 'dropOffTime']: timeStr,
+    };
+    setSearchData(updatedSearchData);
+    
+    // Navigate with updated search data (for persistence and browser back button)
+    navigate('/cars', { state: { search: updatedSearchData }, replace: true });
+    
+    // Trigger new search immediately with updated time
+    loadCars(1);
+  };
+
+  // Quick filter chips handler
+  const handleQuickFilter = (filterType, value) => {
+    if (filterType === 'type') {
+      const newFilters = {
+        ...filters,
+        type: filters.type === value ? 'any' : value
+      };
+      setFilters(newFilters);
+      setActiveFilters(newFilters);
+      loadCars(1, newFilters);
+    } else if (filterType === 'clear') {
+      const resetFilters = {
+        ...defaultFilters,
+        location: searchData?.location || '',
+        state: '',
+      };
+      setFilters(resetFilters);
+      setActiveFilters(resetFilters);
+      loadCars(1, resetFilters);
+    }
   };
 
   return (
     <div className="min-h-screen bg-base-100">
-      {/* Search Summary Header */}
-      <div className="bg-base-100/90 backdrop-blur-sm text-base-content py-4 shadow-sm border-b border-base-300">
+      {/* Search Summary Header - Sticky Pill-Style Card */}
+      <div className={`sticky top-0 z-40 bg-base-100/95 backdrop-blur-sm transition-all duration-200 ${isStickyCompact ? 'py-2 shadow-lg' : 'py-3 shadow-sm'}`} id="trip-summary-header">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <FaMapMarkerAlt className="w-4 h-4" />
-              <span className="font-medium">{searchData?.location || 'Select Location'}</span>
+          <div className={`bg-gradient-to-r from-slate-50 to-gray-50 dark:from-base-200 dark:to-base-300 rounded-2xl border border-base-300/50 transition-all duration-200 ${isStickyCompact ? 'px-3 py-2' : 'px-4 py-3'}`}>
+            <div className={`flex flex-wrap items-center transition-all duration-200 ${isStickyCompact ? 'gap-3 lg:gap-4' : 'gap-4 lg:gap-6'}`}>
+              {/* Location Section */}
+              <button
+                type="button"
+                onClick={() => {
+                  // Navigate to HomePage with current search data to edit location
+                  navigate('/', { 
+                    state: { 
+                      search: {
+                        ...searchData,
+                        activeTab: 'cars', // Pre-select Cars tab
+                      }
+                    } 
+                  });
+                }}
+                className={`group flex items-center gap-2 rounded-lg hover:bg-white/80 dark:hover:bg-base-100/50 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50 ${isStickyCompact ? 'px-2 py-1.5' : 'px-3 py-2'}`}
+                title="Click to change location"
+              >
+                <FaMapMarkerAlt className="w-4 h-4 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+                <div className="flex flex-col">
+                  <span className={`uppercase tracking-wide text-gray-500 dark:text-gray-400 font-medium ${isStickyCompact ? 'text-[10px]' : 'text-xs'}`}>Location</span>
+                  <span className={`font-semibold text-base-content ${isStickyCompact ? 'text-xs' : 'text-sm'}`}>{searchData?.location || 'Select Location'}</span>
             </div>
+              </button>
+
+              {/* Divider */}
+              {(pickUpDate || searchData?.pickUpTime) && (
+                <div className={`w-px bg-gray-300 dark:bg-base-content/20 ${isStickyCompact ? 'h-6' : 'h-8'}`}></div>
+              )}
+
+              {/* Dates Section */}
             {pickUpDate && dropOffDate && (
               <>
-                <span>•</span>
                 <button
                   type="button"
                   onClick={() => setShowPickUpCalendar(true)}
-                  className="inline-flex items-center gap-2 px-3 py-1 bg-base-300 hover:bg-base-content/10 rounded-md transition-colors cursor-pointer"
-                  title="Click to change pickup date"
-                >
-                  <FaCalendarAlt className="w-3 h-3" />
-                  <span>{formatDate(pickUpDate)}</span>
+                    className={`group flex items-center gap-2 rounded-lg hover:bg-white/80 dark:hover:bg-base-100/50 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50 ${isStickyCompact ? 'px-2 py-1.5' : 'px-3 py-2'}`}
+                    title="Click to change dates"
+                  >
+                    <FaCalendarAlt className="w-4 h-4 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+                    <div className="flex flex-col">
+                      <span className={`uppercase tracking-wide text-gray-500 dark:text-gray-400 font-medium ${isStickyCompact ? 'text-[10px]' : 'text-xs'}`}>Dates</span>
+                      <span className={`font-semibold text-base-content ${isStickyCompact ? 'text-xs' : 'text-sm'}`}>
+                        {formatDate(pickUpDate)} - {formatDate(dropOffDate)}
+                      </span>
+                    </div>
                 </button>
-                <span>-</span>
+
+                  {/* Duration Badge - Highlight Chip (Clickable) */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPickUpCalendar(true)}
+                    className={`rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${isStickyCompact ? 'px-2 py-1' : 'px-3 py-1.5'}`}
+                    title="Click to change dates"
+                  >
+                    <div className="flex flex-col items-center">
+                      <span className={`uppercase tracking-wide text-blue-600 dark:text-blue-400 font-medium ${isStickyCompact ? 'text-[10px]' : 'text-xs'}`}>Duration</span>
+                      <span className={`font-bold ${isStickyCompact ? 'text-[10px]' : 'text-xs'}`}>{rentalDays} day{rentalDays > 1 ? 's' : ''}</span>
+                    </div>
+                  </button>
+                </>
+              )}
+
+              {/* Divider */}
+              {searchData?.pickUpTime && (pickUpDate || searchData?.location) && (
+                <div className={`w-px bg-gray-300 dark:bg-base-content/20 ${isStickyCompact ? 'h-6' : 'h-8'}`}></div>
+              )}
+
+              {/* Times Section */}
+              {searchData?.pickUpTime && (
                 <button
                   type="button"
-                  onClick={() => setShowDropOffCalendar(true)}
-                  className="inline-flex items-center gap-2 px-3 py-1 bg-base-300 hover:bg-base-content/10 rounded-md transition-colors cursor-pointer"
-                  title="Click to change dropoff date"
+                  onClick={() => {
+                    setEditingTime('pickup');
+                    setShowTimePicker(true);
+                  }}
+                  className={`group flex items-center gap-2 rounded-lg hover:bg-white/80 dark:hover:bg-base-100/50 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50 ${isStickyCompact ? 'px-2 py-1.5' : 'px-3 py-2'}`}
+                  title="Click to change times"
                 >
-                  <FaCalendarAlt className="w-3 h-3" />
-                  <span>{formatDate(dropOffDate)}</span>
-                </button>
-                <span className="badge badge-sm bg-base-300 border-none">
-                  {rentalDays} day{rentalDays > 1 ? 's' : ''}
+                  <FaClock className="w-4 h-4 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+                  <div className="flex flex-col">
+                    <span className={`uppercase tracking-wide text-gray-500 dark:text-gray-400 font-medium ${isStickyCompact ? 'text-[10px]' : 'text-xs'}`}>Times</span>
+                    <span className={`font-semibold text-base-content ${isStickyCompact ? 'text-xs' : 'text-sm'}`}>
+                      {searchData.pickUpTime}
+                      {searchData?.dropOffTime && ` / ${searchData.dropOffTime}`}
                 </span>
-              </>
-            )}
-            {searchData?.pickUpTime && (
-              <>
-                <span>•</span>
-                <div className="flex items-center gap-2">
-                  <FaClock className="w-4 h-4" />
-                  <span>Pickup: {searchData.pickUpTime}</span>
-                  {searchData?.dropOffTime && (
-                    <span>| Dropoff: {searchData.dropOffTime}</span>
-                  )}
                 </div>
-              </>
-            )}
+                </button>
+              )}
+
+              {/* Change CTA - Right Side */}
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Scroll to search form
+                    const searchForm = document.querySelector('form, [class*="search"]');
+                    if (searchForm) {
+                      searchForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      setTimeout(() => {
+                        const firstInput = searchForm.querySelector('input, select');
+                        if (firstInput) firstInput.focus();
+                      }, 500);
+                    }
+                  }}
+                  className={`text-primary hover:text-primary-focus font-medium hover:underline transition-all focus:outline-none focus:ring-2 focus:ring-primary/50 rounded ${isStickyCompact ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'}`}
+                >
+                  Change
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Sidebar Filters */}
-          <aside className="lg:w-64 flex-shrink-0">
-            <div className="card bg-base-100 shadow-xl sticky top-4">
+        {/* Mobile Filter Overlay */}
+        {showFiltersDrawer && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 xl:hidden"
+            onClick={() => setShowFiltersDrawer(false)}
+          ></div>
+        )}
+        
+        <div className="flex flex-col xl:flex-row gap-6 relative">
+          {/* Sidebar Filters - Responsive */}
+          <aside className={`xl:w-64 flex-shrink-0 ${showFiltersDrawer ? 'fixed xl:relative left-0 top-0 h-full xl:h-auto z-50 xl:z-auto w-80 xl:w-64' : 'hidden xl:block'}`}>
+            <div className="card bg-base-100 shadow-xl sticky top-4 h-[calc(100vh-2rem)] xl:h-auto overflow-y-auto">
               <div className="card-body p-4">
-                <h2 className="text-lg font-bold mb-4">Filters</h2>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-bold">Filters</h2>
+                  <button
+                    onClick={() => setShowFiltersDrawer(false)}
+                    className="btn btn-sm btn-circle btn-ghost xl:hidden"
+                  >
+                    <FaTimes className="w-4 h-4" />
+                  </button>
+                </div>
 
-                {/* State Filter */}
-                <div className="form-control mb-4">
-                  <label className="label">
-                    <span className="label-text font-medium">State</span>
+                {/* Location Section */}
+                <div className="collapse collapse-arrow bg-base-200 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={expandedFilterSections.location}
+                    onChange={(e) => setExpandedFilterSections(prev => ({ ...prev, location: e.target.checked }))}
+                  />
+                  <div className="collapse-title text-sm font-semibold px-3 py-2 min-h-0">
+                    📍 Location
+                  </div>
+                  <div className="collapse-content px-3 pb-3">
+                    <div className="form-control">
+                      <label className="label py-1">
+                        <span className="label-text text-xs">State</span>
                   </label>
                   <select
                     name="state"
@@ -329,12 +556,25 @@ const CarsPage = () => {
                       <option key={state.value} value={state.value}>{state.label}</option>
                     ))}
                   </select>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Car Type Filter */}
-                <div className="form-control mb-4">
-                  <label className="label">
-                    <span className="label-text font-medium">Car Type</span>
+                {/* Vehicle Section */}
+                <div className="collapse collapse-arrow bg-base-200 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={expandedFilterSections.vehicle}
+                    onChange={(e) => setExpandedFilterSections(prev => ({ ...prev, vehicle: e.target.checked }))}
+                  />
+                  <div className="collapse-title text-sm font-semibold px-3 py-2 min-h-0">
+                    🚗 Vehicle
+                  </div>
+                  <div className="collapse-content px-3 pb-3 space-y-3">
+                    {/* Car Type Filter with Icons */}
+                    <div className="form-control">
+                      <label className="label py-1">
+                        <span className="label-text text-xs">Car Type</span>
                   </label>
                   <select
                     name="type"
@@ -344,15 +584,17 @@ const CarsPage = () => {
                   >
                     <option value="any">All Types</option>
                     {availableCarTypes.map(type => (
-                      <option key={type} value={type}>{type}</option>
+                          <option key={type} value={type}>
+                            {getCarTypeIcon(type)} {type}
+                          </option>
                     ))}
                   </select>
                 </div>
 
                 {/* Seats Filter */}
-                <div className="form-control mb-4">
-                  <label className="label">
-                    <span className="label-text font-medium">Minimum Seats</span>
+                    <div className="form-control">
+                      <label className="label py-1">
+                        <span className="label-text text-xs">Minimum Seats</span>
                   </label>
                   <select
                     name="seats"
@@ -366,68 +608,88 @@ const CarsPage = () => {
                     <option value="5">5+</option>
                     <option value="7">7+</option>
                   </select>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Vendor Filter */}
-                <div className="form-control mb-4">
-                  <label className="label">
-                    <span className="label-text font-medium">Vendor</span>
-                  </label>
-                  <div className="max-h-40 overflow-y-auto border border-base-300 rounded-lg p-2 bg-base-200">
-                    <label className="flex items-center gap-2 p-1 hover:bg-base-300 rounded cursor-pointer">
+                {/* Vendors Section */}
+                <div className="collapse collapse-arrow bg-base-200 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={expandedFilterSections.vendors}
+                    onChange={(e) => setExpandedFilterSections(prev => ({ ...prev, vendors: e.target.checked }))}
+                  />
+                  <div className="collapse-title text-sm font-semibold px-3 py-2 min-h-0">
+                    🏢 Vendors
+                  </div>
+                  <div className="collapse-content px-3 pb-3">
+                    <div className="max-h-40 overflow-y-auto border border-base-300 rounded-lg p-2 bg-base-100">
+                      <label className="flex items-center gap-2 p-1 hover:bg-base-200 rounded cursor-pointer">
                       <input
                         type="checkbox"
                         className="checkbox checkbox-xs"
                         checked={filters.vendors.length === availableVendors.length}
                         onChange={handleAllVendorsToggle}
                       />
-                      <span className="text-sm font-medium">All Vendors</span>
+                        <span className="text-xs font-medium">All Vendors</span>
                     </label>
                     <div className="divider my-1"></div>
                     {availableVendors.map(vendor => (
-                      <label key={vendor} className="flex items-center gap-2 p-1 hover:bg-base-300 rounded cursor-pointer">
+                        <label key={vendor} className="flex items-center gap-2 p-1 hover:bg-base-200 rounded cursor-pointer">
                         <input
                           type="checkbox"
                           className="checkbox checkbox-xs"
                           checked={filters.vendors.includes(vendor)}
                           onChange={() => handleVendorToggle(vendor)}
                         />
-                        <span className="text-sm">{vendor}</span>
+                          <span className="text-xs">{vendor}</span>
                       </label>
                     ))}
+                    </div>
                   </div>
                 </div>
 
+                {/* Price & Sort Section */}
+                <div className="collapse collapse-arrow bg-base-200 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={expandedFilterSections.priceSort}
+                    onChange={(e) => setExpandedFilterSections(prev => ({ ...prev, priceSort: e.target.checked }))}
+                  />
+                  <div className="collapse-title text-sm font-semibold px-3 py-2 min-h-0">
+                    💰 Price & Sort
+                  </div>
+                  <div className="collapse-content px-3 pb-3 space-y-3">
                 {/* Price Range Filter */}
-                <div className="form-control mb-4">
-                  <label className="label">
-                    <span className="label-text font-medium">Price Per Day</span>
+                    <div className="form-control">
+                      <label className="label py-1">
+                        <span className="label-text text-xs">Price Per Day</span>
                   </label>
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <label className="label py-0">
-                        <span className="label-text-alt">Min</span>
+                            <span className="label-text-alt text-xs">Min</span>
                       </label>
                       <input
                         type="number"
                         name="minPrice"
                         value={filters.minPrice}
                         onChange={handleInputChange}
-                        className="input input-sm input-bordered w-full"
+                            className="input input-xs input-bordered w-full"
                         placeholder="0"
                         min="0"
                       />
                     </div>
                     <div className="flex-1">
                       <label className="label py-0">
-                        <span className="label-text-alt">Max</span>
+                            <span className="label-text-alt text-xs">Max</span>
                       </label>
                       <input
                         type="number"
                         name="maxPrice"
                         value={filters.maxPrice}
                         onChange={handleInputChange}
-                        className="input input-sm input-bordered w-full"
+                            className="input input-xs input-bordered w-full"
                         placeholder="∞"
                         min="0"
                       />
@@ -435,26 +697,89 @@ const CarsPage = () => {
                   </div>
                 </div>
 
-                {/* Sort By Filter */}
-                <div className="form-control mb-4">
-                  <label className="label">
-                    <span className="label-text font-medium">Sort By</span>
+                    {/* Sort By Filter - Icon-based */}
+                    <div className="form-control">
+                      <label className="label py-1">
+                        <span className="label-text text-xs">Sort By</span>
                   </label>
-                  <select
-                    name="sort"
-                    value={filters.sort}
-                    onChange={handleInputChange}
-                    className="select select-sm select-bordered w-full"
-                  >
-                    <option value="price-asc">Lowest to Highest Price</option>
-                    <option value="price-desc">Highest to Lowest Price</option>
-                    <option value="seats-desc">Most Seats</option>
-                    <option value="vendor-asc">Vendor A-Z</option>
-                  </select>
+                      <div className="dropdown dropdown-end w-full">
+                        <label tabIndex={0} className="btn btn-sm btn-outline w-full justify-between">
+                          <span className="flex items-center gap-2">
+                            {filters.sort === 'price-asc' && <>💰 Lowest Price</>}
+                            {filters.sort === 'price-desc' && <>💸 Highest Price</>}
+                            {filters.sort === 'seats-desc' && <>👥 Most Seats</>}
+                            {filters.sort === 'vendor-asc' && <>🏢 Vendor A-Z</>}
+                            {!['price-asc', 'price-desc', 'seats-desc', 'vendor-asc'].includes(filters.sort) && <>Sort Options</>}
+                          </span>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </label>
+                        <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-64 p-2 shadow-lg border border-base-300">
+                          <li>
+                            <a
+                              onClick={() => {
+                                setFilters(prev => ({ ...prev, sort: 'price-asc' }));
+                                handleInputChange({ target: { name: 'sort', value: 'price-asc' } });
+                                applyFilters();
+                              }}
+                              className={filters.sort === 'price-asc' ? 'active' : ''}
+                            >
+                              <span className="text-lg">💰</span>
+                              <span>Lowest Price</span>
+                              {filters.sort === 'price-asc' && <span className="text-primary">✓</span>}
+                            </a>
+                          </li>
+                          <li>
+                            <a
+                              onClick={() => {
+                                setFilters(prev => ({ ...prev, sort: 'price-desc' }));
+                                handleInputChange({ target: { name: 'sort', value: 'price-desc' } });
+                                applyFilters();
+                              }}
+                              className={filters.sort === 'price-desc' ? 'active' : ''}
+                            >
+                              <span className="text-lg">💸</span>
+                              <span>Highest Price</span>
+                              {filters.sort === 'price-desc' && <span className="text-primary">✓</span>}
+                            </a>
+                          </li>
+                          <li>
+                            <a
+                              onClick={() => {
+                                setFilters(prev => ({ ...prev, sort: 'seats-desc' }));
+                                handleInputChange({ target: { name: 'sort', value: 'seats-desc' } });
+                                applyFilters();
+                              }}
+                              className={filters.sort === 'seats-desc' ? 'active' : ''}
+                            >
+                              <span className="text-lg">👥</span>
+                              <span>Most Seats</span>
+                              {filters.sort === 'seats-desc' && <span className="text-primary">✓</span>}
+                            </a>
+                          </li>
+                          <li>
+                            <a
+                              onClick={() => {
+                                setFilters(prev => ({ ...prev, sort: 'vendor-asc' }));
+                                handleInputChange({ target: { name: 'sort', value: 'vendor-asc' } });
+                                applyFilters();
+                              }}
+                              className={filters.sort === 'vendor-asc' ? 'active' : ''}
+                            >
+                              <span className="text-lg">🏢</span>
+                              <span>Vendor A-Z</span>
+                              {filters.sort === 'vendor-asc' && <span className="text-primary">✓</span>}
+                            </a>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-2 mt-4">
+                <div className="flex gap-2 mt-3">
                   <button
                     onClick={applyFilters}
                     className="btn btn-primary btn-sm flex-1"
@@ -464,10 +789,10 @@ const CarsPage = () => {
                   </button>
                   <button
                     onClick={handleReset}
-                    className="btn btn-ghost btn-sm"
+                    className="btn btn-ghost btn-sm flex-1"
                     disabled={loading}
                   >
-                    Reset
+                    Reset All
                   </button>
                 </div>
               </div>
@@ -475,13 +800,123 @@ const CarsPage = () => {
           </aside>
 
           {/* Main Results Area */}
-          <main className="flex-1">
-            {/* Results Header */}
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-2xl font-bold">
+          <main className="flex-1 min-w-0">
+            {/* Results Header with Filter Toggle and Sort */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowFiltersDrawer(!showFiltersDrawer)}
+                  className="btn btn-sm btn-ghost xl:hidden"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                  Filters
+                </button>
+                <h1 className="text-xl sm:text-2xl font-bold">
                 {pagination ? `${pagination.totalItems} Car${pagination.totalItems !== 1 ? 's' : ''} Found` : 'Search Results'}
               </h1>
             </div>
+              
+              {/* Sort Dropdown - Desktop */}
+              <div className="dropdown dropdown-end">
+                <label tabIndex={0} className="btn btn-sm btn-outline">
+                  <span className="flex items-center gap-2">
+                    {filters.sort === 'price-asc' && <>💰 Lowest Price</>}
+                    {filters.sort === 'price-desc' && <>💸 Highest Price</>}
+                    {filters.sort === 'seats-desc' && <>👥 Most Seats</>}
+                    {filters.sort === 'vendor-asc' && <>🏢 Vendor A-Z</>}
+                  </span>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </label>
+                <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-64 p-2 shadow-lg border border-base-300">
+                  <li>
+                    <a
+                      onClick={() => {
+                        setFilters(prev => ({ ...prev, sort: 'price-asc' }));
+                        handleInputChange({ target: { name: 'sort', value: 'price-asc' } });
+                        applyFilters();
+                      }}
+                      className={filters.sort === 'price-asc' ? 'active' : ''}
+                    >
+                      <span className="text-lg">💰</span>
+                      <span>Lowest Price</span>
+                      {filters.sort === 'price-asc' && <span className="text-primary">✓</span>}
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      onClick={() => {
+                        setFilters(prev => ({ ...prev, sort: 'price-desc' }));
+                        handleInputChange({ target: { name: 'sort', value: 'price-desc' } });
+                        applyFilters();
+                      }}
+                      className={filters.sort === 'price-desc' ? 'active' : ''}
+                    >
+                      <span className="text-lg">💸</span>
+                      <span>Highest Price</span>
+                      {filters.sort === 'price-desc' && <span className="text-primary">✓</span>}
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      onClick={() => {
+                        setFilters(prev => ({ ...prev, sort: 'seats-desc' }));
+                        handleInputChange({ target: { name: 'sort', value: 'seats-desc' } });
+                        applyFilters();
+                      }}
+                      className={filters.sort === 'seats-desc' ? 'active' : ''}
+                    >
+                      <span className="text-lg">👥</span>
+                      <span>Most Seats</span>
+                      {filters.sort === 'seats-desc' && <span className="text-primary">✓</span>}
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      onClick={() => {
+                        setFilters(prev => ({ ...prev, sort: 'vendor-asc' }));
+                        handleInputChange({ target: { name: 'sort', value: 'vendor-asc' } });
+                        applyFilters();
+                      }}
+                      className={filters.sort === 'vendor-asc' ? 'active' : ''}
+                    >
+                      <span className="text-lg">🏢</span>
+                      <span>Vendor A-Z</span>
+                      {filters.sort === 'vendor-asc' && <span className="text-primary">✓</span>}
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Quick Filter Chips */}
+            {!loading && (
+              <div className="mb-4 overflow-x-auto">
+                <div className="flex gap-2 pb-2">
+                  {availableCarTypes.slice(0, 5).map(type => (
+                    <button
+                      key={type}
+                      onClick={() => handleQuickFilter('type', type)}
+                      className={`btn btn-sm btn-outline flex-shrink-0 gap-1 transition-all ${filters.type === type ? 'btn-primary shadow-md' : 'hover:btn-primary'}`}
+                    >
+                      <span className="text-base">{getCarTypeIcon(type)}</span>
+                      <span>{type}</span>
+                    </button>
+                  ))}
+                  {filters.type !== 'any' && (
+                    <button
+                      onClick={() => handleQuickFilter('clear', null)}
+                      className="btn btn-sm btn-ghost flex-shrink-0"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Error Message */}
             {error && (
@@ -493,10 +928,86 @@ const CarsPage = () => {
               </div>
             )}
 
-            {/* Loading State */}
+            {/* Loading State - Skeleton Loaders with Shimmer */}
             {loading && (
-              <div className="flex justify-center items-center py-20">
-                <span className="loading loading-spinner loading-lg text-primary"></span>
+              <div className="grid grid-cols-1 gap-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="card bg-base-100 shadow-xl border border-base-200">
+                    <div className="card-body p-0">
+                      <div className="flex flex-col md:flex-row">
+                        {/* Image Skeleton with Shimmer */}
+                        <div 
+                          className="md:w-64 w-full h-48 md:h-auto bg-gradient-to-r from-base-300 via-base-200 to-base-300 rounded-t-lg md:rounded-t-none md:rounded-l-lg"
+                          style={{
+                            backgroundSize: '200% 100%',
+                            animation: 'shimmer 2s infinite'
+                          }}
+                        ></div>
+                        {/* Content Skeleton */}
+                        <div className="flex-1 p-6 space-y-4">
+                          <div 
+                            className="h-6 bg-gradient-to-r from-base-300 via-base-200 to-base-300 rounded w-3/4"
+                            style={{
+                              backgroundSize: '200% 100%',
+                              animation: 'shimmer 2s infinite'
+                            }}
+                          ></div>
+                          <div 
+                            className="h-4 bg-gradient-to-r from-base-300 via-base-200 to-base-300 rounded w-1/2"
+                            style={{
+                              backgroundSize: '200% 100%',
+                              animation: 'shimmer 2s infinite'
+                            }}
+                          ></div>
+                          <div 
+                            className="h-4 bg-gradient-to-r from-base-300 via-base-200 to-base-300 rounded w-2/3"
+                            style={{
+                              backgroundSize: '200% 100%',
+                              animation: 'shimmer 2s infinite'
+                            }}
+                          ></div>
+                          <div className="flex gap-2">
+                            {[1, 2, 3].map((j) => (
+                              <div
+                                key={j}
+                                className="h-6 bg-gradient-to-r from-base-300 via-base-200 to-base-300 rounded w-20"
+                                style={{
+                                  backgroundSize: '200% 100%',
+                                  animation: 'shimmer 2s infinite'
+                                }}
+                              ></div>
+                            ))}
+                          </div>
+                          <div className="flex justify-between items-end mt-auto">
+                            <div className="space-y-2">
+                              <div 
+                                className="h-5 bg-gradient-to-r from-base-300 via-base-200 to-base-300 rounded w-24"
+                                style={{
+                                  backgroundSize: '200% 100%',
+                                  animation: 'shimmer 2s infinite'
+                                }}
+                              ></div>
+                              <div 
+                                className="h-8 bg-gradient-to-r from-base-300 via-base-200 to-base-300 rounded w-32"
+                                style={{
+                                  backgroundSize: '200% 100%',
+                                  animation: 'shimmer 2s infinite'
+                                }}
+                              ></div>
+                            </div>
+                            <div 
+                              className="h-10 bg-gradient-to-r from-base-300 via-base-200 to-base-300 rounded w-24"
+                              style={{
+                                backgroundSize: '200% 100%',
+                                animation: 'shimmer 2s infinite'
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -516,19 +1027,28 @@ const CarsPage = () => {
               </div>
             )}
 
-            {/* Results Grid */}
+            {/* Results Grid - Responsive */}
             {!loading && results.length > 0 && (
               <>
                 <div className="grid grid-cols-1 gap-4 mb-6">
-                  {results.map((car) => {
+                  {results.map((car, index) => {
                     const totalPrice = car.pricePerDay * rentalDays;
                     
+                    // Determine highlight tags based on car properties
+                    const highlightTags = [];
+                    if (car.pricePerDay < 50) highlightTags.push({ text: 'Best Value', color: 'badge-success' });
+                    if (index < 3) highlightTags.push({ text: 'Popular Choice', color: 'badge-primary' });
+                    if (car.seats >= 7) highlightTags.push({ text: 'Family Friendly', color: 'badge-info' });
+                    if (car.type?.toLowerCase().includes('luxury') || car.type?.toLowerCase().includes('premium')) {
+                      highlightTags.push({ text: 'Premium', color: 'badge-warning' });
+                    }
+                    
                     return (
-                      <div key={car.id} className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
+                      <div key={car.id} className="card bg-base-100 shadow-xl hover:shadow-2xl transition-all duration-300 border border-base-200 w-full">
                         <div className="card-body p-0">
                           <div className="flex flex-col md:flex-row">
-                            {/* Car Image */}
-                          <figure className="md:w-64 h-48 md:h-auto overflow-hidden bg-base-200 relative">
+                            {/* Car Image - Fixed size, responsive */}
+                            <figure className="md:w-64 w-full h-48 md:h-auto overflow-hidden bg-base-200 relative flex-shrink-0 rounded-t-lg md:rounded-t-none md:rounded-l-lg">
                             {!imageLoaded[car.id] && (
                               <div className="absolute inset-0 flex items-center justify-center">
                                 <FaCar className="w-12 h-12 text-base-300 animate-pulse" />
@@ -544,32 +1064,53 @@ const CarsPage = () => {
                                   setImageLoaded(prev => ({ ...prev, [car.id]: true }));
                                 }}
                               />
+                              {/* Highlight tags overlay on image */}
+                              {highlightTags.length > 0 && (
+                                <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+                                  {highlightTags.slice(0, 2).map((tag, idx) => (
+                                    <span key={idx} className={`badge badge-sm ${tag.color} shadow-lg`}>
+                                      {tag.text}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                           </figure>
 
                             {/* Car Details */}
-                            <div className="flex-1 p-6">
-                              <div className="flex justify-between items-start mb-4">
-                                <div>
-                                  <h3 className="text-2xl font-bold mb-1">{car.type}</h3>
-                                  <p className="text-base-content/60 flex items-center gap-2">
-                                    <span className="font-medium">{car.vendor}</span>
+                            <div className="flex-1 p-6 flex flex-col">
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-2xl">{getCarTypeIcon(car.type)}</span>
+                                    <h3 className="text-2xl font-bold">{car.type}</h3>
+                                    <span className="badge badge-sm badge-outline">
+                                      {getCarTypeIcon(car.type)} {car.type}
+                                    </span>
+                                  </div>
+                                  <p className="text-base-content/70 flex items-center gap-2 mb-2">
+                                    <span className="font-semibold text-base-content">{car.vendor}</span>
                                   </p>
+                                  <div className="flex items-center gap-2 text-base-content/60 text-sm">
+                                    <FaMapMarkerAlt className="w-3 h-3" />
+                                    <span>{car.location}</span>
                                 </div>
-                                <div className="badge badge-lg badge-outline gap-2">
+                                </div>
+                                <div className="badge badge-lg badge-outline gap-2 flex-shrink-0">
                                   <FaUsers className="w-4 h-4" />
                                   {car.seats} seats
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2 text-base-content/70 mb-4">
-                                <FaMapMarkerAlt className="w-4 h-4" />
-                                <span>{car.location}</span>
+                              {/* Amenities Row */}
+                              <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-base-200">
+                                <span className="badge badge-sm badge-ghost">✓ Automatic</span>
+                                <span className="badge badge-sm badge-ghost">❄️ Air Conditioning</span>
+                                <span className="badge badge-sm badge-ghost">🔄 Free Cancellation</span>
+                                <span className="badge badge-sm badge-ghost">⛽ Unlimited Mileage</span>
                               </div>
 
-                              <div className="divider my-2"></div>
-
                               {/* Pricing */}
-                              <div className="flex flex-col sm:flex-row items-end sm:items-center justify-between gap-4">
+                              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-auto">
                                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
                                   <div>
                                     <p className="text-xs text-base-content/60">Per day</p>
@@ -586,7 +1127,7 @@ const CarsPage = () => {
                                   </div>
                                 </div>
                                 <button 
-                                  className="btn btn-primary"
+                                  className="btn btn-primary btn-lg"
                                   onClick={async () => {
                                     // Track the click
                                     try {
@@ -604,6 +1145,31 @@ const CarsPage = () => {
                                       });
                                     } catch (error) {
                                       console.error('Failed to track click:', error);
+                                    }
+
+                                    // Check if user is authenticated
+                                    if (!isAuthenticated) {
+                                      toast.showError('Please log in to continue with booking');
+                                      // Save booking data to sessionStorage to restore after login
+                                      const pickupDate = pickUpDate || searchData?.pickUp || new Date().toISOString().split('T')[0];
+                                      const dropoffDate = dropOffDate || searchData?.dropOff || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+                                      const pickupDateObj = new Date(pickupDate);
+                                      const dropoffDateObj = new Date(dropoffDate);
+                                      const days = Math.ceil((dropoffDateObj - pickupDateObj) / (1000 * 60 * 60 * 24)) || 1;
+
+                                      const bookingData = {
+                                        type: 'car',
+                                        car,
+                                        pickupDate,
+                                        pickupTime: pickUpTime || searchData?.pickUpTime || '12:00',
+                                        dropoffDate,
+                                        dropoffTime: dropOffTime || searchData?.dropOffTime || '12:00',
+                                        days,
+                                      };
+                                      sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
+                                      sessionStorage.setItem('returnPath', '/bookings');
+                                      navigate('/login');
+                                      return;
                                     }
 
                                     // Navigate to car detail page
@@ -712,6 +1278,71 @@ const CarsPage = () => {
             />
           </div>
           <div className="modal-backdrop" onClick={() => setShowDropOffCalendar(false)}></div>
+        </div>
+      )}
+
+      {/* Time Picker Modal */}
+      {showTimePicker && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg">
+                Select {editingTime === 'pickup' ? 'Pickup' : 'Dropoff'} Time
+              </h3>
+              <button
+                onClick={() => {
+                  setShowTimePicker(false);
+                  setEditingTime(null);
+                }}
+                className="btn btn-sm btn-circle btn-ghost"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text font-medium">
+                    {editingTime === 'pickup' ? 'Pickup' : 'Dropoff'} Time
+                  </span>
+                </label>
+                <input
+                  type="time"
+                  id="time-picker-input"
+                  className="input input-bordered w-full"
+                  defaultValue={editingTime === 'pickup' ? searchData?.pickUpTime : searchData?.dropOffTime}
+                />
+              </div>
+              
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => {
+                    setShowTimePicker(false);
+                    setEditingTime(null);
+                  }}
+                  className="btn btn-ghost"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const timeInput = document.getElementById('time-picker-input');
+                    if (timeInput && timeInput.value) {
+                      handleTimeSelect(timeInput.value, editingTime);
+                    }
+                  }}
+                  className="btn btn-primary"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => {
+            setShowTimePicker(false);
+            setEditingTime(null);
+          }}></div>
         </div>
       )}
     </div>
