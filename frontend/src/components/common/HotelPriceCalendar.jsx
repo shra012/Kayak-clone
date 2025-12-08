@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { listingsApi } from '../../services/api/listings';
 import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 
-const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) => {
+const HotelPriceCalendar = ({ selectedDate, onDateSelect, city, state, minDate }) => {
   const [currentMonth, setCurrentMonth] = useState(() => {
     const date = selectedDate ? new Date(selectedDate + 'T00:00:00') : new Date();
     return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -30,15 +30,15 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
 
   // Fetch prices for the date range
   const { data: priceData, isLoading } = useQuery({
-    queryKey: ['flight-prices', from, to, startDate, endDate],
+    queryKey: ['hotel-prices', city, state, startDate, endDate],
     queryFn: async () => {
-      if (!from || !to) {
+      if (!city) {
         return { prices: {} };
       }
       try {
-        const data = await listingsApi.getFlightPricesByDate({
-          from,
-          to,
+        const data = await listingsApi.getHotelPricesByDate({
+          city,
+          state,
           startDate,
           endDate,
         });
@@ -55,11 +55,11 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
         
         return data || { prices: {} };
       } catch (error) {
-        console.error('Failed to load flight prices:', error);
+        console.error('Failed to load hotel prices:', error);
         return { prices: {} };
       }
     },
-    enabled: !!from && !!to,
+    enabled: !!city,
   });
 
   const prices = priceData?.prices || {};
@@ -180,7 +180,7 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
   ];
 
   return (
-    <div className="bg-base-100 rounded-lg shadow-xl p-6 max-w-md min-w-[350px] w-full">
+    <div className="bg-base-100 rounded-lg shadow-xl p-6 max-w-md min-w-[350px]">
       <div className="calendar-header flex items-center justify-between mb-4">
         <button
           onClick={handlePrevMonth}
@@ -209,7 +209,7 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
         ))}
       </div>
 
-      {isLoading && from && to ? (
+      {isLoading && city ? (
         <div className="flex justify-center items-center py-8">
           <span className="loading loading-spinner loading-md"></span>
         </div>
@@ -219,14 +219,14 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
         </div>
       )}
 
-      {(!from || !to) && (
+      {!city && (
         <div className="mt-4 text-sm text-base-content/70 text-center">
-          Select origin and destination to see prices
+          Select a location to see prices
         </div>
       )}
 
       {/* Price color legend */}
-      {from && to && Object.keys(prices).length > 0 && (
+      {city && Object.keys(prices).length > 0 && (
         <div className="mt-4 pt-4 border-t border-base-300">
           <div className="flex items-center justify-center gap-4 text-xs">
             <div className="flex items-center gap-1">
@@ -248,5 +248,5 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
   );
 };
 
-export default FlightPriceCalendar;
+export default HotelPriceCalendar;
 

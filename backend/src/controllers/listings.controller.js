@@ -707,6 +707,17 @@ export const getFlightPricesByDate = async (req, res, next) => {
   }
 };
 
+export const getHotelPricesByDate = async (req, res, next) => {
+  try {
+    const { city, state, startDate, endDate } = req.query;
+    const result = await listingsService.getHotelPricesByDate({ city, state, startDate, endDate });
+    res.json(result);
+  } catch (error) {
+    logger.error('Error in getHotelPricesByDate controller:', error);
+    next(error);
+  }
+};
+
 // ---------- Hotel helpers ----------
 
 // Precompute unique hotel locations (by city) + add country-level entry

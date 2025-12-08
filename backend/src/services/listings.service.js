@@ -691,6 +691,68 @@ export const searchHotels = async (query) => {
 };
 
 /**
+ * Get hotel prices by date range
+ */
+export const getHotelPricesByDate = async ({ city, state, startDate, endDate }) => {
+  try {
+    const db = await getMongoDB();
+    const collection = db.collection('hotels');
+    
+    const filter = {};
+    if (city) {
+      const cityRegex = new RegExp(city, 'i');
+      filter.$or = [
+        { city: cityRegex },
+        { name: cityRegex },
+        { neighbourhood: cityRegex }
+      ];
+    }
+    if (state) filter.state = state;
+    
+    // Query hotels from MongoDB Atlas
+    const hotels = await collection.find(filter).toArray();
+    
+    if (hotels.length === 0) {
+      return [];
+    }
+    
+    // Get all valid prices from the database (no hardcoded values)
+    const validPrices = hotels
+      .map(h => h.pricePerNight || h.price || 0)
+      .filter(p => p > 0 && typeof p === 'number');
+    
+    if (validPrices.length === 0) {
+      return [];
+    }
+    
+    // Get the minimum price from actual database data
+    const minPrice = Math.min(...validPrices);
+    
+    // Generate prices for date range using actual database minimum price
+    // If hotels have date-specific pricing in the future, this can be enhanced
+    const pricesByDate = [];
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const current = new Date(start);
+      
+      while (current <= end) {
+        const dateStr = current.toISOString().split('T')[0];
+        // Use actual minimum price from database (no random variations)
+        // In a production system, this would query date-specific pricing
+        pricesByDate.push({ date: dateStr, price: minPrice });
+        current.setDate(current.getDate() + 1);
+      }
+    }
+    
+    return pricesByDate;
+  } catch (error) {
+    logger.error('Error in getHotelPricesByDate service:', error);
+    throw error;
+  }
+};
+
+/**
  * Get hotel locations (cities) and property names for autocomplete
  */
 export const getHotelCities = async (query, limit = 10) => {

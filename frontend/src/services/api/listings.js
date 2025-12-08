@@ -44,6 +44,12 @@ export const listingsApi = {
     return data.items || data;
   },
 
+  // Get hotel prices by date range for calendar view
+  getHotelPricesByDate: async (params) => {
+    const { data } = await apiClient.get('/listings/hotels/prices-by-date', { params });
+    return data;
+  },
+
   getHotel: async (hotelId) => {
     const { data } = await apiClient.get(`/listings/hotels/${hotelId}`);
     return data;

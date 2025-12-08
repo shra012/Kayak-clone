@@ -10,6 +10,7 @@ import { listingsApi } from '../../services/api/listings';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { US_STATES } from '../../constants/usStates';
 import AgentInlineChat from '../../components/agent/AgentInlineChat';
+import HotelPriceCalendar from '../../components/common/HotelPriceCalendar';
 
 // Fix for default marker icon in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -298,6 +299,8 @@ const HotelsPage = () => {
     return searchData?.guests || 1;
   });
   const [showDateRangeCalendar, setShowDateRangeCalendar] = useState(false);
+  const [showCheckInCalendar, setShowCheckInCalendar] = useState(false);
+  const [showCheckOutCalendar, setShowCheckOutCalendar] = useState(false);
   
   // Track desktop size for responsive layout (but don't auto-open filters)
   useEffect(() => {
@@ -825,7 +828,7 @@ const HotelsPage = () => {
                         {option.region && (
                           <div className="text-xs text-base-content/60 mt-0.5">{option.region}</div>
                         )}
-                        </div>
+                      </div>
                       <span className="badge badge-xs badge-outline uppercase tracking-wide">
                         {option.type === 'property' ? 'Property' : 'City'}
                       </span>
@@ -833,32 +836,45 @@ const HotelsPage = () => {
                   ))}
                 </div>
               )}
-                  </div>
-              
-              {/* Check-in / Check-out - Combined Date Range Picker */}
+            </div>
+            
+              {/* Check-in Date Picker */}
               <div className="relative">
                 <label className="label py-1 px-0">
-                  <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Check-in / Check-out</span>
+                  <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Check-in</span>
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShowDateRangeCalendar(true)}
-                  className="input input-sm input-bordered w-64 text-left cursor-pointer hover:bg-base-200 flex items-center justify-between"
+                  onClick={() => setShowCheckInCalendar(true)}
+                  className="input input-sm input-bordered w-full text-left cursor-pointer hover:bg-base-200 flex items-center justify-between"
                 >
-                  <span className="flex items-center gap-2">
-                    <span className={checkInDate ? 'text-base-content' : 'text-base-content/50'}>
-                      {checkInDate ? formatDate(checkInDate) : 'Check-in'}
-                    </span>
-                    <span className="text-base-content/40">→</span>
-                    <span className={checkOutDate ? 'text-base-content' : 'text-base-content/50'}>
-                      {checkOutDate ? formatDate(checkOutDate) : 'Check-out'}
-                    </span>
+                  <span className={checkInDate ? 'text-base-content' : 'text-base-content/50'}>
+                    {checkInDate ? formatDate(checkInDate) : 'Add dates'}
                   </span>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                 </button>
-            </div>
+              </div>
+
+              {/* Check-out Date Picker */}
+              <div className="relative">
+                <label className="label py-1 px-0">
+                  <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Check-out</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCheckOutCalendar(true)}
+                  className="input input-sm input-bordered w-full text-left cursor-pointer hover:bg-base-200 flex items-center justify-between"
+                >
+                  <span className={checkOutDate ? 'text-base-content' : 'text-base-content/50'}>
+                    {checkOutDate ? formatDate(checkOutDate) : 'Add dates'}
+                  </span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
             
               {/* Guests */}
               <div className="relative">
@@ -879,7 +895,7 @@ const HotelsPage = () => {
             </div>
 
               {/* Search Button */}
-            <button
+              <button
               type="submit"
                 className="btn btn-primary btn-sm btn-circle h-10 w-10"
               disabled={loading}
@@ -888,7 +904,7 @@ const HotelsPage = () => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-            </button>
+              </button>
             </div>
           </form>
         </div>
@@ -1346,21 +1362,21 @@ const HotelsPage = () => {
                             className="radio radio-sm"
                             checked={filters.propertyType === type}
                             onChange={() => {
-                              const newFilters = {
-                                ...filters,
+                  const newFilters = {
+                    ...filters,
                                 propertyType: filters.propertyType === type ? '' : type
-                              };
-                              setFilters(newFilters);
-                              loadHotels(1, newFilters);
-                            }}
+                  };
+                  setFilters(newFilters);
+                  loadHotels(1, newFilters);
+                }}
                           />
                           <span className="text-lg">{getPropertyTypeIcon(type)}</span>
                           <span className="text-sm">{type}</span>
                         </label>
                       ))}
-                    </div>
-                  </div>
-                </div>
+          </div>
+        </div>
+      </div>
 
                 {/* Rating Section */}
                 <div className="collapse collapse-arrow bg-base-200 mb-2">
@@ -1371,7 +1387,7 @@ const HotelsPage = () => {
                   />
                   <div className="collapse-title text-lg font-semibold">
                     ⭐ Hotel Rating
-                  </div>
+          </div>
                   <div className="collapse-content">
                     <div className="space-y-2">
                       {['3', '3.5', '4', '4.5'].map((rating) => (
@@ -1632,17 +1648,17 @@ const HotelsPage = () => {
                 {popularCities.length === 0 ? (
                   <p className="text-xs text-base-content/50">We are loading top cities for you...</p>
                 ) : (
-                <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
+                  <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
                     {popularCities.slice(0, 18).map((cityOption) => (
-                    <button
+                      <button
                         key={cityOption.id}
-                      className="btn btn-xs btn-outline"
+                        className="btn btn-xs btn-outline"
                         onClick={() => handleCitySelect(cityOption)}
                       >
                         {cityOption.label}
-                    </button>
-                  ))}
-                </div>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -1941,10 +1957,10 @@ const HotelsPage = () => {
                 <div className="text-6xl mb-4"></div>
                 <p className="text-lg font-semibold">Map View</p>
                   <p className="text-sm text-base-content/60">No hotels to display on map</p>
-              </div>
-              )}
             </div>
           )}
+          </div>
+        )}
         </aside>
       </div>
 
@@ -2408,7 +2424,73 @@ const HotelsPage = () => {
         </div>
       )}
 
-      {/* Date Range Calendar Modal */}
+      {/* Hotel Check-In Price Calendar Modal */}
+      {showCheckInCalendar && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="relative">
+            <button
+              onClick={() => setShowCheckInCalendar(false)}
+              className="absolute -top-3 -right-3 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
+            >
+              ✕
+            </button>
+            <div className="bg-base-100 rounded-lg shadow-xl">
+              <div className="p-6 pb-2">
+                <h3 className="text-lg font-semibold mb-4 uppercase tracking-wide">Check-in</h3>
+              </div>
+              <div className="px-6 pb-6">
+                <HotelPriceCalendar
+                selectedDate={checkInDate}
+                onDateSelect={(date) => {
+                  setCheckInDate(date);
+                  // Auto-adjust check-out if it's before check-in
+                  if (checkOutDate && checkOutDate < date) {
+                    const tomorrow = new Date(date);
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    setCheckOutDate(tomorrow.toISOString().split('T')[0]);
+                  }
+                  setShowCheckInCalendar(false);
+                }}
+                city={filters.city || cityInput}
+                minDate={new Date().toISOString().split('T')[0]}
+              />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hotel Check-Out Price Calendar Modal */}
+      {showCheckOutCalendar && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="relative">
+            <button
+              onClick={() => setShowCheckOutCalendar(false)}
+              className="absolute -top-3 -right-3 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
+            >
+              ✕
+            </button>
+            <div className="bg-base-100 rounded-lg shadow-xl">
+              <div className="p-6 pb-2">
+                <h3 className="text-lg font-semibold mb-4 uppercase tracking-wide">Check-out</h3>
+              </div>
+              <div className="px-6 pb-6">
+                <HotelPriceCalendar
+                selectedDate={checkOutDate}
+                onDateSelect={(date) => {
+                  setCheckOutDate(date);
+                  setShowCheckOutCalendar(false);
+                }}
+                city={filters.city || cityInput}
+                minDate={checkInDate || new Date().toISOString().split('T')[0]}
+              />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legacy Date Range Calendar Modal (fallback) */}
       {showDateRangeCalendar && (
         <div className="modal modal-open">
           <div className="modal-box max-w-4xl">

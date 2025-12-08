@@ -8,6 +8,7 @@ import AnimatedCard from '../components/common/AnimatedCard';
 import AnimatedIcon from '../components/common/AnimatedIcon';
 import { listingsApi } from '../services/api/listings';
 import FlightPriceCalendar from '../components/common/FlightPriceCalendar';
+import HotelPriceCalendar from '../components/common/HotelPriceCalendar';
 import AgentContainer from '../components/agent/AgentContainer';
 import {
   getHomePageCarImages,
@@ -113,6 +114,8 @@ const HomePage = () => {
   const [hotelLocationOptions, setHotelLocationOptions] = useState([]);
   const [hotelLocationSelected, setHotelLocationSelected] = useState(false);
   const [showDateRangeCalendar, setShowDateRangeCalendar] = useState(false);
+  const [showHotelCheckInCalendar, setShowHotelCheckInCalendar] = useState(false);
+  const [showHotelCheckOutCalendar, setShowHotelCheckOutCalendar] = useState(false);
   
   // Car location dropdown states
   const [showCarLocationDropdown, setShowCarLocationDropdown] = useState(false);
@@ -613,6 +616,16 @@ const navigate = useNavigate();
     } finally {
       setLocationOptionsLoading(false);
     }
+  };
+
+  // Extract city name from location string (e.g., "New York, New York, United States" -> "New York")
+  const extractCityName = (location) => {
+    if (!location) return '';
+    const parts = location.split(',');
+    let cityName = parts[0].trim();
+    // Remove airport code in parentheses if present
+    cityName = cityName.replace(/\s*\([A-Z]{3}\)\s*$/, '');
+    return cityName;
   };
 
   // Load hotel location options (cities and property names)
@@ -1281,7 +1294,7 @@ const navigate = useNavigate();
                           setShowDepartCalendar(true);
                         }}
                       >
-                        <span>{searchData.flights.departDate ? parseLocalDate(searchData.flights.departDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Select'}</span>
+                        <span>{searchData.flights.departDate ? parseLocalDate(searchData.flights.departDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Add dates'}</span>
                         <FaCalendar className="text-gray-400" />
                       </button>
                     </div>
@@ -1303,7 +1316,7 @@ const navigate = useNavigate();
                               setShowReturnCalendar(true);
                             }}
                           >
-                            <span>{searchData.flights.returnDate ? parseLocalDate(searchData.flights.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Select'}</span>
+                            <span>{searchData.flights.returnDate ? parseLocalDate(searchData.flights.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Add dates'}</span>
                             <FaCalendar className="text-gray-400" />
                           </button>
                         </div>
@@ -1809,24 +1822,37 @@ const navigate = useNavigate();
                       )}
                     </div>
 
-                    {/* Check-in / Check-out - Combined Date Range Picker */}
+                    {/* Check-in Date Picker */}
                     <div className="relative">
                       <label className="label py-1 px-0">
-                        <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Check-in / Check-out</span>
+                        <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Check-in</span>
                       </label>
                       <button
                         type="button"
-                        onClick={() => setShowDateRangeCalendar(true)}
-                        className="input input-sm input-bordered w-64 text-left cursor-pointer hover:bg-base-200 flex items-center justify-between"
+                        onClick={() => setShowHotelCheckInCalendar(true)}
+                        className="input input-sm input-bordered w-full text-left cursor-pointer hover:bg-base-200 flex items-center justify-between"
                       >
-                        <span className="flex items-center gap-2">
-                          <span className={searchData.hotels.checkIn ? 'text-base-content' : 'text-base-content/50'}>
-                            {searchData.hotels.checkIn ? formatDate(searchData.hotels.checkIn) : 'Check-in'}
-                          </span>
-                          <span className="text-base-content/40">→</span>
-                          <span className={searchData.hotels.checkOut ? 'text-base-content' : 'text-base-content/50'}>
-                            {searchData.hotels.checkOut ? formatDate(searchData.hotels.checkOut) : 'Check-out'}
-                          </span>
+                        <span className={searchData.hotels.checkIn ? 'text-base-content' : 'text-base-content/50'}>
+                          {searchData.hotels.checkIn ? formatDate(searchData.hotels.checkIn) : 'Add dates'}
+                        </span>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* Check-out Date Picker */}
+                    <div className="relative">
+                      <label className="label py-1 px-0">
+                        <span className="label-text text-xs font-semibold text-base-content/70 uppercase tracking-wide">Check-out</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowHotelCheckOutCalendar(true)}
+                        className="input input-sm input-bordered w-full text-left cursor-pointer hover:bg-base-200 flex items-center justify-between"
+                      >
+                        <span className={searchData.hotels.checkOut ? 'text-base-content' : 'text-base-content/50'}>
+                          {searchData.hotels.checkOut ? formatDate(searchData.hotels.checkOut) : 'Add dates'}
                         </span>
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -2425,9 +2451,14 @@ const navigate = useNavigate();
             >
               <FaTimes className="w-5 h-5" />
             </button>
-              <FlightPriceCalendar
-                selectedDate={searchData.flights.departDate}
-                onDateSelect={(date) => {
+            <div className="bg-base-100 rounded-lg shadow-xl">
+              <div className="p-6 pb-2">
+                <h3 className="text-lg font-semibold mb-4 uppercase tracking-wide">Departure</h3>
+              </div>
+              <div className="px-6 pb-6">
+                <FlightPriceCalendar
+                  selectedDate={searchData.flights.departDate}
+                  onDateSelect={(date) => {
                 let agentSearchPayload = null;
                 setSearchData((prev) => {
                   const needsReturnAdjust = prev.flights.returnDate && prev.flights.returnDate < date;
@@ -2468,11 +2499,13 @@ const navigate = useNavigate();
                   });
                   setAgentPendingFlow(null);
                 }
-              }}
-              from={searchData.flights.from}
-              to={searchData.flights.to}
-              minDate={new Date().toISOString().split('T')[0]}
-            />
+                  }}
+                  from={searchData.flights.from}
+                  to={searchData.flights.to}
+                  minDate={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2487,24 +2520,107 @@ const navigate = useNavigate();
             >
               <FaTimes className="w-5 h-5" />
             </button>
-            <FlightPriceCalendar
-              selectedDate={searchData.flights.returnDate}
-              onDateSelect={(date) => {
-                setSearchData({
-                  ...searchData,
-                  flights: { ...searchData.flights, returnDate: date }
-                });
-                setShowReturnCalendar(false);
-              }}
-              from={searchData.flights.to} // Reverse for return flight
-              to={searchData.flights.from}
-              minDate={searchData.flights.departDate || new Date().toISOString().split('T')[0]}
-            />
+            <div className="bg-base-100 rounded-lg shadow-xl">
+              <div className="p-6 pb-2">
+                <h3 className="text-lg font-semibold mb-4 uppercase tracking-wide">Return</h3>
+              </div>
+              <div className="px-6 pb-6">
+                <FlightPriceCalendar
+                  selectedDate={searchData.flights.returnDate}
+                  onDateSelect={(date) => {
+                    setSearchData({
+                      ...searchData,
+                      flights: { ...searchData.flights, returnDate: date }
+                    });
+                    setShowReturnCalendar(false);
+                  }}
+                  from={searchData.flights.to} // Reverse for return flight
+                  to={searchData.flights.from}
+                  minDate={searchData.flights.departDate || new Date().toISOString().split('T')[0]}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Date Range Calendar Modal for Hotels */}
+      {/* Hotel Check-In Price Calendar Modal */}
+      {showHotelCheckInCalendar && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="relative">
+            <button
+              onClick={() => setShowHotelCheckInCalendar(false)}
+              className="absolute -top-3 -right-3 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
+            >
+              <FaTimes className="w-5 h-5" />
+            </button>
+            <div className="bg-base-100 rounded-lg shadow-xl">
+              <div className="p-6 pb-2">
+                <h3 className="text-lg font-semibold mb-4 uppercase tracking-wide">Check-in</h3>
+              </div>
+              <div className="px-6 pb-6">
+                <HotelPriceCalendar
+                  selectedDate={searchData.hotels.checkIn}
+                onDateSelect={(date) => {
+                  setSearchData((prev) => {
+                    const needsCheckOutAdjust = prev.hotels.checkOut && prev.hotels.checkOut < date;
+                    const adjustedCheckOut = needsCheckOutAdjust
+                      ? addDaysToDateString(date, 1)
+                      : prev.hotels.checkOut;
+                    return {
+                      ...prev,
+                      hotels: {
+                        ...prev.hotels,
+                        checkIn: date,
+                        checkOut: adjustedCheckOut
+                      }
+                    };
+                  });
+                  setShowHotelCheckInCalendar(false);
+                }}
+                city={searchData.hotels.location ? extractCityName(searchData.hotels.location) : ''}
+                minDate={new Date().toISOString().split('T')[0]}
+              />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hotel Check-Out Price Calendar Modal */}
+      {showHotelCheckOutCalendar && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="relative">
+            <button
+              onClick={() => setShowHotelCheckOutCalendar(false)}
+              className="absolute -top-3 -right-3 z-10 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
+            >
+              <FaTimes className="w-5 h-5" />
+            </button>
+            <div className="bg-base-100 rounded-lg shadow-xl">
+              <div className="p-6 pb-2">
+                <h3 className="text-lg font-semibold mb-4 uppercase tracking-wide">Check-out</h3>
+              </div>
+              <div className="px-6 pb-6">
+                <HotelPriceCalendar
+                selectedDate={searchData.hotels.checkOut}
+                onDateSelect={(date) => {
+                  setSearchData({
+                    ...searchData,
+                    hotels: { ...searchData.hotels, checkOut: date }
+                  });
+                  setShowHotelCheckOutCalendar(false);
+                }}
+                city={searchData.hotels.location ? extractCityName(searchData.hotels.location) : ''}
+                minDate={searchData.hotels.checkIn || new Date().toISOString().split('T')[0]}
+              />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legacy Date Range Calendar Modal for Hotels (fallback) */}
       {showDateRangeCalendar && (
         <div className="modal modal-open">
           <div className="modal-box max-w-4xl">

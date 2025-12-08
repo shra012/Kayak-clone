@@ -3,6 +3,7 @@ export { default as AnimatedIcon } from './AnimatedIcon';
 export { default as ProtectedRoute } from './ProtectedRoute';
 export { default as AuthInitializer } from './AuthInitializer';
 export { default as FlightPriceCalendar } from './FlightPriceCalendar';
+export { default as HotelPriceCalendar } from './HotelPriceCalendar';
 export { default as ImageUpload } from './ImageUpload';
 export { default as LoadingSpinner } from './LoadingSpinner';
 export { default as EmptyState } from './EmptyState';
