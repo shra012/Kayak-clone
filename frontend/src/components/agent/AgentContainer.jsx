@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { FaTimes, FaRobot } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import AgentChat from './AgentChat';
 import AgentSearchPanel from './AgentSearchPanel';
@@ -19,6 +20,7 @@ const AgentContainer = ({
   onFlowChange 
 }) => {
   const { user, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   
   // Current active flow (flights, hotels, cars)
   const [currentFlow, setCurrentFlow] = useState(initialFlow);
@@ -183,18 +185,107 @@ const AgentContainer = ({
 
       const data = await response.json();
       
-      // Add assistant response
+      // Check if agent returned bundles (flights, hotels, cars)
+      if (data.bundles && data.bundles.length > 0) {
+        // Transform bundles to results format for display
+        const transformedResults = data.bundles.map(bundle => {
+          const deal = bundle.deal;
+          const metadata = deal.deal_metadata || {};
+          
+          if (currentFlow === 'flights') {
+            const durationHours = metadata.duration_hours || 3;
+            return {
+              id: deal.deal_id || deal.id,
+              from: deal.origin,
+              to: deal.destination,
+              departDate: metadata.depart_date || new Date().toISOString().split('T')[0],
+              departureTime: metadata.departure_time || '09:00',
+              arrivalTime: metadata.arrival_time || '12:00',
+              airline: metadata.airline || 'Various Airlines',
+              flightNumber: metadata.flight_number || 'TBA',
+              price: deal.price,
+              currency: deal.currency || 'USD',
+              duration: `${Math.floor(durationHours)}h ${Math.round((durationHours % 1) * 60)}m`,
+              durationMinutes: Math.round(durationHours * 60),
+              nonstop: (metadata.stops || 0) === 0,
+              stops: metadata.stops || 0,
+              seatsAvailable: deal.availability || 10,
+              isDeal: deal.tags?.includes('BestValue') || deal.tags?.includes('Deal'),
+            };
+          } else if (currentFlow === 'hotels') {
+            return {
+              id: deal.deal_id || deal.id,
+              name: metadata.name || `Hotel in ${deal.destination}`,
+              city: deal.destination,
+              address: metadata.neighborhood || deal.destination,
+              rating: metadata.rating || 4,
+              stars: metadata.stars || 4,
+              price: deal.price,
+              pricePerNight: deal.price,
+              amenities: metadata.amenities || [],
+              image: metadata.image || '/placeholder-hotel.jpg',
+            };
+          } else if (currentFlow === 'cars') {
+            return {
+              id: deal.deal_id || deal.id,
+              vendor: metadata.car_vendor || 'Various',
+              model: metadata.car_type || 'Standard',
+              price: deal.price,
+              pricePerDay: deal.price,
+              transmission: metadata.transmission || 'Automatic',
+              fuel: metadata.fuel || 'Gasoline',
+              passengers: metadata.passengers || 5,
+            };
+          }
+          return null;
+        }).filter(Boolean);
+        
+        setResults(transformedResults);
+        setShowResults(true);
+        setCurrentView('results');
+        
+        // Extract search params from first deal
+        const firstDeal = data.bundles[0].deal;
+        const metadata = firstDeal.deal_metadata || {};
+        setSearchParams({
+          from: firstDeal.origin,
+          to: firstDeal.destination,
+          departDate: metadata.depart_date || new Date().toISOString().split('T')[0],
+          returnDate: metadata.return_date,
+          passengers: metadata.travelers || 1,
+        });
+      }
+      
+      // Add assistant response with formatted search details
+      let formattedContent = data.response;
+      
+      // If we have bundles, enhance the message with search details
+      if (data.bundles && data.bundles.length > 0 && data.bundles[0].deal) {
+        const firstDeal = data.bundles[0].deal;
+        const metadata = firstDeal.deal_metadata || {};
+        
+        if (currentFlow === 'flights') {
+          formattedContent = `✈️ Flight Search Results\n\n` +
+            `From: ${firstDeal.origin}\n` +
+            `To: ${firstDeal.destination}\n` +
+            `Date: ${metadata.depart_date || 'Today'}\n` +
+            `Trip Type: ${metadata.trip_type || 'One-way'}\n\n` +
+            `Found ${data.bundles.length} flight${data.bundles.length !== 1 ? 's' : ''} • ` +
+            `Prices from $${Math.min(...data.bundles.map(b => b.deal.price))} to $${Math.max(...data.bundles.map(b => b.deal.price))}\n\n` +
+            `Check the results on the right →`;
+        }
+      }
+      
       const assistantMessage = {
         role: 'assistant',
-        content: data.response,
+        content: formattedContent,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Check if agent extracted search parameters
+      // Check if agent extracted search parameters (legacy support)
       if (data.search_params && data.search_params_complete) {
         setSearchParams(data.search_params);
-        // Automatically trigger search instead of showing search panel
         await handleSearch(data.search_params);
       }
     } catch (error) {
