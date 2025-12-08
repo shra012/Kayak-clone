@@ -61,7 +61,9 @@ export const getPropertyClicks = async (filters = {}) => {
     const db = await getMongoDB();
     const clickLogsCollection = db.collection('clicklogs');
     
-    const { startDate, endDate, listingType, limit = 20 } = filters;
+    const { startDate, endDate, listingType, limit = 20, ownerId } = filters;
+    
+    logger.info('getPropertyClicks called with filters:', { startDate, endDate, listingType, limit, ownerId });
     
     const query = { listingId: { $exists: true, $ne: null } };
     if (startDate || endDate) {
@@ -73,6 +75,40 @@ export const getPropertyClicks = async (filters = {}) => {
       // Extract listing type from listingId prefix (e.g., "FL-", "HT-", "CR-")
       const prefix = listingType === 'flight' ? 'FL-' : listingType === 'hotel' ? 'HT-' : 'CR-';
       query.listingId = { $regex: `^${prefix}` };
+    }
+
+    // If ownerId provided, filter to only owner's properties
+    let ownerPropertyIds = [];
+    if (ownerId) {
+      logger.info('Filtering by ownerId:', ownerId);
+      const hotelsCollection = db.collection('hotels');
+      const carsCollection = db.collection('cars');
+      
+      const [ownedHotels, ownedCars] = await Promise.all([
+        hotelsCollection.find({ ownerId }).toArray(),
+        carsCollection.find({ ownerId }).toArray()
+      ]);
+      
+      ownerPropertyIds = [
+        ...ownedHotels.map(h => h.id),
+        ...ownedCars.map(c => c.id)
+      ];
+      
+      logger.info('Owner property IDs:', ownerPropertyIds);
+      
+      // If owner has properties, filter to only those
+      if (ownerPropertyIds.length > 0) {
+        query.listingId = { $in: ownerPropertyIds };
+        logger.info('Filtering clicks to owner properties:', ownerPropertyIds);
+      } else {
+        // Owner has no properties, return empty
+        logger.info('Owner has no properties');
+        return {
+          generatedAt: new Date().toISOString(),
+          filters,
+          items: []
+        };
+      }
     }
 
     const clicks = await clickLogsCollection.aggregate([
@@ -174,7 +210,34 @@ export const getPropertyReviews = async (filters = {}) => {
   const pool = getPostgresPool();
   
   try {
-    const { listingType, listingId, startDate, endDate, limit = 50 } = filters;
+    const { listingType, listingId, startDate, endDate, limit = 50, ownerId } = filters;
+    
+    // If ownerId provided, get owner's property IDs first
+    let ownerPropertyIds = [];
+    if (ownerId) {
+      const db = await getMongoDB();
+      const hotelsCollection = db.collection('hotels');
+      const carsCollection = db.collection('cars');
+      
+      const [ownedHotels, ownedCars] = await Promise.all([
+        hotelsCollection.find({ ownerId }).toArray(),
+        carsCollection.find({ ownerId }).toArray()
+      ]);
+      
+      ownerPropertyIds = [
+        ...ownedHotels.map(h => h.id),
+        ...ownedCars.map(c => c.id)
+      ];
+      
+      // If owner has no properties, return empty
+      if (ownerPropertyIds.length === 0) {
+        return {
+          generatedAt: new Date().toISOString(),
+          filters,
+          items: []
+        };
+      }
+    }
     
     let query = `
       SELECT 
@@ -198,6 +261,12 @@ export const getPropertyReviews = async (filters = {}) => {
     if (listingId) {
       query += ` AND listing_id = $${paramIndex++}`;
       params.push(listingId);
+    }
+    
+    // Filter by owner's properties
+    if (ownerPropertyIds.length > 0) {
+      query += ` AND listing_id = ANY($${paramIndex++})`;
+      params.push(ownerPropertyIds);
     }
 
     if (startDate) {
