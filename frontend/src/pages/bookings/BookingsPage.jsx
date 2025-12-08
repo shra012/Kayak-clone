@@ -190,11 +190,13 @@ const BookingsPage = () => {
         // Flight booking
         const outbound = bookingData.outbound;
         const returnFlight = bookingData.return;
+        const travelers = bookingData.searchParams?.travelers || 1;
         
         // Calculate total with taxes (10% tax)
-        let subtotal = outbound.price;
+        // Price per person * number of travelers
+        let subtotal = outbound.price * travelers;
         if (returnFlight) {
-          subtotal += returnFlight.price;
+          subtotal += returnFlight.price * travelers;
         }
         totalPrice = subtotal * 1.1; // Add 10% tax
 
@@ -238,8 +240,15 @@ const BookingsPage = () => {
         // Hotel booking
         const hotel = bookingData.hotel;
         const nights = bookingData.nights || 1;
+        const guests = bookingData.guests || 1;
+        const maxOccupancy = hotel.maxOccupancy || hotel.capacity || 2; // Default 2 per room
+        
+        // Calculate number of rooms needed
+        const roomsNeeded = Math.ceil(guests / maxOccupancy);
+        
         // Calculate total with taxes (10% tax)
-        const subtotal = hotel.pricePerNight * nights;
+        // Price per night * nights * number of rooms needed
+        const subtotal = hotel.pricePerNight * nights * roomsNeeded;
         totalPrice = subtotal * 1.1; // Add 10% tax
 
         bookingPayload = {
@@ -253,8 +262,10 @@ const BookingsPage = () => {
             city: hotel.city,
             checkIn: bookingData.checkIn,
             checkOut: bookingData.checkOut,
-            guests: bookingData.guests || 1,
+            guests,
             nights,
+            roomsNeeded,
+            maxOccupancy,
           },
           metadata: {
             hotel: {
@@ -270,8 +281,15 @@ const BookingsPage = () => {
         // Car booking
         const car = bookingData.car;
         const days = bookingData.days || 1;
+        const passengers = bookingData.passengers || 1;
+        const carCapacity = car.seats || car.capacity || 4; // Default 4 passengers
+        
+        // Calculate number of cars needed
+        const carsNeeded = Math.ceil(passengers / carCapacity);
+        
         // Calculate total with taxes (10% tax)
-        const subtotal = car.pricePerDay * days;
+        // Price per day * days * number of cars needed
+        const subtotal = car.pricePerDay * days * carsNeeded;
         totalPrice = subtotal * 1.1; // Add 10% tax
 
         bookingPayload = {
@@ -289,6 +307,9 @@ const BookingsPage = () => {
             dropoffDate: bookingData.dropoffDate,
             dropoffTime: bookingData.dropoffTime,
             days,
+            passengers,
+            carsNeeded,
+            carCapacity,
           },
           metadata: {
             car: {
@@ -326,7 +347,9 @@ const BookingsPage = () => {
     if (bookingData.type === 'round-trip' || bookingData.type === 'one-way') {
       const outbound = bookingData.outbound;
       const returnFlight = bookingData.return;
-      const subtotal = outbound.price + (returnFlight ? returnFlight.price : 0);
+      const travelers = bookingData.searchParams?.travelers || 1;
+      const pricePerPerson = outbound.price + (returnFlight ? returnFlight.price : 0);
+      const subtotal = pricePerPerson * travelers;
 
       return {
         type: 'Flight',
@@ -335,15 +358,24 @@ const BookingsPage = () => {
         details: [
           { label: 'Outbound', value: `${outbound.airline} • ${outbound.departDate} ${outbound.departureTime}` },
           returnFlight && { label: 'Return', value: `${returnFlight.airline} • ${returnFlight.departDate} ${returnFlight.departureTime}` },
-          { label: 'Travelers', value: bookingData.searchParams?.travelers || 1 },
+          { label: 'Travelers', value: travelers },
         ].filter(Boolean),
-        price: subtotal, // Subtotal for display, taxes added in sidebar
+        price: subtotal,
         currency: outbound.currency || 'USD',
+        priceBreakdown: {
+          basePrice: pricePerPerson,
+          multiplier: travelers,
+          multiplierLabel: travelers === 1 ? '1 traveler' : `${travelers} travelers`,
+          perUnitLabel: 'per person',
+        },
       };
     } else if (bookingData.type === 'hotel') {
       const hotel = bookingData.hotel;
       const nights = bookingData.nights || 1;
-      const subtotal = hotel.pricePerNight * nights;
+      const guests = bookingData.guests || 1;
+      const maxOccupancy = hotel.maxOccupancy || hotel.capacity || 2;
+      const roomsNeeded = Math.ceil(guests / maxOccupancy);
+      const subtotal = hotel.pricePerNight * nights * roomsNeeded;
       const totalPrice = subtotal * 1.1; // Add 10% tax
 
       return {
@@ -355,15 +387,27 @@ const BookingsPage = () => {
           { label: 'Check-in', value: bookingData.checkIn },
           { label: 'Check-out', value: bookingData.checkOut },
           { label: 'Nights', value: nights },
-          { label: 'Guests', value: bookingData.guests || 1 },
-        ],
-        price: subtotal, // Subtotal for display, taxes added in sidebar
+          { label: 'Guests', value: guests },
+          roomsNeeded > 1 && { label: 'Rooms Needed', value: `${roomsNeeded} (max ${maxOccupancy} per room)` },
+        ].filter(Boolean),
+        price: subtotal,
         currency: hotel.currency || 'USD',
+        priceBreakdown: {
+          basePrice: hotel.pricePerNight,
+          multiplier: nights * roomsNeeded,
+          multiplierLabel: roomsNeeded === 1 
+            ? `${nights} night${nights > 1 ? 's' : ''}` 
+            : `${nights} night${nights > 1 ? 's' : ''} × ${roomsNeeded} room${roomsNeeded > 1 ? 's' : ''}`,
+          perUnitLabel: 'per night per room',
+        },
       };
     } else if (bookingData.type === 'car') {
       const car = bookingData.car;
       const days = bookingData.days || 1;
-      const subtotal = car.pricePerDay * days;
+      const passengers = bookingData.passengers || 1;
+      const carCapacity = car.seats || car.capacity || 4;
+      const carsNeeded = Math.ceil(passengers / carCapacity);
+      const subtotal = car.pricePerDay * days * carsNeeded;
 
       return {
         type: 'Car Rental',
@@ -374,9 +418,19 @@ const BookingsPage = () => {
           { label: 'Pick-up', value: `${bookingData.pickupDate} ${bookingData.pickupTime || ''}` },
           { label: 'Drop-off', value: `${bookingData.dropoffDate} ${bookingData.dropoffTime || ''}` },
           { label: 'Days', value: days },
-        ],
-        price: subtotal, // Subtotal for display, taxes added in sidebar
+          { label: 'Passengers', value: passengers },
+          carsNeeded > 1 && { label: 'Cars Needed', value: `${carsNeeded} (${carCapacity} seats each)` },
+        ].filter(Boolean),
+        price: subtotal,
         currency: car.currency || 'USD',
+        priceBreakdown: {
+          basePrice: car.pricePerDay,
+          multiplier: days * carsNeeded,
+          multiplierLabel: carsNeeded === 1 
+            ? `${days} day${days > 1 ? 's' : ''}` 
+            : `${days} day${days > 1 ? 's' : ''} × ${carsNeeded} car${carsNeeded > 1 ? 's' : ''}`,
+          perUnitLabel: 'per day per car',
+        },
       };
     }
 
@@ -732,17 +786,31 @@ const BookingsPage = () => {
                 <h3 className="card-title">Booking Summary</h3>
                 <div className="divider"></div>
                 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-base-content/70">Type:</span>
                     <span className="font-medium">{summary.type}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-base-content/70">Subtotal:</span>
-                    <span className="font-medium">{summary.currency} {summary.price.toFixed(2)}</span>
+                  
+                  {/* Price Breakdown */}
+                  <div className="bg-base-200 p-3 rounded-lg space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-base-content/70">Base Rate {summary.priceBreakdown.perUnitLabel}:</span>
+                      <span className="font-medium">{summary.currency} {summary.priceBreakdown.basePrice.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-base-content/70">× {summary.priceBreakdown.multiplierLabel}:</span>
+                      <span className="font-medium">×{summary.priceBreakdown.multiplier}</span>
+                    </div>
+                    <div className="divider my-1"></div>
+                    <div className="flex justify-between text-sm font-semibold">
+                      <span>Subtotal:</span>
+                      <span>{summary.currency} {summary.price.toFixed(2)}</span>
+                    </div>
                   </div>
+                  
                   <div className="flex justify-between text-sm">
-                    <span className="text-base-content/70">Taxes & Fees:</span>
+                    <span className="text-base-content/70">Taxes & Fees (10%):</span>
                     <span className="font-medium">{summary.currency} {(summary.price * 0.1).toFixed(2)}</span>
                   </div>
                 </div>
