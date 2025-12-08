@@ -6,6 +6,11 @@
 .env.*
 scripts/.env
 
+# Helm values with secrets
+aws/helm/kayak/values.yaml
+**/values.yaml
+helm/*/values.yaml
+
 # Credentials and sensitive data
 **/credentials.json
 **/*password*
