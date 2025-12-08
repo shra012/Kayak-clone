@@ -2,6 +2,11 @@
 import pytest
 from datetime import datetime
 from freezegun import freeze_time
+from dotenv import load_dotenv
+import os
+
+# Load environment variables for all tests
+load_dotenv()
 
 
 @pytest.fixture

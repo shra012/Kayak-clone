@@ -17,7 +17,7 @@ const LoginPage = () => {
 
   // Redirect after successful login
   useEffect(() => {
-    if (isAuthenticated && user) {
+    if (isAuthenticated) {
       const returnPath = sessionStorage.getItem('returnPath');
       const pendingBooking = sessionStorage.getItem('pendingBooking');
       
@@ -25,28 +25,26 @@ const LoginPage = () => {
       sessionStorage.removeItem('returnPath');
       sessionStorage.removeItem('pendingBooking');
       
-      // Determine target path
-      let targetPath = '/';
-      
       // Check if user is owner - redirect to owner page (but only if no return path)
       if (user?.profileType === 'owner' && !returnPath) {
-        targetPath = '/owner';
-      } else if (pendingBooking && returnPath === '/bookings') {
-        // Navigate to return path or bookings with pending booking data
-        try {
-          const bookingData = JSON.parse(pendingBooking);
-          navigate(returnPath, { state: { bookingData }, replace: true });
-          return;
-        } catch (err) {
-          console.error('Failed to parse pending booking:', err);
-          targetPath = returnPath || '/';
-        }
-      } else if (returnPath) {
-        targetPath = returnPath;
+        navigate('/owner');
+        return;
       }
       
-      // Navigate with replace to avoid back button issues
-      navigate(targetPath, { replace: true });
+      // Navigate to return path or bookings with pending booking data
+      if (pendingBooking && returnPath === '/bookings') {
+        try {
+          const bookingData = JSON.parse(pendingBooking);
+          navigate(returnPath, { state: { bookingData } });
+        } catch (err) {
+          console.error('Failed to parse pending booking:', err);
+          navigate(returnPath || '/');
+        }
+      } else if (returnPath) {
+        navigate(returnPath);
+      } else {
+        navigate('/');
+      }
     }
   }, [isAuthenticated, user, navigate]);
 

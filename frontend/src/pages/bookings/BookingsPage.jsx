@@ -5,8 +5,10 @@ import { usersApi } from '../../services/api/users';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
-import { FaPlane, FaBed, FaCar, FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaCreditCard, FaArrowRight } from 'react-icons/fa';
+import { FaPlane, FaBed, FaCar, FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaCreditCard, FaArrowRight, FaStar } from 'react-icons/fa';
 import { US_STATES, getStateCode } from '../../constants/usStates';
+import { formatPhoneForDisplay, formatUsPhoneInput, getE164UsPhone, isValidUsPhone } from '../../utils/phone';
+import apiClient from '../../config/api';
 
 const US_CITIES = [
   'New York City', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
@@ -27,11 +29,15 @@ const BookingsPage = () => {
   const [loading, setLoading] = useState(false);
   const [bookingData, setBookingData] = useState(null);
   const [existingBookings, setExistingBookings] = useState([]);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [selectedBookingForReview, setSelectedBookingForReview] = useState(null);
+  const [reviewData, setReviewData] = useState({ rating: 5, comment: '' });
+  const [submittingReview, setSubmittingReview] = useState(false);
   const [billingInfo, setBillingInfo] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     email: user?.email || '',
-    phone: '',
+    phone: formatPhoneForDisplay(user?.phoneNumber || ''),
     address: {
       line1: '',
       line2: '',
@@ -70,6 +76,15 @@ const BookingsPage = () => {
     }
   }, [location.state, user]);
 
+    useEffect(() => {
+      if (user?.phoneNumber) {
+        setBillingInfo((prev) => ({
+          ...prev,
+          phone: formatPhoneForDisplay(user.phoneNumber),
+        }));
+      }
+    }, [user?.phoneNumber]);
+
   const loadBookings = async () => {
     if (!user?.id) return;
     try {
@@ -83,6 +98,63 @@ const BookingsPage = () => {
       toast.showError('Failed to load bookings');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenReviewModal = (booking) => {
+    setSelectedBookingForReview(booking);
+    setReviewData({ rating: 5, comment: '' });
+    setReviewModalOpen(true);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!selectedBookingForReview) return;
+    
+    if (!reviewData.comment.trim()) {
+      toast.showError('Please write a review comment');
+      return;
+    }
+
+    try {
+      setSubmittingReview(true);
+      
+      // Determine listing ID and type from booking
+      let listingId, listingType;
+      if (selectedBookingForReview.bookingType === 'hotel') {
+        listingId = selectedBookingForReview.itinerary?.hotelId;
+        listingType = 'hotel';
+      } else if (selectedBookingForReview.bookingType === 'car') {
+        listingId = selectedBookingForReview.itinerary?.carId;
+        listingType = 'car';
+      } else if (selectedBookingForReview.bookingType === 'flight') {
+        listingId = selectedBookingForReview.itinerary?.flightId;
+        listingType = 'flight';
+      }
+
+      if (!listingId) {
+        toast.showError('Cannot submit review: listing information missing');
+        return;
+      }
+
+      await apiClient.post('/reviews', {
+        listingId,
+        listingType,
+        rating: reviewData.rating,
+        comment: reviewData.comment,
+      });
+
+      toast.showSuccess('Review submitted successfully!');
+      setReviewModalOpen(false);
+      setSelectedBookingForReview(null);
+      setReviewData({ rating: 5, comment: '' });
+      
+      // Reload bookings to update review status
+      await loadBookings();
+    } catch (error) {
+      console.error('Error submitting review:', error);
+      toast.showError(error.response?.data?.message || 'Failed to submit review');
+    } finally {
+      setSubmittingReview(false);
     }
   };
 
@@ -102,6 +174,8 @@ const BookingsPage = () => {
     }
     if (!billingInfo.phone.trim()) {
       newErrors.phone = 'Phone number is required';
+    } else if (!isValidUsPhone(billingInfo.phone)) {
+      newErrors.phone = 'Enter a valid US phone number (+1 XXX XXX XXXX)';
     }
     if (!billingInfo.address.line1.trim()) {
       newErrors['address.line1'] = 'Address line 1 is required';
@@ -121,19 +195,24 @@ const BookingsPage = () => {
   };
 
   const handleBillingChange = (field, value) => {
+    let nextValue = value;
+    if (field === 'phone') {
+      nextValue = value ? formatUsPhoneInput(value) : '';
+    }
+
     if (field.includes('.')) {
       const [parent, child] = field.split('.');
       setBillingInfo(prev => ({
         ...prev,
         [parent]: {
           ...prev[parent],
-          [child]: value,
+          [child]: nextValue,
         },
       }));
     } else {
       setBillingInfo(prev => ({
         ...prev,
-        [field]: value,
+        [field]: nextValue,
       }));
     }
     // Clear error when user types
@@ -163,16 +242,23 @@ const BookingsPage = () => {
       // Prepare booking data based on type
       let bookingPayload = {};
       let totalPrice = 0;
+      const normalizedPhone = getE164UsPhone(billingInfo.phone);
+      const billingInfoForPayload = {
+        ...billingInfo,
+        phone: normalizedPhone || billingInfo.phone,
+      };
 
       if (bookingData.type === 'round-trip' || bookingData.type === 'one-way') {
         // Flight booking
         const outbound = bookingData.outbound;
         const returnFlight = bookingData.return;
+        const travelers = bookingData.searchParams?.travelers || 1;
         
         // Calculate total with taxes (10% tax)
-        let subtotal = outbound.price;
+        // Price per person * number of travelers
+        let subtotal = outbound.price * travelers;
         if (returnFlight) {
-          subtotal += returnFlight.price;
+          subtotal += returnFlight.price * travelers;
         }
         totalPrice = subtotal * 1.1; // Add 10% tax
 
@@ -216,8 +302,15 @@ const BookingsPage = () => {
         // Hotel booking
         const hotel = bookingData.hotel;
         const nights = bookingData.nights || 1;
+        const guests = bookingData.guests || 1;
+        const maxOccupancy = hotel.maxOccupancy || hotel.capacity || 2; // Default 2 per room
+        
+        // Calculate number of rooms needed
+        const roomsNeeded = Math.ceil(guests / maxOccupancy);
+        
         // Calculate total with taxes (10% tax)
-        const subtotal = hotel.pricePerNight * nights;
+        // Price per night * nights * number of rooms needed
+        const subtotal = hotel.pricePerNight * nights * roomsNeeded;
         totalPrice = subtotal * 1.1; // Add 10% tax
 
         bookingPayload = {
@@ -231,8 +324,10 @@ const BookingsPage = () => {
             city: hotel.city,
             checkIn: bookingData.checkIn,
             checkOut: bookingData.checkOut,
-            guests: bookingData.guests || 1,
+            guests,
             nights,
+            roomsNeeded,
+            maxOccupancy,
           },
           metadata: {
             hotel: {
@@ -241,15 +336,22 @@ const BookingsPage = () => {
               lat: hotel.lat,
               lng: hotel.lng,
             },
-            billingInfo,
+            billingInfo: billingInfoForPayload,
           },
         };
       } else if (bookingData.type === 'car') {
         // Car booking
         const car = bookingData.car;
         const days = bookingData.days || 1;
+        const passengers = bookingData.passengers || 1;
+        const carCapacity = car.seats || car.capacity || 4; // Default 4 passengers
+        
+        // Calculate number of cars needed
+        const carsNeeded = Math.ceil(passengers / carCapacity);
+        
         // Calculate total with taxes (10% tax)
-        const subtotal = car.pricePerDay * days;
+        // Price per day * days * number of cars needed
+        const subtotal = car.pricePerDay * days * carsNeeded;
         totalPrice = subtotal * 1.1; // Add 10% tax
 
         bookingPayload = {
@@ -267,12 +369,15 @@ const BookingsPage = () => {
             dropoffDate: bookingData.dropoffDate,
             dropoffTime: bookingData.dropoffTime,
             days,
+            passengers,
+            carsNeeded,
+            carCapacity,
           },
           metadata: {
             car: {
               seats: car.seats,
             },
-            billingInfo,
+            billingInfo: billingInfoForPayload,
           },
         };
       }
@@ -304,7 +409,9 @@ const BookingsPage = () => {
     if (bookingData.type === 'round-trip' || bookingData.type === 'one-way') {
       const outbound = bookingData.outbound;
       const returnFlight = bookingData.return;
-      const subtotal = outbound.price + (returnFlight ? returnFlight.price : 0);
+      const travelers = bookingData.searchParams?.travelers || 1;
+      const pricePerPerson = outbound.price + (returnFlight ? returnFlight.price : 0);
+      const subtotal = pricePerPerson * travelers;
 
       return {
         type: 'Flight',
@@ -313,15 +420,24 @@ const BookingsPage = () => {
         details: [
           { label: 'Outbound', value: `${outbound.airline} • ${outbound.departDate} ${outbound.departureTime}` },
           returnFlight && { label: 'Return', value: `${returnFlight.airline} • ${returnFlight.departDate} ${returnFlight.departureTime}` },
-          { label: 'Travelers', value: bookingData.searchParams?.travelers || 1 },
+          { label: 'Travelers', value: travelers },
         ].filter(Boolean),
-        price: subtotal, // Subtotal for display, taxes added in sidebar
+        price: subtotal,
         currency: outbound.currency || 'USD',
+        priceBreakdown: {
+          basePrice: pricePerPerson,
+          multiplier: travelers,
+          multiplierLabel: travelers === 1 ? '1 traveler' : `${travelers} travelers`,
+          perUnitLabel: 'per person',
+        },
       };
     } else if (bookingData.type === 'hotel') {
       const hotel = bookingData.hotel;
       const nights = bookingData.nights || 1;
-      const subtotal = hotel.pricePerNight * nights;
+      const guests = bookingData.guests || 1;
+      const maxOccupancy = hotel.maxOccupancy || hotel.capacity || 2;
+      const roomsNeeded = Math.ceil(guests / maxOccupancy);
+      const subtotal = hotel.pricePerNight * nights * roomsNeeded;
       const totalPrice = subtotal * 1.1; // Add 10% tax
 
       return {
@@ -333,15 +449,27 @@ const BookingsPage = () => {
           { label: 'Check-in', value: bookingData.checkIn },
           { label: 'Check-out', value: bookingData.checkOut },
           { label: 'Nights', value: nights },
-          { label: 'Guests', value: bookingData.guests || 1 },
-        ],
-        price: subtotal, // Subtotal for display, taxes added in sidebar
+          { label: 'Guests', value: guests },
+          roomsNeeded > 1 && { label: 'Rooms Needed', value: `${roomsNeeded} (max ${maxOccupancy} per room)` },
+        ].filter(Boolean),
+        price: subtotal,
         currency: hotel.currency || 'USD',
+        priceBreakdown: {
+          basePrice: hotel.pricePerNight,
+          multiplier: nights * roomsNeeded,
+          multiplierLabel: roomsNeeded === 1 
+            ? `${nights} night${nights > 1 ? 's' : ''}` 
+            : `${nights} night${nights > 1 ? 's' : ''} × ${roomsNeeded} room${roomsNeeded > 1 ? 's' : ''}`,
+          perUnitLabel: 'per night per room',
+        },
       };
     } else if (bookingData.type === 'car') {
       const car = bookingData.car;
       const days = bookingData.days || 1;
-      const subtotal = car.pricePerDay * days;
+      const passengers = bookingData.passengers || 1;
+      const carCapacity = car.seats || car.capacity || 4;
+      const carsNeeded = Math.ceil(passengers / carCapacity);
+      const subtotal = car.pricePerDay * days * carsNeeded;
 
       return {
         type: 'Car Rental',
@@ -352,9 +480,19 @@ const BookingsPage = () => {
           { label: 'Pick-up', value: `${bookingData.pickupDate} ${bookingData.pickupTime || ''}` },
           { label: 'Drop-off', value: `${bookingData.dropoffDate} ${bookingData.dropoffTime || ''}` },
           { label: 'Days', value: days },
-        ],
-        price: subtotal, // Subtotal for display, taxes added in sidebar
+          { label: 'Passengers', value: passengers },
+          carsNeeded > 1 && { label: 'Cars Needed', value: `${carsNeeded} (${carCapacity} seats each)` },
+        ].filter(Boolean),
+        price: subtotal,
         currency: car.currency || 'USD',
+        priceBreakdown: {
+          basePrice: car.pricePerDay,
+          multiplier: days * carsNeeded,
+          multiplierLabel: carsNeeded === 1 
+            ? `${days} day${days > 1 ? 's' : ''}` 
+            : `${days} day${days > 1 ? 's' : ''} × ${carsNeeded} car${carsNeeded > 1 ? 's' : ''}`,
+          perUnitLabel: 'per day per car',
+        },
       };
     }
 
@@ -432,12 +570,23 @@ const BookingsPage = () => {
                           <p className="text-2xl font-bold text-primary">
                             {booking.price?.currency || 'USD'} {booking.price?.amount?.toFixed(2) || '0.00'}
                           </p>
-                          <button
-                            className="btn btn-sm btn-ghost mt-2"
-                            onClick={() => navigate(`/bookings/${booking.id}`)}
-                          >
-                            View Details
-                          </button>
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              onClick={() => navigate(`/bookings/${booking.id}`)}
+                            >
+                              View Details
+                            </button>
+                            {booking.status === 'confirmed' && booking.timeline === 'past' && (
+                              <button
+                                className="btn btn-sm btn-primary"
+                                onClick={() => handleOpenReviewModal(booking)}
+                              >
+                                <FaStar className="w-3 h-3" />
+                                Write Review
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -447,6 +596,86 @@ const BookingsPage = () => {
             </div>
           )}
         </div>
+
+        {/* Review Modal */}
+        {reviewModalOpen && (
+          <div className="modal modal-open">
+            <div className="modal-box max-w-2xl">
+              <h3 className="font-bold text-lg mb-4">Write a Review</h3>
+              
+              {selectedBookingForReview && (
+                <div className="mb-4 p-4 bg-base-200 rounded-lg">
+                  <p className="font-semibold">
+                    {selectedBookingForReview.itinerary?.hotelName || 
+                     selectedBookingForReview.itinerary?.vendor ||
+                     'Your Booking'}
+                  </p>
+                  {selectedBookingForReview.itinerary?.city && (
+                    <p className="text-sm text-base-content/70">{selectedBookingForReview.itinerary.city}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Star Rating */}
+              <div className="form-control mb-4">
+                <label className="label">
+                  <span className="label-text font-semibold">Rating</span>
+                </label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewData({ ...reviewData, rating: star })}
+                      className={`text-3xl ${star <= reviewData.rating ? 'text-warning' : 'text-base-300'}`}
+                    >
+                      <FaStar />
+                    </button>
+                  ))}
+                  <span className="ml-2 self-center">{reviewData.rating} / 5</span>
+                </div>
+              </div>
+
+              {/* Review Comment */}
+              <div className="form-control mb-4">
+                <label className="label">
+                  <span className="label-text font-semibold">Your Review</span>
+                </label>
+                <textarea
+                  className="textarea textarea-bordered h-32"
+                  placeholder="Share your experience..."
+                  value={reviewData.comment}
+                  onChange={(e) => setReviewData({ ...reviewData, comment: e.target.value })}
+                  maxLength={1000}
+                />
+                <label className="label">
+                  <span className="label-text-alt">{reviewData.comment.length} / 1000 characters</span>
+                </label>
+              </div>
+
+              <div className="modal-action">
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setReviewModalOpen(false);
+                    setSelectedBookingForReview(null);
+                    setReviewData({ rating: 5, comment: '' });
+                  }}
+                  disabled={submittingReview}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSubmitReview}
+                  disabled={submittingReview || !reviewData.comment.trim()}
+                >
+                  {submittingReview ? 'Submitting...' : 'Submit Review'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -587,10 +816,12 @@ const BookingsPage = () => {
                       </label>
                       <input
                         type="tel"
+                        inputMode="numeric"
+                        maxLength={16}
                         className={`input input-bordered ${errors.phone ? 'input-error' : ''}`}
                         value={billingInfo.phone}
                         onChange={(e) => handleBillingChange('phone', e.target.value)}
-                        placeholder="+1 (555) 123-4567"
+                        placeholder="+1 555 123 4567"
                       />
                       {errors.phone && <label className="label"><span className="label-text-alt text-error">{errors.phone}</span></label>}
                     </div>
@@ -708,17 +939,31 @@ const BookingsPage = () => {
                 <h3 className="card-title">Booking Summary</h3>
                 <div className="divider"></div>
                 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-base-content/70">Type:</span>
                     <span className="font-medium">{summary.type}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-base-content/70">Subtotal:</span>
-                    <span className="font-medium">{summary.currency} {summary.price.toFixed(2)}</span>
+                  
+                  {/* Price Breakdown */}
+                  <div className="bg-base-200 p-3 rounded-lg space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-base-content/70">Base Rate {summary.priceBreakdown.perUnitLabel}:</span>
+                      <span className="font-medium">{summary.currency} {summary.priceBreakdown.basePrice.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-base-content/70">× {summary.priceBreakdown.multiplierLabel}:</span>
+                      <span className="font-medium">×{summary.priceBreakdown.multiplier}</span>
+                    </div>
+                    <div className="divider my-1"></div>
+                    <div className="flex justify-between text-sm font-semibold">
+                      <span>Subtotal:</span>
+                      <span>{summary.currency} {summary.price.toFixed(2)}</span>
+                    </div>
                   </div>
+                  
                   <div className="flex justify-between text-sm">
-                    <span className="text-base-content/70">Taxes & Fees:</span>
+                    <span className="text-base-content/70">Taxes & Fees (10%):</span>
                     <span className="font-medium">{summary.currency} {(summary.price * 0.1).toFixed(2)}</span>
                   </div>
                 </div>

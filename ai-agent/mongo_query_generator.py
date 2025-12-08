@@ -16,38 +16,39 @@ MONGO_SCHEMA_SUMMARY = dedent(
     The key collections and fields are:
 
     1. flights
+       - id
        - flightNumber (string)
        - airline (string)
        - from (IATA code)
        - to (IATA code)
-       - departDate (YYYY-MM-DD)
-       - departTime (HH:MM)
-       - arriveDate / arriveTime
+       - departDate (YYYY-MM-DD) - Filter outbound flights by this field
+       - returnDate (YYYY-MM-DD or null) - Most flights are ONE-WAY (returnDate is null). Only filter by returnDate if explicitly searching for round-trip flights.
+       - departureTime (HH:MM)
+       - arrivalTime (HH:MM)
        - durationMinutes (int)
        - nonstop (bool)
+       - stops (int)
        - price (number)
-       - seatsAvailable (int)
-       - class (economy | premium_economy | business | first)
+       - availableSeats (int)
+       - class (economy | business | first)
 
     2. hotels
-       - listingId
+       - id
        - name
        - city, state, country
-       - neighborhood
-       - nightlyPrice (number)
-       - stars (1-5)
+       - neighbourhood
+       - pricePerNight (number)
+       - rating (number, 1-5)
        - amenities (array of strings)
-       - reviewScore (number)
-       - roomsAvailable (int)
+       - availableRooms (int)
 
     3. cars
-       - listingId
-       - company
-       - city / airport
-       - vehicleType (SUV, sedan, compact, etc.)
-       - seats, luggage, transmission
-       - dailyPrice (number)
-       - availability (int)
+       - id
+       - vendor
+       - city, state, country
+       - type (Economy, SUV, Luxury, etc.)
+       - seats
+       - pricePerDay (number)
 
     4. airports
        - code (IATA)
@@ -62,6 +63,10 @@ MONGO_SCHEMA_SUMMARY = dedent(
     - Prefer case-insensitive regex for fuzzy text fields.
     - Include sort order when user asks for "cheapest", "top", or "latest".
     - Respect context (destination city, budget, dates, traveler count).
+    - CRITICAL FOR FLIGHTS: ALL flights are ONE-WAY only (returnDate is always null). NEVER add a returnDate filter.
+      * For one-way requests: filter by departDate matching the desired date
+      * For round-trip requests: search for outbound flights only using departDate (the system will handle return flights separately)
+      * When user provides date range: use $gte/$lte on departDate to find all departing flights in that window
     """
 ).strip()
 
@@ -91,12 +96,34 @@ class MongoQueryGenerator:
                 "limit": <int <= 20>
             }}
 
+            CRITICAL FOR FLIGHTS - READ CAREFULLY:
+            - ALL flights in the database are ONE-WAY only. The returnDate field is ALWAYS null.
+            - NEVER add a returnDate filter to your query. It will return zero results.
+            - For round-trip requests: Only search for OUTBOUND flights using departDate
+            - For date ranges: Use $gte/$lte on departDate to find all flights departing in that window
+            - Examples:
+              * "departing 2025-12-06 returning 2025-12-09" → {{"departDate": "2025-12-06"}} (outbound only)
+              * "flights from Dec 9 to Dec 13" → {{"departDate": {{"$gte": "2025-12-09", "$lte": "2025-12-13"}}}}
+              * "round-trip Dec 10 to Dec 15" → {{"departDate": "2025-12-10"}} (outbound only)
+            
+            IMPORTANT FOR BUDGET/PRICE FILTERS:
+            - Only add price filters if the user explicitly requests a budget constraint (e.g., "under $200", "cheap flights")
+            - If context has a very low budget (under $100 for flights, under $30 for hotels, under $20 for cars), IGNORE it - it's likely a default value
+            - Without explicit budget constraints, omit the price filter entirely to show all available options
+
             Use ISO date strings for dates. If the request cannot be satisfied, reply with __UNSUPPORTED__.
             """
         ).strip()
 
         response = await self.llm.ainvoke([system_prompt, HumanMessage(content=human_prompt)])
         spec = self._parse_spec(response.content)
+        
+        # DEBUG: Log the generated MongoDB query
+        print("\nMongoDB Query Generated:")
+        print(f"   Question: {question}")
+        print(f"   Context: {context_payload}")
+        print(f"   Spec: {json.dumps(spec, indent=2)}")
+        
         return spec
 
     @staticmethod

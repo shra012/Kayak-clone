@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listingsApi } from '../../services/api/listings';
-import { analyticsApi } from '../../services/api/analytics';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
@@ -16,7 +15,7 @@ const defaultFilters = {
   vendors: [],
   minPrice: '',
   maxPrice: '',
-  sort: 'createdAt-desc', // Show newest cars first
+  sort: 'price-asc', // Combined sort option
 };
 
 // Helper function to parse date in local timezone
@@ -447,7 +446,6 @@ const CarsPage = () => {
                     onChange={handleInputChange}
                     className="select select-sm select-bordered w-full"
                   >
-                    <option value="createdAt-desc">Newest First</option>
                     <option value="price-asc">Lowest to Highest Price</option>
                     <option value="price-desc">Highest to Lowest Price</option>
                     <option value="seats-desc">Most Seats</option>
@@ -531,29 +529,21 @@ const CarsPage = () => {
                           <div className="flex flex-col md:flex-row">
                             {/* Car Image */}
                           <figure className="md:w-64 h-48 md:h-auto overflow-hidden bg-base-200 relative">
-                            {(car.images?.length > 0 || car.imageUrl) ? (
-                              <>
-                                {!imageLoaded[car.id] && (
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                    <FaCar className="w-12 h-12 text-base-300 animate-pulse" />
-                                  </div>
-                                )}
-                                <img
-                                  src={car.images?.[0] || resolveCarImageUrl(car.imageUrl)}
-                                  alt={`${car.type} - ${car.vendor}`}
-                                  className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded[car.id] ? 'opacity-100' : 'opacity-0'}`}
-                                  onLoad={() => setImageLoaded(prev => ({ ...prev, [car.id]: true }))}
-                                  onError={(e) => {
-                                    e.target.src = placeholderImage;
-                                    setImageLoaded(prev => ({ ...prev, [car.id]: true }));
-                                  }}
-                                />
-                              </>
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-base-300">
-                                <FaCar className="w-16 h-16 text-base-content/30" />
+                            {!imageLoaded[car.id] && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <FaCar className="w-12 h-12 text-base-300 animate-pulse" />
                               </div>
                             )}
+                            <img
+                                src={resolveCarImageUrl(car.imageUrl)}
+                                alt={`${car.type} - ${car.vendor}`}
+                                className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded[car.id] ? 'opacity-100' : 'opacity-0'}`}
+                                onLoad={() => setImageLoaded(prev => ({ ...prev, [car.id]: true }))}
+                                onError={(e) => {
+                                  e.target.src = placeholderImage;
+                                  setImageLoaded(prev => ({ ...prev, [car.id]: true }));
+                                }}
+                              />
                           </figure>
 
                             {/* Car Details */}
@@ -595,70 +585,42 @@ const CarsPage = () => {
                                     </p>
                                   </div>
                                 </div>
-                                <button
+                                <button 
                                   className="btn btn-primary"
-                                  onClick={() => {
-                                    // Track the click for analytics
-                                    analyticsApi.trackClick({
-                                      listingId: car.id || car._id,
-                                      page: 'cars',
-                                      section: 'search-results',
-                                      action: 'click',
-                                      metadata: {
-                                        vendor: car.vendor,
-                                        type: car.type,
-                                        location: car.location || car.city,
-                                        price: car.pricePerDay,
-                                      }
-                                    }).then(() => {
-                                      console.log('✅ Click tracked for car:', car.id || car._id);
-                                    }).catch((error) => {
-                                      console.error('❌ Failed to track click:', error);
-                                    });
-                                    
-                                    // Check if user is authenticated
-                                    if (!isAuthenticated) {
-                                      toast.showError('Please log in to continue with booking');
-                                      // Save booking data to sessionStorage to restore after login
-                                      const pickupDate = pickUpDate || searchData?.pickUp || new Date().toISOString().split('T')[0];
-                                      const dropoffDate = dropOffDate || searchData?.dropOff || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-                                      const pickupDateObj = new Date(pickupDate);
-                                      const dropoffDateObj = new Date(dropoffDate);
-                                      const days = Math.ceil((dropoffDateObj - pickupDateObj) / (1000 * 60 * 60 * 24)) || 1;
-
-                                      const bookingData = {
-                                        type: 'car',
-                                        car,
-                                        pickupDate,
-                                        pickupTime: pickUpTime || searchData?.pickUpTime || '12:00',
-                                        dropoffDate,
-                                        dropoffTime: dropOffTime || searchData?.dropOffTime || '12:00',
-                                        days,
-                                      };
-                                      sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
-                                      sessionStorage.setItem('returnPath', '/bookings');
-                                      navigate('/login');
-                                      return;
+                                  onClick={async () => {
+                                    // Track the click
+                                    try {
+                                      await listingsApi.trackClick({
+                                        listingId: car.id || car._id,
+                                        listingType: 'car',
+                                        action: 'click',
+                                        page: 'car-search',
+                                        metadata: {
+                                          carModel: car.model,
+                                          vendor: car.vendor,
+                                          city: car.city,
+                                          price: car.pricePerDay
+                                        }
+                                      });
+                                    } catch (error) {
+                                      console.error('Failed to track click:', error);
                                     }
 
-                                    // Calculate days between pickup and dropoff
+                                    // Navigate to car detail page
                                     const pickupDate = pickUpDate || searchData?.pickUp || new Date().toISOString().split('T')[0];
                                     const dropoffDate = dropOffDate || searchData?.dropOff || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-                                    const pickupDateObj = new Date(pickupDate);
-                                    const dropoffDateObj = new Date(dropoffDate);
-                                    const days = Math.ceil((dropoffDateObj - pickupDateObj) / (1000 * 60 * 60 * 24)) || 1;
 
-                                    const bookingData = {
-                                      type: 'car',
-                                      car,
-                                      pickupDate,
-                                      pickupTime: pickUpTime || searchData?.pickUpTime || '12:00',
-                                      dropoffDate,
-                                      dropoffTime: dropOffTime || searchData?.dropOffTime || '12:00',
-                                      days,
-                                    };
-
-                                    navigate('/bookings', { state: { bookingData } });
+                                    navigate(`/cars/${car.id || car._id}`, {
+                                      state: {
+                                        searchData: {
+                                          location: filters.location,
+                                          pickupDate,
+                                          dropoffDate,
+                                          pickupTime: pickUpTime || searchData?.pickUpTime || '12:00',
+                                          dropoffTime: dropOffTime || searchData?.dropOffTime || '12:00',
+                                        }
+                                      }
+                                    });
                                   }}
                                 >
                                   View Deal
@@ -682,7 +644,7 @@ const CarsPage = () => {
                       <button
                         className="join-item btn btn-sm"
                         onClick={() => goToPage(pagination.page - 1)}
-                        disabled={pagination.page <= 1 || loading}
+                        disabled={!pagination.hasPrevPage || loading}
                       >
                         « Prev
                       </button>
@@ -692,7 +654,7 @@ const CarsPage = () => {
                       <button
                         className="join-item btn btn-sm"
                         onClick={() => goToPage(pagination.page + 1)}
-                        disabled={pagination.page >= pagination.totalPages || loading}
+                        disabled={!pagination.hasNextPage || loading}
                       >
                         Next »
                       </button>

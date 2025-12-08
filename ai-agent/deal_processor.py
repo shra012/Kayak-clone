@@ -2,9 +2,8 @@
 Deal processing and detection logic
 """
 
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
-from models import Deal, DealType, DealStatus
+from typing import List, Dict, Any
+from models import Deal
 import statistics
 
 

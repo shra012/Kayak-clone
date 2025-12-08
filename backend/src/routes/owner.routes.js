@@ -13,20 +13,39 @@ router.use(requireOwner);
 router.get('/dashboard', async (req, res) => {
   try {
     const ownerId = req.user.id;
+    const ownerEmail = req.user.email;
     const db = await getMongoDB();
     
-    const [hotels, cars] = await Promise.all([
-      db.collection('hotels').countDocuments({ ownerId }),
-      db.collection('cars').countDocuments({ ownerId })
+    // Get property IDs owned by this owner
+    const [hotelDocs, carDocs] = await Promise.all([
+      db.collection('hotels').find({ ownerId }).toArray(),
+      db.collection('cars').find({ ownerId }).toArray()
     ]);
+    
+    const hotelIds = hotelDocs.map(h => h.id || h._id);
+    const carIds = carDocs.map(c => c.id || c._id);
+    
+    // Get bookings for owner's properties
+    const bookings = await db.collection('bookings').find({
+      $or: [
+        { 'itinerary.hotelId': { $in: hotelIds } },
+        { 'itinerary.carId': { $in: carIds } }
+      ],
+      status: 'confirmed'
+    }).toArray();
+    
+    // Calculate total revenue
+    const totalRevenue = bookings.reduce((sum, booking) => {
+      return sum + (booking.price?.amount || 0);
+    }, 0);
     
     res.json({
       stats: {
-        totalProperties: hotels + cars,
-        totalHotels: hotels,
-        totalCars: cars,
-        totalBookings: 0,
-        totalRevenue: 0,
+        totalProperties: hotelDocs.length + carDocs.length,
+        totalHotels: hotelDocs.length,
+        totalCars: carDocs.length,
+        totalBookings: bookings.length,
+        totalRevenue: totalRevenue,
         averageRating: 0
       }
     });
