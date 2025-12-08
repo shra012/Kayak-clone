@@ -829,32 +829,88 @@ const FlightsPage = ({ forceAgentMode = false }) => {
   const handleAgentAssistantResponse = (agentReply) => {
     if (!agentMode) return false;
 
+    // Check if agent returned flight deals in bundles
+    if (agentReply?.bundles && agentReply.bundles.length > 0) {
+      const flightDeals = agentReply.bundles
+        .filter(b => b.type === 'flight' && b.deal)
+        .map(b => b.deal);
+      
+      if (flightDeals.length > 0) {
+        // Transform AI agent deal format to FlightsPage format
+        const transformedFlights = flightDeals.map(deal => {
+          const metadata = deal.deal_metadata || deal.metadata || {};
+          const durationHours = metadata.duration_hours || 3;
+          const stops = metadata.stops !== undefined ? metadata.stops : 0;
+          
+          return {
+            id: deal.deal_id || deal.id,
+            from: deal.origin,
+            to: deal.destination,
+            departDate: metadata.depart_date || filters.date,
+            departureTime: metadata.departure_time || '09:00',
+            arrivalTime: metadata.arrival_time || '12:00',
+            airline: metadata.airline || 'Various Airlines',
+            price: deal.price,
+            currency: deal.currency || 'USD',
+            duration: `${Math.floor(durationHours)}h ${Math.round((durationHours % 1) * 60)}m`,
+            nonstop: stops === 0,
+            seatsAvailable: deal.availability || 10,
+          };
+        });
+
+        // Update page state with flights from AI agent
+        setResults(transformedFlights);
+        setRoundTripCombos([]);
+        setMultiCityResults([]);
+        setSuggestedFlights([]);
+        setAlternativeDates([]);
+        setPagination({
+          currentPage: 1,
+          totalPages: 1,
+          totalResults: transformedFlights.length,
+          pageSize: transformedFlights.length,
+        });
+        setError(null);
+        setLoading(false);
+
+        // Update filters to match the search
+        if (transformedFlights.length > 0 && transformedFlights[0].from && transformedFlights[0].to) {
+          setFilters(prev => ({
+            ...prev,
+            from: transformedFlights[0].from,
+            to: transformedFlights[0].to,
+          }));
+        }
+
+        // Return false to let the AI message show in chat
+        // Results are updated on the page, message shows in chat
+        return false;
+      }
+    }
+
     const content = (agentReply?.response || '').toLowerCase();
     const zeroMatch = content.match(/fetched\s*(\d+)\s+flights?/);
     const mentionsZeroFlights =
       (zeroMatch && Number(zeroMatch[1]) === 0) ||
-      content.includes('no flights found');
+      content.includes('no flights found') ||
+      content.includes("couldn't find any flights");
 
-    if (!mentionsZeroFlights) return false;
+    if (mentionsZeroFlights) {
+      // Force UI into the empty-state view
+      setResults([]);
+      setRoundTripCombos([]);
+      setMultiCityResults([]);
+      setSuggestedFlights([]);
+      setAlternativeDates([]);
+      setPagination(null);
+      setError(null);
+      setLoading(false);
 
-    // Force UI into the empty-state view and refresh the search with current filters
-    setResults([]);
-    setRoundTripCombos([]);
-    setMultiCityResults([]);
-    setSuggestedFlights([]);
-    setAlternativeDates([]);
-    setPagination(null);
-    setError(null);
-    setLoading(false);
-
-    if (ensureRouteSet(filters)) {
-      loadFlights(1, filters);
+      // Let the original response show in chat ("I couldn't find any flights...")
+      return false;
     }
 
-    return {
-      handled: true,
-      message: 'I could not find flights for that search. I refreshed the results so you can adjust filters.',
-    };
+    return false;
   };
 
   return (

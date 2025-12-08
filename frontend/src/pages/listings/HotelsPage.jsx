@@ -448,6 +448,92 @@ const HotelsPage = () => {
     );
   };
 
+  const hotelContextSummary = [
+    "I'm in hotel mode.",
+    filters.city ? `Looking in: ${filters.city}.` : 'Tell me your destination.',
+    'Share your check-in and check-out dates.',
+  ].join(' ');
+
+  const agentPromptSuggestions = [
+    'Find hotels in New York for 2 nights',
+    'Show me 5-star hotels in Miami',
+    'Hotels near downtown Austin',
+    'Budget hotels in San Francisco',
+  ];
+
+  const handleAgentAssistantResponse = (agentReply) => {
+    if (!agentMode) return false;
+
+    // Check if agent returned hotel deals in bundles
+    if (agentReply?.bundles && agentReply.bundles.length > 0) {
+      const hotelDeals = agentReply.bundles
+        .filter(b => b.type === 'hotel' && b.deal)
+        .map(b => b.deal);
+      
+      if (hotelDeals.length > 0) {
+        // Transform AI agent deal format to HotelsPage format
+        const transformedHotels = hotelDeals.map(deal => {
+          const metadata = deal.deal_metadata || deal.metadata || {};
+          
+          return {
+            _id: deal.deal_id || deal.id,
+            name: metadata.name || `Hotel in ${deal.destination}`,
+            city: deal.destination,
+            state: metadata.state || '',
+            pricePerNight: deal.price,
+            rating: metadata.rating || 4,
+            amenities: metadata.amenities || [],
+            images: metadata.images || [],
+            location: metadata.location || { lat: 0, lng: 0 },
+            availability: deal.availability || 10,
+          };
+        });
+
+        // Update page state with hotels from AI agent
+        setHotels(transformedHotels);
+        setPagination({
+          currentPage: 1,
+          totalPages: 1,
+          totalResults: transformedHotels.length,
+          pageSize: transformedHotels.length,
+        });
+        setError(null);
+        setLoading(false);
+
+        // Update filters to match the search
+        if (transformedHotels.length > 0 && transformedHotels[0].city) {
+          setCityInput(transformedHotels[0].city);
+          setFilters(prev => ({
+            ...prev,
+            city: transformedHotels[0].city,
+          }));
+        }
+
+        // Return false to let the AI message show in chat
+        // Results are updated on the page, message shows in chat
+        return false;
+      }
+    }
+
+    const content = (agentReply?.response || '').toLowerCase();
+    const mentionsZeroHotels =
+      content.includes('no hotels found') ||
+      content.includes("couldn't find any hotels");
+
+    if (mentionsZeroHotels) {
+      // Force UI into the empty-state view
+      setHotels([]);
+      setPagination(null);
+      setError(null);
+      setLoading(false);
+
+      // Let the original response show in chat ("I couldn't find any hotels...")
+      return false;
+    }
+
+    return false;
+  };
+
   const activeCityOptions = (cityInput.trim() ? citySuggestions : popularCities);
 
   return (
@@ -539,6 +625,32 @@ const HotelsPage = () => {
               
             </button>
           </form>
+          
+          {/* Agent Mode Navigation */}
+          {agentMode && (
+            <div className="flex gap-2 mt-2 justify-center">
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={() => navigateAgentTo('flights')}
+              >
+                ✈️ <span className="hidden sm:inline ml-1">Flights</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-active"
+              >
+                🏨 <span className="hidden sm:inline ml-1">Hotels</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={() => navigateAgentTo('cars')}
+              >
+                🚗 <span className="hidden sm:inline ml-1">Cars</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -749,10 +861,20 @@ const HotelsPage = () => {
         </div>
       </div>
 
-      {/* Main content: Split view */}
-      <div className="flex">
+      {/* Main content: Split view or grid with agent */}
+      <div className={agentMode ? 'max-w-7xl mx-auto px-4 py-6 grid lg:grid-cols-3 gap-6 items-start' : 'flex'}>
+        {agentMode && (
+          <div className="lg:col-span-1">
+            <AgentInlineChat
+              initialPrompt={initialAgentPrompt}
+              promptSuggestions={agentPromptSuggestions}
+              contextSummary={hotelContextSummary}
+              onAssistantResponse={handleAgentAssistantResponse}
+            />
+          </div>
+        )}
         {/* Left side: Hotel listings */}
-        <div className="w-1/2 overflow-y-auto px-4 py-4" style={{ height: 'calc(100vh - 150px)' }}>
+        <div className={agentMode ? 'lg:col-span-2 overflow-y-auto' : 'w-1/2 overflow-y-auto px-4 py-4'} style={agentMode ? {} : { height: 'calc(100vh - 150px)' }}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <span className="font-bold">{pagination?.totalItems || 0} results</span>
@@ -912,9 +1034,10 @@ const HotelsPage = () => {
           )}
         </div>
 
-        {/* Right side: Map */}
-        <div className="w-1/2 sticky top-32" style={{ height: 'calc(100vh - 150px)' }}>
-          {results.length > 0 && results[0].lat && results[0].lng ? (
+        {/* Right side: Map - hide in agent mode */}
+        {!agentMode && (
+          <div className="w-1/2 sticky top-32" style={{ height: 'calc(100vh - 150px)' }}>
+            {results.length > 0 && results[0].lat && results[0].lng ? (
             <MapContainer
               center={mapCenter}
               zoom={mapZoom}
@@ -965,7 +1088,8 @@ const HotelsPage = () => {
               </div>
             </div>
           )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* All Filters Modal */}

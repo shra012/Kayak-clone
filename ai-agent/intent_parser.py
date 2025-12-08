@@ -137,14 +137,31 @@ Return ONLY valid JSON with extracted fields. Omit fields that aren't mentioned 
         Determine if we need to ask a clarifying question
         Maximum of one clarifying question
         """
-        if not constraints.get("check_in") or not constraints.get("check_out"):
+        # Check if we have travel dates - one-way needs check_in, round-trip needs both
+        intent_type = constraints.get("intent_type")
+        trip_type = constraints.get("trip_type")
+        
+        if not constraints.get("check_in"):
             return "What are your travel dates?"
         
-        if not constraints.get("origin"):
+        # For round-trip flights and hotels, we need check_out
+        if intent_type in ["flight", "hotel"] and trip_type == "round-trip" and not constraints.get("check_out"):
+            return "What's your return date?"
+        
+        if intent_type == "hotel" and not constraints.get("check_out"):
+            return "What's your check-out date?"
+        
+        # Flights need origin
+        if intent_type == "flight" and not constraints.get("origin"):
             return "Where are you traveling from?"
         
-        if not constraints.get("budget"):
-            return "What's your total budget for this trip?"
+        # Hotels don't need origin, but need destination
+        if intent_type == "hotel" and not constraints.get("destination"):
+            return "Where would you like to stay?"
+        
+        # Flights need destination
+        if intent_type == "flight" and not constraints.get("destination"):
+            return "Where would you like to go?"
         
         return None  # Have enough information
 
