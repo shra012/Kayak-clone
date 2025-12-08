@@ -1,6 +1,82 @@
 """
 Concierge AI & Health Monitoring Service
 Multi-agent travel concierge with deal detection, bundle building, and WebSocket updates
+
+ARCHITECTURE:
+=============
+
+1. BOOKING AGENT (Intent-Based Search Agent)
+   - Mode: Default (no chat_mode set) or explicit search mode
+   - Purpose: Travel planning and search with structured results
+   - Input: Natural language travel queries
+   - Processing: Uses IntentParser (LLM-based) to extract structured JSON context
+   - Data Sources: 
+     * MongoDB (via mongo_query_generator.py) for advanced searches
+     * Supabase/PostgreSQL for user bookings and deals
+     * Deal cache (in-memory) for real-time deal matching
+   - Output: JSON bundles + natural language summary
+   - Features:
+     * Extracts origin, destination, dates, travelers, budget
+     * Clarification logic for missing information
+     * Builds flight/hotel bundles from deal cache
+     * Returns structured bundle data for UI rendering
+   - Integration: AgentInlineChat component in FlightsPage/HotelsPage
+
+2. FLOATING CHAT AGENT (General Assistant)
+   - Mode: chat_mode="booking_chat"
+   - Purpose: General travel questions and booking assistance
+   - Input: Natural language questions (no structured search)
+   - Processing: Natural language only, no intent extraction
+   - Data Sources:
+     * MongoDB for booking-related queries
+     * Supabase/PostgreSQL for user data
+     * Tavily API for web search (general questions)
+     * Weather API for weather information
+     * OpenAI LLM for conversational responses
+     * Deal cache context (when deal_ids provided)
+   - Output: ONLY natural language responses (never JSON bundles)
+   - Features:
+     * Answers booking/policy questions
+     * Provides weather information
+     * General travel advice
+     * Links to relevant pages
+     * Context-aware when deal_ids in session
+   - Integration: BookingChatWidget (floating button on all pages)
+
+3. DEALS WORKFLOW (Real-time Deal Updates)
+   - Purpose: Ingest, process, and broadcast travel deals
+   - Components:
+     * DealIngestor: Reads deals from CSV feed
+     * DealProcessor: Tags and scores deals
+     * deal_feed_refresh_task: Background task (rotates deals periodically)
+     * watch_monitor_task: Monitors price/inventory alerts
+   - Data Flow:
+     1. CSV feed → DealIngestor.load_raw_records()
+     2. DealProcessor.tag_deals() → scores and tags
+     3. Persist to PostgreSQL → update deal_cache
+     4. WebSocket broadcast to connected clients
+   - WebSocket Events:
+     * "deal_update": New deals available
+     * "price_drop": Deal price dropped below watch threshold
+     * "inventory_low": Deal availability below threshold
+     * "watch_alert": General watch notifications
+   - Integration: WebSocket endpoint /events?session_id=<id>
+
+CHAT MODES:
+===========
+- None (default): Booking Agent - Intent-based search with JSON + NL
+- "booking_chat": Floating Chat Agent - Pure natural language assistant
+
+DATA SOURCES:
+=============
+- Deal Cache: In-memory cache of active deals (flights/hotels/cars)
+- PostgreSQL (Supabase): Users, bookings, deals, chat sessions, watches
+- MongoDB: Advanced search and analytics queries
+- Redis: Deal cache persistence across restarts
+- CSV Feed: Source of truth for deal ingestion
+- Tavily API: Web search for general questions
+- Weather API: Real-time weather data
+- OpenAI API: LLM for intent parsing and responses
 """
 
 from dotenv import load_dotenv
@@ -255,6 +331,7 @@ class ChatSessionRequest(BaseModel):
     # User ID is optional; default to "anonymous" so unauthenticated users can start sessions
     user_id: Optional[str] = Field(default="anonymous", description="User ID (optional; defaults to 'anonymous')")
     initial_message: Optional[str] = Field(None, description="Initial user message")
+    chat_mode: Optional[str] = Field(None, description="Chat mode: None (default booking agent) or 'booking_chat' (floating chat agent)")
 
 class ChatSessionResponse(BaseModel):
     session_id: str
@@ -400,6 +477,10 @@ async def create_chat_session(request: ChatSessionRequest):
         if "@" in user_identifier:
             context.setdefault("user_email", user_identifier)
     
+    # Set chat mode if provided
+    if request.chat_mode:
+        context["chat_mode"] = request.chat_mode
+    
     if request.initial_message:
         messages.append(ChatMessage(role="user", content=request.initial_message))
         # Parse intent
@@ -464,6 +545,9 @@ async def send_message(session_id: str, request: ChatMessageRequest):
         new_constraints = intent_parser.parse_travel_request(request.message, context)
         context.update(new_constraints)
         
+        # Debug logging
+        print(f"[DEBUG] Parsed context: {json.dumps(context, indent=2)}")
+        
         # Update session context
         session.context = context
         session.updated_at = datetime.now()
@@ -472,11 +556,31 @@ async def send_message(session_id: str, request: ChatMessageRequest):
     
     # Generate response
     bundles = None
+    bundle_data = None  # Initialize bundle_data
     message_lower = request.message.lower()
     
     # Booking-only chat mode: natural language answers, no actions
     if context.get("chat_mode") == "booking_chat":
-        ai_response = await generate_booking_chat_response(request.message, context)
+        # Pass deal cache context to the booking chat agent
+        enriched_context = context.copy()
+        if context.get("bundle_id") or context.get("deal_ids"):
+            # Include deal information from cache
+            deal_info = []
+            if context.get("deal_ids"):
+                for deal_id in context.get("deal_ids", []):
+                    deal = deal_cache.get(deal_id)
+                    if deal:
+                        deal_info.append({
+                            "deal_id": deal.deal_id,
+                            "type": deal.deal_type.value,
+                            "origin": deal.origin,
+                            "destination": deal.destination,
+                            "price": deal.price,
+                            "metadata": deal.deal_metadata
+                        })
+            enriched_context["deals_context"] = deal_info
+        
+        ai_response = await generate_ai_response(request.message, enriched_context)
         return ChatMessageResponse(
             session_id=session_id,
             response=ai_response,
@@ -503,16 +607,49 @@ async def send_message(session_id: str, request: ChatMessageRequest):
         if clarification:
             ai_response = clarification
         else:
-            bundles = await build_bundles_from_constraints(context)
-            if bundles:
-                ai_response = format_bundle_recommendation(bundles, is_refinement=True)
+            # Check if user wants flight-only or hotel-only
+            intent_type = context.get("intent_type")
+            
+            if intent_type == "flight":
+                # Return flight deals only
+                flights = [d for d in deal_cache.values() if d.deal_type == DealType.FLIGHT]
+                matching_flights = [f for f in flights 
+                                   if (not context.get("origin") or f.origin == context.get("origin"))
+                                   and (not context.get("destination") or f.destination == context.get("destination"))][:3]
+                
+                if matching_flights:
+                    date_context = f" on {context.get('check_in')}" if context.get('check_in') else ""
+                    trip_type = context.get('trip_type', 'one-way')
+                    ai_response = f"Found {len(matching_flights)} {trip_type} flight{'s' if len(matching_flights) > 1 else ''} from {matching_flights[0].origin} to {matching_flights[0].destination}{date_context}. Prices range from ${min(f.price for f in matching_flights):.0f} to ${max(f.price for f in matching_flights):.0f}. Check the results →"
+                    bundle_data = [{"type": "flight", "deal": flight.dict()} for flight in matching_flights]
+                else:
+                    ai_response = "I couldn't find any flights matching your criteria."
+            
+            elif intent_type == "hotel":
+                # Return hotel deals only
+                hotels = [d for d in deal_cache.values() if d.deal_type == DealType.HOTEL]
+                matching_hotels = [h for h in hotels 
+                                  if (not context.get("destination") or h.destination == context.get("destination"))][:3]
+                
+                if matching_hotels:
+                    date_context = ""
+                    if context.get('check_in') and context.get('check_out'):
+                        date_context = f" for {context.get('check_in')} to {context.get('check_out')}"
+                    ai_response = f"Found {len(matching_hotels)} hotel{'s' if len(matching_hotels) > 1 else ''} in {matching_hotels[0].destination}{date_context}. Prices range from ${min(h.price for h in matching_hotels):.0f} to ${max(h.price for h in matching_hotels):.0f}/night. Check the results →"
+                    bundle_data = [{"type": "hotel", "deal": hotel.dict()} for hotel in matching_hotels]
+                else:
+                    ai_response = "I couldn't find any hotels matching your criteria."
+            
             else:
-                ai_response = await generate_ai_response(request.message, context)
-    
-    # Format bundles for response
-    bundle_data = None
-    if bundles:
-        bundle_data = [format_bundle_for_response(b) for b in bundles]
+                # Build bundles for multi-component trips
+                bundle_data = await build_bundles_from_constraints(context)
+                if bundle_data:
+                    ai_response = format_bundle_recommendation_from_data(bundle_data, is_refinement=True)
+                else:
+                    ai_response = await generate_ai_response(request.message, context)
+    else:
+        # No travel intent, generate general response
+        ai_response = await generate_ai_response(request.message, context)
     
     return ChatMessageResponse(
         session_id=session_id,
@@ -844,8 +981,8 @@ async def deal_feed_refresh_task():
 async def build_bundles_from_constraints(
     constraints: Dict[str, Any],
     max_results: int = 3
-) -> List[Bundle]:
-    """Build bundles from user constraints"""
+) -> List[Dict[str, Any]]:
+    """Build bundles from user constraints and return as formatted dictionaries"""
     # Get flights and hotels from cache
     flights = [d for d in deal_cache.values() if d.deal_type == DealType.FLIGHT]
     hotels = [d for d in deal_cache.values() if d.deal_type == DealType.HOTEL]
@@ -861,13 +998,21 @@ async def build_bundles_from_constraints(
         max_results=max_results
     )
     
-    # Save bundles to database
+    # Save bundles to database and format them in the same session
+    bundle_data = []
     with Session(engine) as db_session:
         for bundle in bundles:
             db_session.add(bundle)
         db_session.commit()
+        
+        # Format bundles while still in session
+        for bundle in bundles:
+            db_session.refresh(bundle)  # Ensure all attributes are loaded
+            flight_deal = db_session.get(Deal, bundle.flight_deal_id)
+            hotel_deal = db_session.get(Deal, bundle.hotel_deal_id)
+            bundle_data.append(format_bundle_for_response(bundle, flight_deal, hotel_deal))
     
-    return bundles
+    return bundle_data
 
 def format_bundle_recommendation(bundles: List[Bundle], is_refinement: bool = False) -> str:
     """Format bundle recommendations as natural language"""
@@ -883,18 +1028,26 @@ def format_bundle_recommendation(bundles: List[Bundle], is_refinement: bool = Fa
     
     return intro + "\n".join(responses)
 
+def format_bundle_recommendation_from_data(bundle_data: List[Dict[str, Any]], is_refinement: bool = False) -> str:
+    """Format bundle recommendations from data dictionaries"""
+    if not bundle_data:
+        return "I couldn't find any matching bundles. Try adjusting your criteria."
+    
+    intro = "Here are some great options" + (" (updated)" if is_refinement else "") + ":\n\n"
+    
+    responses = []
+    for i, bundle in enumerate(bundle_data[:3], 1):
+        response = f"{i}. ${bundle['total_price']:.0f} - {bundle.get('why_this', '')} {bundle.get('what_to_watch', '')}"
+        responses.append(response)
+    
+    return intro + "\n".join(responses)
+
 def format_bundle_for_response(
     bundle: Bundle,
-    flight_deal: Optional[Deal] = None,
-    hotel_deal: Optional[Deal] = None
+    flight_deal: Deal,
+    hotel_deal: Deal
 ) -> Dict[str, Any]:
-    """Format bundle for API response"""
-    with Session(engine) as db_session:
-        if not flight_deal:
-            flight_deal = db_session.get(Deal, bundle.flight_deal_id)
-        if not hotel_deal:
-            hotel_deal = db_session.get(Deal, bundle.hotel_deal_id)
-    
+    """Format bundle for API response (must be called within a session)"""
     return {
         "bundle_id": bundle.bundle_id,
         "total_price": bundle.total_price,
@@ -981,6 +1134,21 @@ async def generate_ai_response(user_message: str, context: Dict[str, Any]) -> st
         except Exception as exc:
             return f"I ran into an error while answering that: {exc}"
 
+    # If in booking chat mode with deal context, provide context-aware responses
+    deals_context = context.get("deals_context", [])
+    if deals_context:
+        # Construct deal summary for the AI
+        deal_summary = []
+        for deal in deals_context:
+            if deal["type"] == "flight":
+                deal_summary.append(f"Flight from {deal['origin']} to {deal['destination']} for ${deal['price']}")
+            elif deal["type"] == "hotel":
+                deal_summary.append(f"Hotel in {deal['destination']} for ${deal['price']}/night")
+        
+        if deal_summary:
+            deals_text = "\n".join(deal_summary)
+            return f"I'm here to help with your booking. You're considering:\n{deals_text}\n\nWhat would you like to know? I can help with amenities, policies, payment options, or any other questions."
+    
     # Simple conversational responses for non-database queries
     if any(word in message_lower for word in ["flight", "fly"]):
         return "I can help you find flights! What's your destination and travel dates?"
