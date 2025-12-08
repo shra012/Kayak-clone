@@ -78,6 +78,24 @@ export const ownerApi = {
     const { data } = await apiClient.get('/owner/dashboard');
     return data;
   },
+
+  // Get booking requests for owner's properties
+  getBookingRequests: async () => {
+    const { data } = await apiClient.get('/owner/bookings');
+    return data;
+  },
+
+  // Accept a booking request
+  acceptBooking: async (bookingId) => {
+    const { data } = await apiClient.patch(`/owner/bookings/${bookingId}/accept`);
+    return data;
+  },
+
+  // Reject a booking request
+  rejectBooking: async (bookingId, reason) => {
+    const { data } = await apiClient.patch(`/owner/bookings/${bookingId}/reject`, { reason });
+    return data;
+  },
 };
 
 export default ownerApi;

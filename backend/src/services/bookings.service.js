@@ -3,6 +3,7 @@ import { getPostgresPool, getMongoDB } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { sendKafkaMessage } from '../config/kafka.js';
 import { ObjectId } from 'mongodb';
+import { getPaymentByBookingId, requestRefund } from './payments.service.js';
 
 /**
  * Generate a unique PNR (Passenger Name Record)
@@ -390,6 +391,7 @@ export const confirmBooking = async (bookingId) => {
 
 /**
  * Cancel booking
+ * Automatically requests refund if payment exists and is SUCCEEDED
  */
 export const cancelBooking = async (bookingId) => {
   const booking = await getBookingById(bookingId);
@@ -400,6 +402,18 @@ export const cancelBooking = async (bookingId) => {
 
   if (booking.status === BOOKING_STATUSES.CANCELLED || booking.status === BOOKING_STATUSES.COMPLETED) {
     throw new Error(`Cannot cancel booking with status: ${booking.status}`);
+  }
+
+  // Check if there's a payment and request refund if payment succeeded
+  try {
+    const payment = await getPaymentByBookingId(bookingId);
+    if (payment && payment.status === 'SUCCEEDED') {
+      await requestRefund(payment.id);
+      logger.info(`Refund requested for payment ${payment.id} after booking ${bookingId} cancellation`);
+    }
+  } catch (paymentError) {
+    logger.warn(`Failed to request refund for booking ${bookingId}:`, paymentError);
+    // Continue with cancellation even if refund request fails
   }
 
   return await updateBookingStatus(bookingId, BOOKING_STATUSES.CANCELLED, {

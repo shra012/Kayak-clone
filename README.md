@@ -4,12 +4,31 @@ Travel booking platform with Express.js backend, React frontend, and AI-agent se
 
 ## Quick Start
 
+### Two Setup Options
+
+#### Option 1: Localhost Setup (Recommended for Development)
+Use local MongoDB and skip cloud services. See **[LOCALHOST_SETUP.md](LOCALHOST_SETUP.md)** for detailed instructions.
+
+```bash
+./setup-localhost.sh
+```
+
+This automated script will:
+- Create `.env` files from templates
+- Generate secure secrets
+- Start local MongoDB
+- Guide you through Firebase setup
+
+#### Option 2: Cloud Setup (Production-like)
+Use cloud databases (MongoDB Atlas, Supabase, Redis Cloud).
+
 ### Prerequisites
 
 - Node.js 20+
 - Docker & Docker Compose
 - Python 3.12+ (for AI-agent)
-- Cloud accounts: Supabase, MongoDB Atlas, Redis Cloud, Firebase
+- **For Localhost:** Just Docker for MongoDB
+- **For Cloud:** Accounts for Supabase, MongoDB Atlas, Redis Cloud, Firebase
 
 ### 1. Environment Setup
 
@@ -145,8 +164,14 @@ Test users are auto-created via `globalSetup` in `playwright.config.js`
 
 ## Documentation
 
+### 🚀 Setup & Configuration
+- **[Localhost Setup Guide](LOCALHOST_SETUP.md)** - Complete guide for local development with MongoDB
+- **[Environment Variables Reference](ENV_REFERENCE.md)** - All environment variables explained
 - [Database Setup](./backend/docs/DATABASE_SETUP.md) - Cloud database configuration
 - [Firebase Setup](./docs/FIREBASE_SETUP.md) - Image storage setup
+- [Secrets Guide](./backend/docs/SECRETS.md) - JWT and session secrets
+
+### 📚 Architecture & Features
 - [Kafka Setup](./backend/kafka/README.md) - Event streaming
 - [Sample Deals Feed](./docs/SAMPLE_DEALS_FEED.md) - Hourly rotating flight/hotel/car deals for the concierge AI
 - [API Docs](./api-docs/README.md) - OpenAPI specification

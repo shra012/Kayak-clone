@@ -25,5 +25,10 @@ export const bookingsApi = {
     const { data } = await apiClient.post(`/bookings/${bookingId}/confirm`);
     return data;
   },
+
+  cancelBooking: async (bookingId) => {
+    const { data } = await apiClient.patch(`/bookings/${bookingId}`, { status: 'CANCELLED' });
+    return data;
+  },
 };
 

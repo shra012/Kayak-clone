@@ -41,7 +41,7 @@ export const listingsApi = {
     const { data } = await apiClient.get('/hotels/locations', {
       params: { q: query, limit },
     });
-    return data;
+    return data.items || data;
   },
 
   getHotel: async (hotelId) => {
@@ -66,5 +66,17 @@ export const listingsApi = {
     const { data } = await apiClient.get(`/cars/${carId}`);
     return data;
   },
+
+  // Track click/view events for analytics
+  trackClick: async (clickData) => {
+    try {
+      const { data } = await apiClient.post('/tracking/click', clickData);
+      return data;
+    } catch (error) {
+      console.warn('Failed to track click:', error);
+      return null;
+    }
+  },
 };
+
 

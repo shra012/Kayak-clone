@@ -10,6 +10,7 @@ const PAYMENT_STATUSES = {
   AUTHORIZED: 'AUTHORIZED',
   SUCCEEDED: 'SUCCEEDED',
   FAILED: 'FAILED',
+  REFUND_REQUESTED: 'REFUND_REQUESTED',
   REFUNDED: 'REFUNDED',
 };
 
@@ -138,6 +139,39 @@ export const createPayment = async (userId, paymentData) => {
     throw error;
   } finally {
     client.release();
+  }
+};
+
+/**
+ * Get payment by booking ID
+ */
+export const getPaymentByBookingId = async (bookingId) => {
+  const pool = getPostgresPool();
+
+  try {
+    const result = await pool.query(
+      `SELECT p.*, 
+        json_build_object(
+          'id', b.id,
+          'bookingType', b.booking_type,
+          'status', b.status
+        ) as booking
+      FROM payments p
+      LEFT JOIN bookings b ON p.booking_id = b.id
+      WHERE p.booking_id = $1
+      ORDER BY p.created_at DESC
+      LIMIT 1`,
+      [bookingId]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return mapPaymentForResponse(result.rows[0]);
+  } catch (error) {
+    logger.error('Error getting payment by booking ID:', error);
+    throw error;
   }
 };
 
@@ -396,12 +430,17 @@ export const processPayment = async (paymentId, paymentMethodData = {}) => {
       gatewayResponse.transactionReference
     );
 
-    // Auto-confirm booking when payment succeeds
+    // Auto-confirm booking only for flights; hotels and cars remain PENDING for owner approval
     try {
-      await confirmBooking(payment.bookingId);
-      logger.info(`Booking ${payment.bookingId} auto-confirmed after successful payment`);
+      const booking = await getBookingById(payment.bookingId);
+      if (booking && booking.bookingType === 'flight') {
+        await confirmBooking(payment.bookingId);
+        logger.info(`Flight booking ${payment.bookingId} auto-confirmed after successful payment`);
+      } else {
+        logger.info(`Booking ${payment.bookingId} (${booking?.bookingType || 'unknown'}) remains PENDING for owner approval`);
+      }
     } catch (bookingError) {
-      logger.warn(`Failed to auto-confirm booking ${payment.bookingId}:`, bookingError);
+      logger.warn(`Failed to check/confirm booking ${payment.bookingId}:`, bookingError);
       // Don't fail payment if booking confirmation fails
     }
 
@@ -413,6 +452,120 @@ export const processPayment = async (paymentId, paymentMethodData = {}) => {
   } catch (error) {
     await client.query('ROLLBACK');
     logger.error('Error processing payment:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * Request refund - sets payment status to REFUND_REQUESTED
+ */
+export const requestRefund = async (paymentId) => {
+  const pool = getPostgresPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const payment = await getPaymentById(paymentId);
+    if (!payment) {
+      throw new Error('Payment not found');
+    }
+
+    if (payment.status !== PAYMENT_STATUSES.SUCCEEDED) {
+      throw new Error(`Cannot request refund for payment with status: ${payment.status}`);
+    }
+
+    const result = await client.query(
+      `UPDATE payments 
+       SET status = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [PAYMENT_STATUSES.REFUND_REQUESTED, paymentId]
+    );
+
+    const refundRequestedPayment = result.rows[0];
+
+    await client.query('COMMIT');
+
+    logger.info(`Payment ${paymentId} refund requested`);
+
+    await sendKafkaMessage('payments.refund_requested', {
+      eventId: uuidv4(),
+      occurredAt: new Date().toISOString(),
+      paymentId: refundRequestedPayment.id,
+      bookingId: refundRequestedPayment.booking_id,
+      userId: refundRequestedPayment.user_id,
+      amount: parseFloat(refundRequestedPayment.amount),
+      currency: refundRequestedPayment.currency,
+    });
+
+    return mapPaymentForResponse(refundRequestedPayment);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    logger.error('Error requesting refund:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * Approve and process refund - owner approves refund request
+ */
+export const approveRefund = async (paymentId, refundAmount = null) => {
+  const pool = getPostgresPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const payment = await getPaymentById(paymentId);
+    if (!payment) {
+      throw new Error('Payment not found');
+    }
+
+    if (payment.status !== PAYMENT_STATUSES.REFUND_REQUESTED) {
+      throw new Error(`Cannot approve refund for payment with status: ${payment.status}`);
+    }
+
+    const refundAmountValue = refundAmount || payment.amount;
+
+    if (refundAmountValue > payment.amount) {
+      throw new Error('Refund amount cannot exceed payment amount');
+    }
+
+    // Process refund - always succeeds
+    const result = await client.query(
+      `UPDATE payments 
+       SET status = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [PAYMENT_STATUSES.REFUNDED, paymentId]
+    );
+
+    const refundedPayment = result.rows[0];
+
+    await client.query('COMMIT');
+
+    logger.info(`Payment ${paymentId} refund approved and processed: ${refundAmountValue}`);
+
+    await sendKafkaMessage('payments.refunded', {
+      eventId: uuidv4(),
+      occurredAt: new Date().toISOString(),
+      paymentId: refundedPayment.id,
+      bookingId: refundedPayment.booking_id,
+      userId: refundedPayment.user_id,
+      refundAmount: refundAmountValue,
+      originalAmount: parseFloat(refundedPayment.amount),
+      currency: refundedPayment.currency,
+    });
+
+    return mapPaymentForResponse(refundedPayment);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    logger.error('Error approving refund:', error);
     throw error;
   } finally {
     client.release();
@@ -434,7 +587,7 @@ export const refundPayment = async (paymentId, refundAmount = null) => {
       throw new Error('Payment not found');
     }
 
-    if (payment.status !== PAYMENT_STATUSES.SUCCEEDED) {
+    if (payment.status !== PAYMENT_STATUSES.SUCCEEDED && payment.status !== PAYMENT_STATUSES.REFUND_REQUESTED) {
       throw new Error(`Cannot refund payment with status: ${payment.status}`);
     }
 

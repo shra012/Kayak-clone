@@ -22,7 +22,6 @@ const AnalyticsPage = () => {
   
   // Store property details (name, location, etc.)
   const [propertyDetails, setPropertyDetails] = useState({});
-  
   const [filters, setFilters] = useState({
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Tomorrow to include today's data
@@ -71,7 +70,6 @@ const AnalyticsPage = () => {
   const activeHotelsCount = ownerHotels?.items?.filter(h => h.status !== 'unlisted').length || 0;
   const activeCarsCount = ownerCars?.items?.filter(c => c.status !== 'unlisted').length || 0;
   const totalOwnerProperties = activeHotelsCount + activeCarsCount;
-
   const { data: leastSeen, isLoading: loadingSections } = useQuery({
     queryKey: ['analytics', 'least-seen', filters],
     queryFn: () => analyticsApi.getLeastSeenSections({
@@ -165,7 +163,6 @@ const AnalyticsPage = () => {
     
     fetchPropertyDetails();
   }, [propertyClicks]);
-
   const renderBarChart = (title, data, getLabel, getValue, isLoading, icon) => {
     if (isLoading) {
       return (
@@ -528,7 +525,6 @@ const AnalyticsPage = () => {
             </div>
           </div>
         </div>
-
         {/* Owner-Specific Bottom Section OR Admin Deals */}
         {isOwner ? (
           /* Property Performance Summary for Owners */
@@ -592,7 +588,6 @@ const AnalyticsPage = () => {
                 </div>
               </div>
             </div>
-
             {/* Quick Actions / Tips for Owners */}
             <div className="card bg-base-100/98 backdrop-blur-md shadow-xl border border-base-300">
               <div className="card-body">
@@ -724,7 +719,6 @@ const AnalyticsPage = () => {
                 </div>
               </div>
             </div>
-
             {/* Underperforming Sections - Top 6 in 3-column grid */}
             <div className="card bg-base-100/98 backdrop-blur-md shadow-xl border border-base-300">
               <div className="card-body">

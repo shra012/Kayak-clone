@@ -10,6 +10,8 @@ scripts/.env
 **/credentials.json
 **/*password*
 **/*secret*
+*VERIFICATION*.md
+*SECRETS*.md
 id_rsa
 *.pem
 *.key

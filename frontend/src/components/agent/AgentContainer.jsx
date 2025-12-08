@@ -1,6 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { FaTimes, FaRobot } from 'react-icons/fa';
+import { IoAirplaneSharp } from 'react-icons/io5';
+import { HiLocationMarker } from 'react-icons/hi';
+import { BsCalendar2Heart, BsArrowRight } from 'react-icons/bs';
+import { MdFlightTakeoff, MdFlightLand } from 'react-icons/md';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { aiAgentApi } from '../../services/api/ai-agent';
+import { listingsApi } from '../../services/api/listings';
 import AgentChat from './AgentChat';
 import AgentSearchPanel from './AgentSearchPanel';
 import AgentResultsView from './AgentResultsView';
@@ -19,6 +26,7 @@ const AgentContainer = ({
   onFlowChange 
 }) => {
   const { user, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   
   // Current active flow (flights, hotels, cars)
   const [currentFlow, setCurrentFlow] = useState(initialFlow);
@@ -71,20 +79,8 @@ const AgentContainer = ({
 
   const initializeAgentSession = async () => {
     try {
-      // Get user ID - prefer user.id, fallback to email or anonymous
-      const userId = user?.id || user?.email || `guest_${Date.now()}`;
-      
-      const response = await fetch('http://localhost:8000/api/v1/concierge/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
+      // Create session via API service
+      const data = await aiAgentApi.createSession();
       setSessionId(data.session_id);
       
       // Set session expiry (10 minutes from now)
@@ -93,9 +89,9 @@ const AgentContainer = ({
       
       // Set welcome message based on flow with examples
       const welcomeMessages = {
-        flights: "Hi! I'm your flight booking assistant. 👋\n\nI can help you:\n• Find flights to any destination\n• Compare prices across airlines\n• Book round-trip or one-way tickets\n• Filter by class, stops, and budget\n\nJust tell me where you'd like to go and when! For example:\n\"I need a flight from San Francisco to New York on December 15th\"",
-        hotels: "Hi! I'm your hotel booking assistant. 👋\n\nI can help you:\n• Find hotels in any city\n• Filter by amenities, rating, and price\n• Check availability for your dates\n• Compare hotels side-by-side\n\nWhich city are you visiting and when? For example:\n\"I need a hotel in Miami from Dec 20-25\"",
-        cars: "Hi! I'm your car rental assistant. 👋\n\nI can help you:\n• Find rental cars at any location\n• Compare prices from different companies\n• Choose vehicle type (economy, SUV, luxury)\n• Set pick-up and drop-off locations\n\nWhere do you need a car and for what dates? For example:\n\"I need an SUV in Los Angeles from Dec 15-20\""
+        flights: "Hi! I'm your flight booking assistant.\n\nI can help you:\n• Find flights to any destination\n• Compare prices across airlines\n• Book round-trip or one-way tickets\n• Filter by class, stops, and budget\n\nJust tell me where you'd like to go and when! For example:\n\"I need a flight from San Francisco to New York on December 15th\"",
+        hotels: "Hi! I'm your hotel booking assistant.\n\nI can help you:\n• Find hotels in any city\n• Filter by amenities, rating, and price\n• Check availability for your dates\n• Compare hotels side-by-side\n\nWhich city are you visiting and when? For example:\n\"I need a hotel in Miami from Dec 20-25\"",
+        cars: "Hi! I'm your car rental assistant.\n\nI can help you:\n• Find rental cars at any location\n• Compare prices from different companies\n• Choose vehicle type (economy, SUV, luxury)\n• Set pick-up and drop-off locations\n\nWhere do you need a car and for what dates? For example:\n\"I need an SUV in Los Angeles from Dec 15-20\""
       };
       
       setMessages([{
@@ -152,9 +148,9 @@ const AgentContainer = ({
     const helpKeywords = ['help', 'what can you do', 'how does this work', 'options', 'commands'];
     if (helpKeywords.some(keyword => message.toLowerCase().includes(keyword))) {
       const helpResponses = {
-        flights: "I can help you find and book flights! Just provide:\n\n✈️ Where from (e.g., 'San Francisco' or 'SFO')\n✈️ Where to (e.g., 'New York' or 'JFK')\n✈️ Departure date\n✈️ Return date (for round trips)\n✈️ Number of passengers\n\nYou can also ask me to:\n• 'Find cheap flights to Paris'\n• 'Show me business class options'\n• 'Search for one-way tickets'\n• 'Filter by non-stop flights only'\n\nWhat would you like to know?",
-        hotels: "I can help you find and book hotels! Just provide:\n\n🏨 City or location\n🏨 Check-in date\n🏨 Check-out date\n🏨 Number of guests\n\nYou can also ask me to:\n• 'Find 5-star hotels in Miami'\n• 'Show hotels with free breakfast'\n• 'Search for pet-friendly stays'\n• 'Filter by price range'\n\nWhat would you like to know?",
-        cars: "I can help you find and rent cars! Just provide:\n\n🚗 Pick-up location\n🚗 Pick-up date and time\n🚗 Drop-off date and time\n🚗 Car type preference (optional)\n\nYou can also ask me to:\n• 'Find an SUV in Los Angeles'\n• 'Show luxury car options'\n• 'Search for automatic transmission'\n• 'Compare different rental companies'\n\nWhat would you like to know?"
+        flights: "I can help you find and book flights! Just provide:\n\n• Where from (e.g., 'San Francisco' or 'SFO')\n• Where to (e.g., 'New York' or 'JFK')\n• Departure date\n• Return date (for round trips)\n• Number of passengers\n\nYou can also ask me to:\n• 'Find cheap flights to Paris'\n• 'Show me business class options'\n• 'Search for one-way tickets'\n• 'Filter by non-stop flights only'\n\nWhat would you like to know?",
+        hotels: "I can help you find and book hotels! Just provide:\n\n• City or location\n• Check-in date\n• Check-out date\n• Number of guests\n\nYou can also ask me to:\n• 'Find 5-star hotels in Miami'\n• 'Show hotels with free breakfast'\n• 'Search for pet-friendly stays'\n• 'Filter by price range'\n\nWhat would you like to know?",
+        cars: "I can help you find and rent cars! Just provide:\n\n• Pick-up location\n• Pick-up date and time\n• Drop-off date and time\n• Car type preference (optional)\n\nYou can also ask me to:\n• 'Find an SUV in Los Angeles'\n• 'Show luxury car options'\n• 'Search for automatic transmission'\n• 'Compare different rental companies'\n\nWhat would you like to know?"
       };
       
       const helpMessage = {
@@ -167,34 +163,156 @@ const AgentContainer = ({
     }
 
     try {
-      // Send to AI agent backend
-      const response = await fetch(`http://localhost:8000/api/v1/concierge/sessions/${sessionId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          flow_type: currentFlow
-        })
-      });
+      // Send message via API service
+      const data = await aiAgentApi.sendMessage(sessionId, message);
       
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      // Check if agent returned bundles (flights, hotels, cars)
+      if (data.bundles && data.bundles.length > 0) {
+        // Transform bundles to results format for display
+        const transformedResults = data.bundles.map(bundle => {
+          const deal = bundle.deal;
+          const metadata = deal.deal_metadata || {};
+          
+          if (currentFlow === 'flights') {
+            const durationHours = metadata.duration_hours || 3;
+            return {
+              id: deal.deal_id || deal.id,
+              from: deal.origin,
+              to: deal.destination,
+              departDate: metadata.depart_date || new Date().toISOString().split('T')[0],
+              departureTime: metadata.departure_time || '09:00',
+              arrivalTime: metadata.arrival_time || '12:00',
+              airline: metadata.airline || 'Various Airlines',
+              flightNumber: metadata.flight_number || 'TBA',
+              price: deal.price,
+              currency: deal.currency || 'USD',
+              duration: `${Math.floor(durationHours)}h ${Math.round((durationHours % 1) * 60)}m`,
+              durationMinutes: Math.round(durationHours * 60),
+              nonstop: (metadata.stops || 0) === 0,
+              stops: metadata.stops || 0,
+              seatsAvailable: deal.availability || 10,
+              isDeal: deal.tags?.includes('BestValue') || deal.tags?.includes('Deal'),
+            };
+          } else if (currentFlow === 'hotels') {
+            return {
+              id: deal.deal_id || deal.id,
+              name: metadata.name || `Hotel in ${deal.destination}`,
+              city: deal.destination,
+              address: metadata.neighborhood || deal.destination,
+              rating: metadata.rating || 4,
+              stars: metadata.stars || 4,
+              price: deal.price,
+              pricePerNight: deal.price,
+              amenities: metadata.amenities || [],
+              image: metadata.image || '/placeholder-hotel.jpg',
+            };
+          } else if (currentFlow === 'cars') {
+            return {
+              id: deal.deal_id || deal.id,
+              vendor: metadata.car_vendor || 'Various',
+              model: metadata.car_type || 'Standard',
+              price: deal.price,
+              pricePerDay: deal.price,
+              transmission: metadata.transmission || 'Automatic',
+              fuel: metadata.fuel || 'Gasoline',
+              passengers: metadata.passengers || 5,
+            };
+          }
+          return null;
+        }).filter(Boolean);
+        
+        setResults(transformedResults);
+        setShowResults(true);
+        setCurrentView('results');
+        
+        // Extract search params from first deal
+        const firstDeal = data.bundles[0].deal;
+        const metadata = firstDeal.deal_metadata || {};
+        setSearchParams({
+          from: firstDeal.origin,
+          to: firstDeal.destination,
+          departDate: metadata.depart_date || new Date().toISOString().split('T')[0],
+          returnDate: metadata.return_date,
+          passengers: metadata.travelers || 1,
+        });
       }
-
-      const data = await response.json();
       
-      // Add assistant response
+      // Add assistant response with formatted search details
+      let formattedContent = data.response;
+      
+      // If we have bundles, enhance the message with search details
+      if (data.bundles && data.bundles.length > 0 && data.bundles[0].deal) {
+        const firstDeal = data.bundles[0].deal;
+        const metadata = firstDeal.deal_metadata || {};
+        
+        if (currentFlow === 'flights') {
+          // Create a formatted message with icons as a React element
+          const resultsElement = (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-lg font-bold">
+                <IoAirplaneSharp className="text-primary w-5 h-5" />
+                <span>Flight Search Results</span>
+              </div>
+              
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <MdFlightTakeoff className="text-success w-4 h-4" />
+                  <span className="font-semibold">From:</span>
+                  <span>{firstDeal.origin}</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <MdFlightLand className="text-error w-4 h-4" />
+                  <span className="font-semibold">To:</span>
+                  <span>{firstDeal.destination}</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <BsCalendar2Heart className="text-secondary w-4 h-4" />
+                  <span className="font-semibold">Date:</span>
+                  <span>{metadata.depart_date || 'Today'}</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <HiLocationMarker className="text-info w-4 h-4" />
+                  <span className="font-semibold">Trip Type:</span>
+                  <span>{metadata.trip_type || 'One-way'}</span>
+                </div>
+              </div>
+              
+              <div className="pt-2 border-t border-base-300">
+                <p className="text-sm">
+                  Found <span className="font-bold text-primary">{data.bundles.length}</span> flight{data.bundles.length !== 1 ? 's' : ''} • 
+                  Prices from <span className="font-bold">${Math.min(...data.bundles.map(b => b.deal.price))}</span> to <span className="font-bold">${Math.max(...data.bundles.map(b => b.deal.price))}</span>
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                <span>Check the results on the right</span>
+                <BsArrowRight className="w-4 h-4 animate-bounce" style={{ animationDirection: 'alternate' }} />
+              </div>
+            </div>
+          );
+          
+          // Store the element for rendering, but use plain text for message content
+          formattedContent = {
+            text: `Flight Search Results\n\nFrom: ${firstDeal.origin}\nTo: ${firstDeal.destination}\nDate: ${metadata.depart_date || 'Today'}\nTrip Type: ${metadata.trip_type || 'One-way'}\n\nFound ${data.bundles.length} flight${data.bundles.length !== 1 ? 's' : ''} • Prices from $${Math.min(...data.bundles.map(b => b.deal.price))} to $${Math.max(...data.bundles.map(b => b.deal.price))}\n\nCheck the results on the right →`,
+            element: resultsElement
+          };
+        }
+      }
+      
       const assistantMessage = {
         role: 'assistant',
-        content: data.response,
+        content: typeof formattedContent === 'object' ? formattedContent.text : formattedContent,
+        element: typeof formattedContent === 'object' ? formattedContent.element : null,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Check if agent extracted search parameters
+      // Check if agent extracted search parameters (legacy support)
       if (data.search_params && data.search_params_complete) {
         setSearchParams(data.search_params);
-        // Automatically trigger search instead of showing search panel
         await handleSearch(data.search_params);
       }
     } catch (error) {
@@ -214,53 +332,39 @@ const AgentContainer = ({
     setShowResults(true);
     
     try {
-      let endpoint = '';
-      let queryParams = new URLSearchParams();
+      let data;
 
       if (currentFlow === 'flights') {
-        endpoint = 'http://localhost:3000/api/v1/listings/flights/search';
-        queryParams.append('from', params.from || '');
-        queryParams.append('to', params.to || '');
-        queryParams.append('date', params.departDate || '');
-        if (params.returnDate) queryParams.append('returnDate', params.returnDate);
+        data = await listingsApi.searchFlights({
+          from: params.from,
+          to: params.to,
+          departDate: params.departDate,
+          returnDate: params.returnDate
+        });
       } else if (currentFlow === 'hotels') {
-        endpoint = 'http://localhost:3000/api/v1/listings/hotels/search';
-        queryParams.append('city', params.city || '');
-        queryParams.append('checkIn', params.checkIn || '');
-        queryParams.append('checkOut', params.checkOut || '');
+        data = await listingsApi.searchHotels({
+          city: params.city,
+          checkIn: params.checkIn,
+          checkOut: params.checkOut
+        });
       } else if (currentFlow === 'cars') {
-        endpoint = 'http://localhost:3000/api/v1/listings/cars/search';
-        queryParams.append('location', params.location || '');
-        queryParams.append('pickUp', params.pickUp || '');
-        queryParams.append('dropOff', params.dropOff || '');
+        data = await listingsApi.searchCars({
+          location: params.location,
+          pickUp: params.pickUp,
+          dropOff: params.dropOff
+        });
       }
-
-      const response = await fetch(`${endpoint}?${queryParams}`);
-      const data = await response.json();
       
       const items = data.items || [];
       setResults(items);
       setShowResults(true);
       
-      // Add AI feedback message with result count
-      const typeLabel = currentFlow === 'flights' ? 'flights' : currentFlow === 'hotels' ? 'stays' : 'cars';
-      const resultMessage = {
-        role: 'assistant',
-        content: items.length > 0 
-          ? `Great news! ✨ I found ${items.length} result${items.length !== 1 ? 's' : ''} for you. Check them out on the right! You can click "View Deal" to see details and book.`
-          : `No ${typeLabel} found matching your search. 😕 Try different dates or locations, or chat with me to explore other options!`,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, resultMessage]);
+      // Don't add chat messages for direct UI searches
+      // Messages are only added when user interacts via chat
     } catch (error) {
       console.error('Search failed:', error);
       setResults([]);
-      const errorMessage = {
-        role: 'assistant',
-        content: 'Oops! Something went wrong while searching. Please try again or modify your search criteria.',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      // Don't add error messages for direct UI searches
     } finally {
       setLoading(false);
     }

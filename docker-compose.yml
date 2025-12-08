@@ -1,22 +1,21 @@
 services:
-  # MongoDB service removed - using MongoDB Atlas from .env file
-  # mongodb:
-  #   image: mongo:7.0
-  #   container_name: kayak-mongodb
-  #   restart: unless-stopped
-  #   ports:
-  #     - "27017:27017"
-  #   environment:
-  #     MONGO_INITDB_ROOT_USERNAME: root
-  #     MONGO_INITDB_ROOT_PASSWORD: password
-  #   volumes:
-  #     - mongodb_data:/data/db
-  #   healthcheck:
-  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 10s
+  mongodb:
+    image: mongo:7.0
+    container_name: kayak-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   backend:
     build:
@@ -26,12 +25,18 @@ services:
         - node:20-alpine
     container_name: kayak-backend
     restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
     ports:
       - "3000:3000"
     env_file:
       - ./backend/.env
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      # JWT_SECRET and SESSION_SECRET are loaded from .env file
+      # MONGODB_URI is loaded from .env file (MongoDB Atlas)
     volumes:
       - ./backend/kafka:/app/kafka:ro
     healthcheck:
@@ -58,9 +63,9 @@ services:
       - ./frontend/.env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+      VITE_API_URL: http://localhost:3000
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5173"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -90,5 +95,5 @@ services:
       retries: 5
       start_period: 30s
 
-# volumes:
-#   mongodb_data:
+volumes:
+  mongodb_data:

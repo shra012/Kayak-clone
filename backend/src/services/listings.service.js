@@ -338,55 +338,104 @@ export const getFlightLocations = async (query, limit = 10) => {
     const flightsCollection = db.collection('flights');
     const airportsCollection = db.collection('airports');
     
-    // Use regex to match airport codes that start with or contain the query
     // Escape special regex characters in the query
     const escapedQuery = trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(escapedQuery, 'i');
-    
-    // Query with regex filter using MongoDB $regex operator (more efficient)
-    const fromLocations = await flightsCollection.distinct('from', { from: { $regex: regex } });
-    const toLocations = await flightsCollection.distinct('to', { to: { $regex: regex } });
-    
-    // Combine and deduplicate, filter out null/undefined values
-    const uniqueCodes = [...new Set([...fromLocations, ...toLocations])]
-      .filter(code => code && typeof code === 'string' && code.trim().length > 0)
-      .slice(0, limit);
-    
-    // Look up full airport details from airports collection
-    const airportDetails = await airportsCollection.find({
-      code: { $in: uniqueCodes }
-    }).toArray();
-    
-    // Create a map of code -> airport details
-    const airportMap = new Map();
-    airportDetails.forEach(airport => {
-      airportMap.set(airport.code, airport);
-    });
-    
-    // Format results with full airport names
-    const results = uniqueCodes.map(code => {
-      const airport = airportMap.get(code);
-      if (airport) {
-        // Format: "CODE - City (Airport Name)"
-        const cityPart = airport.city && airport.city !== 'Unknown' ? ` - ${airport.city}` : '';
-        const namePart = airport.name && airport.name !== 'Unknown' ? ` (${airport.name})` : '';
-        return {
-          code: code,
-          city: airport.city || null,
-          name: airport.name || null,
-          label: `${code}${cityPart}${namePart}`,
-        };
-      } else {
-        // If airport not found in airports collection, return just the code
-        return {
-          code: code,
-          city: null,
-          name: null,
-          label: code,
-        };
+    const beginsWithRegex = new RegExp(`^${escapedQuery}`, 'i');
+    const containsRegex = new RegExp(escapedQuery, 'i');
+
+    // First try to satisfy the query purely from the airports collection so typing
+    // "San" or "Los Angeles" still surfaces the matching airport codes.
+    const airportMatches = await airportsCollection
+      .find({
+        $or: [
+          { code: { $regex: beginsWithRegex } },
+          { city: { $regex: containsRegex } },
+          { name: { $regex: containsRegex } },
+          { state: { $regex: containsRegex } },
+          { country: { $regex: containsRegex } },
+        ],
+      })
+      .limit(limit * 3) // pull a few extras so we can rank them client-side
+      .toArray();
+
+    let results = [];
+
+    if (airportMatches.length > 0) {
+      // Score matches so exact code / prefix hits float to the top
+      results = airportMatches
+        .map((airport) => {
+          let score = 0;
+          const code = airport.code || '';
+          const city = airport.city || '';
+          const name = airport.name || '';
+
+          if (beginsWithRegex.test(code)) score += 50;
+          else if (containsRegex.test(code)) score += 25;
+          if (beginsWithRegex.test(city)) score += 30;
+          else if (containsRegex.test(city)) score += 15;
+          if (beginsWithRegex.test(name)) score += 10;
+          else if (containsRegex.test(name)) score += 5;
+
+          return { airport, score };
+        })
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return (a.airport.code || '').localeCompare(b.airport.code || '');
+        })
+        .slice(0, limit)
+        .map(({ airport }) => {
+          const cityPart = airport.city && airport.city !== 'Unknown' ? ` - ${airport.city}` : '';
+          const namePart = airport.name && airport.name !== 'Unknown' ? ` (${airport.name})` : '';
+          return {
+            code: airport.code,
+            city: airport.city || null,
+            name: airport.name || null,
+            label: `${airport.code}${cityPart}${namePart}`,
+          };
+        });
+    }
+
+    // Fallback to the legacy behavior (distinct codes from flights collection)
+    // if we could not find airports that match the query text.
+    if (results.length === 0) {
+      const fromLocations = await flightsCollection.distinct('from', { from: { $regex: containsRegex } });
+      const toLocations = await flightsCollection.distinct('to', { to: { $regex: containsRegex } });
+
+      const uniqueCodes = [...new Set([...fromLocations, ...toLocations])]
+        .filter(code => code && typeof code === 'string' && code.trim().length > 0)
+        .slice(0, limit);
+
+      if (uniqueCodes.length > 0) {
+        const airportDetails = await airportsCollection.find({
+          code: { $in: uniqueCodes }
+        }).toArray();
+        const airportMap = new Map();
+        airportDetails.forEach((airport) => {
+          airportMap.set(airport.code, airport);
+        });
+
+        results = uniqueCodes.map((code) => {
+          const airport = airportMap.get(code);
+          if (airport) {
+            const cityPart = airport.city && airport.city !== 'Unknown' ? ` - ${airport.city}` : '';
+            const namePart = airport.name && airport.name !== 'Unknown' ? ` (${airport.name})` : '';
+            return {
+              code,
+              city: airport.city || null,
+              name: airport.name || null,
+              label: `${code}${cityPart}${namePart}`,
+            };
+          }
+          return {
+            code,
+            city: null,
+            name: null,
+            label: code,
+          };
+        });
       }
-    });
-    
+    }
+
     logger.debug(`Found ${results.length} flight locations for query: ${trimmedQuery}`);
     
     // Cache the results for 1 minute (60 seconds)
@@ -479,30 +528,39 @@ export const searchHotels = async (query) => {
       amenities,
       page = 1,
       limit = 20,
-      sort = 'createdAt', // Changed default to show newest first
-      order = 'desc',     // Newest first
+      sortBy,
+      sortOrder,
+      sort,
+      order,
     } = query;
+    
+    // Support both sortBy/sortOrder and sort/order parameter names
+    const sortField = sortBy || sort || 'pricePerNight';
+    const sortDirection = sortOrder || order || 'asc';
 
-    // Try to get cached results
-    const cached = await getCachedSearchResults('hotel', query);
-    if (cached) {
-      logger.debug('Returning cached hotel search results');
-      return cached;
-    }
+    // Try to get cached results - TEMPORARILY DISABLED FOR DEBUGGING
+    // const cached = await getCachedSearchResults('hotel', query);
+    // if (cached) {
+    //   logger.debug('Returning cached hotel search results');
+    //   return cached;
+    // }
 
     const db = await getMongoDB();
     const collection = db.collection('hotels');
 
     // Build query filter
-    const filter = {
-      // Only show active hotels in search results (not snoozed or unlisted)
-      $or: [
-        { status: 'active' },
-        { status: { $exists: false } } // Include old hotels without status field
-      ]
-    };
+    const filter = {};
     
-    if (city) filter.city = new RegExp(city, 'i');
+    // If city is provided, search in both city and hotel name fields
+    if (city) {
+      const cityRegex = new RegExp(city, 'i');
+      filter.$or = [
+        { city: cityRegex },
+        { name: cityRegex },
+        { neighbourhood: cityRegex }
+      ];
+    }
+    
     if (state) filter.state = state;
     if (minRating) filter.rating = { $gte: parseFloat(minRating) };
     if (maxPrice) filter.pricePerNight = { $lte: parseFloat(maxPrice) };
@@ -511,10 +569,9 @@ export const searchHotels = async (query) => {
       filter.amenities = { $all: amenitiesList };
     }
 
-    // Build sort - use pricePerNight as fallback if sort field is 'price'
+    // Build sort
     const sortObj = {};
-    const sortField = sort === 'price' ? 'pricePerNight' : sort;
-    sortObj[sortField] = order === 'desc' ? -1 : 1;
+    sortObj[sortField] = sortDirection === 'desc' ? -1 : 1;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
@@ -533,8 +590,8 @@ export const searchHotels = async (query) => {
       },
     };
 
-    // Cache the results
-    await cacheSearchResults('hotel', query, results);
+    // Cache the results - TEMPORARILY DISABLED FOR DEBUGGING
+    // await cacheSearchResults('hotel', query, results);
 
     return results;
   } catch (error) {
@@ -680,15 +737,6 @@ export const searchCars = async (query) => {
 
     // Build query filter
     const andConditions = [];
-    
-    // Only show active cars in search results (not snoozed or unlisted)
-    andConditions.push({
-      $or: [
-        { status: 'active' },
-        { status: { $exists: false } } // Include old cars without status field
-      ]
-    });
-    
     const cityFilter = normalizeCity(city || location);
     if (cityFilter) {
       const regex = new RegExp(cityFilter, 'i');

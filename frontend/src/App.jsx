@@ -3,7 +3,6 @@ import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AuthInitializer from './components/common/AuthInitializer';
 import ErrorBoundary from './components/common/ErrorBoundary';
-import AIChatWidget from './components/common/AIChatWidget';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -11,30 +10,30 @@ import UsersPage from './pages/users/UsersPage';
 import UserDetailPage from './pages/users/UserDetailPage';
 import FlightsPage from './pages/listings/FlightsPage';
 import HotelsPage from './pages/listings/HotelsPage';
+import HotelDetailPage from './pages/listings/HotelDetailPage';
 import CarsPage from './pages/listings/CarsPage';
+import CarDetailPage from './pages/listings/CarDetailPage';
 import BookingsPage from './pages/bookings/BookingsPage';
 import BookingDetailPage from './pages/bookings/BookingDetailPage';
-import PaymentsPage from './pages/payments/PaymentsPage';
+// PaymentsPage removed - payment is now inline in BookingsPage
 import AdminPage from './pages/admin/AdminPage';
-import ConciergePage from './pages/concierge/ConciergePage';
 import AnalyticsPage from './pages/analytics/AnalyticsPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
+import AgentFlightsPage from './pages/listings/AgentFlightsPage';
 
 // Owner Portal Pages
 import OwnerDashboard from './pages/owner/OwnerDashboard';
 import OwnerHotelsPage from './pages/owner/OwnerHotelsPage';
 import OwnerCarsPage from './pages/owner/OwnerCarsPage';
+import OwnerBookingRequestsPage from './pages/owner/OwnerBookingRequestsPage';
 import AddHotelPage from './pages/owner/AddHotelPage';
 import AddCarPage from './pages/owner/AddCarPage';
-import EditHotelPage from './pages/owner/EditHotelPage';
-import EditCarPage from './pages/owner/EditCarPage';
 
 function App() {
   return (
     <ErrorBoundary>
       <AuthInitializer />
-      <AIChatWidget />
       <Layout>
       <Routes>
         <Route path="/" element={<HomePage />} />
@@ -57,8 +56,11 @@ function App() {
           }
         />
         <Route path="/flights" element={<FlightsPage />} />
+        <Route path="/agent/flights" element={<AgentFlightsPage />} />
         <Route path="/hotels" element={<HotelsPage />} />
+        <Route path="/hotels/:hotelId" element={<HotelDetailPage />} />
         <Route path="/cars" element={<CarsPage />} />
+        <Route path="/cars/:carId" element={<CarDetailPage />} />
         <Route
           path="/bookings"
           element={
@@ -75,14 +77,7 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/payments"
-          element={
-            <ProtectedRoute>
-              <PaymentsPage />
-            </ProtectedRoute>
-          }
-        />
+        {/* Payments route removed - payment is now inline in BookingsPage */}
         <Route
           path="/admin"
           element={
@@ -91,18 +86,11 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/concierge"
-          element={
-            <ProtectedRoute>
-              <ConciergePage />
-            </ProtectedRoute>
-          }
-        />
+
         <Route
           path="/analytics"
           element={
-            <ProtectedRoute requireOwner>
+            <ProtectedRoute>
               <AnalyticsPage />
             </ProtectedRoute>
           }
@@ -142,14 +130,6 @@ function App() {
           }
         />
         <Route
-          path="/owner/hotels/:hotelId/edit"
-          element={
-            <ProtectedRoute requireOwner>
-              <EditHotelPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/owner/cars"
           element={
             <ProtectedRoute requireOwner>
@@ -166,10 +146,10 @@ function App() {
           }
         />
         <Route
-          path="/owner/cars/:carId/edit"
+          path="/owner/bookings"
           element={
             <ProtectedRoute requireOwner>
-              <EditCarPage />
+              <OwnerBookingRequestsPage />
             </ProtectedRoute>
           }
         />
@@ -182,4 +162,3 @@ function App() {
 }
 
 export default App;
-
