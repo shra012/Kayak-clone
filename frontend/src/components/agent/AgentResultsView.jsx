@@ -62,44 +62,93 @@ const AgentResultsView = ({
   };
 
   const renderFlightCard = (flight) => (
-    <div key={flight.id} className="card bg-base-100 shadow-md hover:shadow-lg transition-shadow">
-      <div className="card-body">
-        <div className="flex justify-between items-start">
-          <div>
-            <h3 className="font-bold text-lg">{flight.airline}</h3>
-            <div className="flex items-center gap-4 mt-2">
-              <div>
-                <p className="text-2xl font-bold">{flight.departure_time}</p>
-                <p className="text-sm text-base-content/70">{flight.origin}</p>
+    <div
+      key={flight.id}
+      className="card bg-base-100 shadow-md hover:shadow-xl transition-shadow cursor-pointer"
+      onClick={() => handleViewDeal(flight)}
+    >
+      <div className="card-body p-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          {/* Flight Info */}
+          <div className="flex-1 space-y-2 w-full md:w-auto">
+            {/* Airline */}
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-lg">{flight.airline}</span>
+              <span className="text-sm text-base-content/60">{flight.flightNumber}</span>
+              {flight.isDeal && (
+                <span className="badge badge-success badge-sm">Deal</span>
+              )}
+              {flight.nonstop && (
+                <span className="badge badge-primary badge-sm">Direct</span>
+              )}
+            </div>
+
+            {/* Route and Time */}
+            <div className="flex items-center gap-3">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{flight.from}</div>
+                <div className="text-sm text-base-content/60">{flight.departureTime}</div>
+                {flight.departDate && (
+                  <div className="text-xs text-base-content/60">
+                    {new Date(flight.departDate).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <div className="border-t border-base-300 w-12"></div>
-                <FaPlane className="text-primary" />
-                <div className="border-t border-base-300 w-12"></div>
+
+              <div className="flex-1 flex flex-col items-center px-2">
+                <div className="text-xs text-base-content/60 mb-1">
+                  {flight.duration}
+                </div>
+                <div className="w-full h-0.5 bg-base-300 relative">
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    <FaPlane className="w-3 h-3 text-primary" />
+                  </div>
+                </div>
+                <span className="text-xs text-base-content/60 mt-1">
+                  {flight.nonstop ? 'Non-stop' : `${flight.stops || 0} stop${flight.stops > 1 ? 's' : ''}`}
+                </span>
               </div>
-              <div>
-                <p className="text-2xl font-bold">{flight.arrival_time}</p>
-                <p className="text-sm text-base-content/70">{flight.destination}</p>
+
+              <div className="text-center">
+                <div className="text-2xl font-bold">{flight.to}</div>
+                <div className="text-sm text-base-content/60">{flight.arrivalTime}</div>
+                {flight.departDate && (
+                  <div className="text-xs text-base-content/60">
+                    {new Date(flight.departDate).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </div>
+                )}
               </div>
             </div>
-            <div className="flex gap-4 mt-2 text-sm text-base-content/70">
-              <span>{flight.duration}</span>
-              <span>•</span>
-              <span>{flight.stops === 0 ? 'Non-stop' : `${flight.stops} stop${flight.stops > 1 ? 's' : ''}`}</span>
+
+            {/* Additional Info */}
+            <div className="flex items-center gap-3 text-xs text-base-content/60">
+              {flight.seatsAvailable && flight.seatsAvailable <= 5 && (
+                <span className="badge badge-warning badge-xs">Only {flight.seatsAvailable} seats left</span>
+              )}
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-3xl font-bold text-primary">${flight.price}</p>
-            <p className="text-sm text-base-content/70">per person</p>
+
+          {/* Price */}
+          <div className="text-right flex-shrink-0">
+            <div className="text-3xl font-bold text-primary">${flight.price}</div>
+            <div className="text-xs text-base-content/60">{flight.currency || 'USD'}</div>
+            <div className="text-xs text-base-content/60">per person</div>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewDeal(flight);
+              }}
+              className="btn btn-primary btn-sm mt-2"
+            >
+              View Deal
+            </button>
           </div>
-        </div>
-        <div className="card-actions justify-end mt-4">
-          <button 
-            onClick={() => handleViewDeal(flight)}
-            className="btn btn-primary"
-          >
-            View Deal
-          </button>
         </div>
       </div>
     </div>

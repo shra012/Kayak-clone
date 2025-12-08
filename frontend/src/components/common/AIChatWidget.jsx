@@ -167,34 +167,68 @@ const AIChatWidget = ({
   return (
     <>
       {/* Floating Chat Button */}
-      <button
-        onClick={handleToggle}
-        className="fixed bottom-6 right-6 z-50 bg-primary text-primary-content rounded-full p-4 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110"
-        aria-label="Open AI Chat"
-      >
-        {isOpen ? (
-          <FaTimes className="w-6 h-6" />
-        ) : (
-          <FaComments className="w-6 h-6" />
-        )}
-      </button>
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={handleToggle}
+          className="relative group bg-gradient-to-br from-primary to-secondary text-primary-content rounded-full p-5 shadow-2xl hover:shadow-3xl transition-all duration-500 hover:scale-110 animate-gradient"
+          aria-label="Open AI Chat"
+        >
+          {/* Pulse ring animation */}
+          <span className="absolute inset-0 rounded-full bg-primary animate-ping opacity-20"></span>
+          
+          {/* Icon */}
+          <div className="relative">
+            {isOpen ? (
+              <FaTimes className="w-6 h-6 transition-transform duration-300 rotate-90" />
+            ) : (
+              <FaComments className="w-6 h-6 transition-transform duration-300 group-hover:scale-110" />
+            )}
+          </div>
+          
+          {/* Badge for unread indicator (can be added later) */}
+          {!isOpen && messages.length > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-5 w-5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-5 w-5 bg-success items-center justify-center text-xs font-bold">
+                {messages.filter(m => m.role === 'assistant').length}
+              </span>
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Chat Widget */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-96 h-[600px] bg-base-100 rounded-lg shadow-2xl flex flex-col border border-base-300">
+        <div className="fixed bottom-24 right-6 z-50 w-96 h-[600px] rounded-2xl shadow-2xl flex flex-col border border-base-300 backdrop-blur-xl bg-base-100/95 overflow-hidden animate-slide-up">
+          {/* Animated background gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 animate-gradient pointer-events-none"></div>
+          
           {/* Header */}
-          <div className="bg-primary text-primary-content p-4 rounded-t-lg flex justify-between items-center">
-            <div>
-              <h3 className="font-bold text-lg">{title}</h3>
-              {isAuthenticated && user && (
-                <p className="text-sm opacity-90">
-                  {user.firstName} {user.lastName}
-                </p>
-              )}
+          <div className="relative bg-gradient-to-r from-primary to-secondary text-primary-content p-4 flex justify-between items-center shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="avatar placeholder">
+                <div className="bg-base-100 text-primary rounded-full w-10">
+                  <span className="text-xl">✨</span>
+                </div>
+              </div>
+              <div>
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  {title}
+                  <span className="badge badge-sm bg-success/20 border-success/50 text-success-content">
+                    <span className="w-1.5 h-1.5 bg-success rounded-full mr-1 animate-pulse"></span>
+                    Live
+                  </span>
+                </h3>
+                {isAuthenticated && user && (
+                  <p className="text-sm opacity-90">
+                    {user.firstName} {user.lastName}
+                  </p>
+                )}
+              </div>
             </div>
             <button
               onClick={handleToggle}
-              className="hover:opacity-70 transition-opacity"
+              className="btn btn-ghost btn-sm btn-circle hover:bg-primary-content/20 transition-colors"
               aria-label="Close chat"
             >
               <FaTimes className="w-5 h-5" />
@@ -202,27 +236,41 @@ const AIChatWidget = ({
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="relative flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
             {messages.length === 0 && !loading && (
-              <div className="text-center text-base-content/60 py-8">
-                <FaComments className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p>Start a conversation with your AI concierge!</p>
+              <div className="text-center text-base-content/60 py-12 animate-fade-in">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mx-auto mb-4">
+                  <FaComments className="w-10 h-10 text-primary animate-pulse" />
+                </div>
+                <h4 className="text-lg font-semibold mb-2">Your AI Travel Assistant</h4>
+                <p className="text-sm max-w-xs mx-auto">
+                  Start a conversation! Ask about flights, hotels, bookings, or anything travel-related.
+                </p>
               </div>
             )}
 
             {messages.map((msg, index) => (
               <div
                 key={index}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-slide-up`}
+                style={{ animationDelay: `${index * 30}ms` }}
               >
                 <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
+                  className={`max-w-[80%] rounded-2xl p-3 shadow-md transition-all duration-300 hover:shadow-lg ${
                     msg.role === 'user'
-                      ? 'bg-primary text-primary-content'
-                      : 'bg-base-200 text-base-content'
+                      ? 'bg-gradient-to-br from-primary to-primary/80 text-primary-content'
+                      : 'bg-base-100 text-base-content border border-base-300/50'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  {msg.role === 'assistant' && (
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+                        <span className="text-xs">✨</span>
+                      </div>
+                      <span className="text-xs font-semibold text-primary">AI Assistant</span>
+                    </div>
+                  )}
+                  <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
                   
                   {/* Display deals if available */}
                   {showDeals && msg.deals && msg.deals.length > 0 && (
@@ -284,15 +332,23 @@ const AIChatWidget = ({
             ))}
 
             {loading && (
-              <div className="flex justify-start">
-                <div className="bg-base-200 rounded-lg p-3">
-                  <FaSpinner className="w-5 h-5 animate-spin" />
+              <div className="flex justify-start animate-fade-in">
+                <div className="bg-base-100 border border-base-300 rounded-2xl p-3 flex items-center gap-2 shadow-md">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-primary rounded-full animate-bounce"></span>
+                    <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
+                    <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                  </div>
+                  <span className="text-xs text-base-content/60">AI is thinking...</span>
                 </div>
               </div>
             )}
 
             {error && (
-              <div className="alert alert-error text-sm">
+              <div className="alert alert-error shadow-lg text-sm animate-shake">
+                <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current flex-shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 <span>{error}</span>
               </div>
             )}
@@ -301,19 +357,32 @@ const AIChatWidget = ({
           </div>
 
           {/* Input Area */}
-          <form onSubmit={handleSendMessage} className="p-4 border-t border-base-300">
-            <div className="flex gap-2">
+          <form onSubmit={handleSendMessage} className="relative p-4 border-t border-base-300/50 bg-base-100/80 backdrop-blur-sm">
+            <div className="relative">
               <input
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 input input-bordered input-sm"
+                placeholder="✨ Type your message..."
+                className="w-full input input-bordered pr-12 focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300"
                 disabled={loading || !sessionId}
               />
+              {inputMessage.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setInputMessage('')}
+                  className="absolute right-14 top-1/2 -translate-y-1/2 text-base-content/40 hover:text-base-content transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
               <button
                 type="submit"
-                className="btn btn-primary btn-sm"
+                className={`absolute right-2 top-1/2 -translate-y-1/2 btn btn-primary btn-sm btn-circle transition-all duration-300 ${
+                  inputMessage.trim() && !loading ? 'scale-110' : ''
+                }`}
                 disabled={loading || !sessionId || !inputMessage.trim()}
               >
                 {loading ? (
@@ -322,6 +391,14 @@ const AIChatWidget = ({
                   <FaPaperPlane className="w-4 h-4" />
                 )}
               </button>
+            </div>
+            <div className="flex items-center justify-between mt-2 px-1">
+              <p className="text-xs text-base-content/40">
+                Press <kbd className="kbd kbd-xs">Enter</kbd> to send
+              </p>
+              <p className="text-xs text-base-content/40">
+                {messages.length} message{messages.length !== 1 ? 's' : ''}
+              </p>
             </div>
           </form>
         </div>
