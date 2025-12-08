@@ -7,18 +7,6 @@ import { useToast } from '../../hooks/useToast';
 import { FaCar, FaUsers, FaMapMarkerAlt, FaCalendarAlt, FaClock, FaTimes } from 'react-icons/fa';
 import { US_STATES } from '../../constants/usStates';
 
-// Helper function to get car type icon
-const getCarTypeIcon = (type) => {
-  const typeLower = type?.toLowerCase() || '';
-  if (typeLower.includes('economy') || typeLower.includes('compact')) return '🚗';
-  if (typeLower.includes('suv') || typeLower.includes('sport utility')) return '🚙';
-  if (typeLower.includes('sports') || typeLower.includes('premium') || typeLower.includes('luxury')) return '🏎️';
-  if (typeLower.includes('minivan') || typeLower.includes('van')) return '🚐';
-  if (typeLower.includes('full-size') || typeLower.includes('fullsize')) return '🚘';
-  if (typeLower.includes('convertible')) return '🚕';
-  return '🚗'; // Default
-};
-
 const defaultFilters = {
   location: '',
   state: '',
@@ -596,7 +584,7 @@ const CarsPage = () => {
                     onChange={(e) => setExpandedFilterSections(prev => ({ ...prev, vehicle: e.target.checked }))}
                   />
                   <div className="collapse-title text-sm font-semibold px-3 py-2 min-h-0">
-                    🚗 Vehicle
+                    Vehicle
                   </div>
                   <div className="collapse-content px-3 pb-3 space-y-3">
                     {/* Car Type Filter with Icons */}
@@ -613,7 +601,7 @@ const CarsPage = () => {
                     <option value="any">All Types</option>
                     {availableCarTypes.map(type => (
                           <option key={type} value={type}>
-                            {getCarTypeIcon(type)} {type}
+                            {type}
                           </option>
                     ))}
                   </select>
@@ -930,7 +918,6 @@ const CarsPage = () => {
                       onClick={() => handleQuickFilter('type', type)}
                       className={`btn btn-sm btn-outline flex-shrink-0 gap-1 transition-all ${filters.type === type ? 'btn-primary shadow-md' : 'hover:btn-primary'}`}
                     >
-                      <span className="text-base">{getCarTypeIcon(type)}</span>
                       <span>{type}</span>
                     </button>
                   ))}
@@ -1140,10 +1127,9 @@ const CarsPage = () => {
                               <div className="flex justify-between items-start mb-3">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-2xl">{getCarTypeIcon(car.type)}</span>
                                     <h3 className="text-2xl font-bold">{car.type}</h3>
                                     <span className="badge badge-sm badge-outline">
-                                      {getCarTypeIcon(car.type)} {car.type}
+                                      {car.type}
                                     </span>
                                   </div>
                                   <p className="text-base-content/70 flex items-center gap-2 mb-2">
