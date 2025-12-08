@@ -47,7 +47,7 @@ const CarDetailPage = () => {
 
   const carImageUrl = car?.imageStoragePath 
     ? resolveCarImageUrl(car.imageStoragePath)
-    : car?.imageUrl || null;
+    : car?.imageUrl || car?.images?.[0] || null;
 
   const handleBookNow = async () => {
     // Track the click

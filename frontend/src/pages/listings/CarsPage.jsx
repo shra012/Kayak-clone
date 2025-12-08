@@ -118,20 +118,15 @@ const CarsPage = () => {
   const resolveCarImageUrl = (rawUrl) => {
     if (!rawUrl) return placeholderImage;
 
-    // If it's a full URL, still rewrite the path segment if needed
+    // If it's already a full URL, return it
     if (rawUrl.startsWith('http')) {
-      return rawUrl.replace('/kayak/cars/', '/kayak/product/cars/');
+      return rawUrl;
     }
 
+    // If it's a Firebase storage path, construct the URL
     let path = rawUrl;
-    if (path.startsWith('kayak/cars/')) {
-      path = path.replace('kayak/cars/', 'kayak/product/cars/');
-    } else if (path.startsWith('kayak/product/cars/')) {
-      // already correct
-    } else if (path.startsWith('kayak/')) {
-      // keep other kayak paths as-is
-    } else {
-      path = `kayak/product/cars/${path}`;
+    if (!path.startsWith('kayak/')) {
+      path = `kayak/cars/${path}`;
     }
 
     const encodedPath = encodeURIComponent(path);
@@ -1055,7 +1050,9 @@ const CarsPage = () => {
                               </div>
                             )}
                             <img
-                                src={resolveCarImageUrl(car.imageUrl)}
+                                src={resolveCarImageUrl(
+                                  car.imageStoragePath || car.imageUrl || car.images?.[0] || null
+                                )}
                                 alt={`${car.type} - ${car.vendor}`}
                                 className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded[car.id] ? 'opacity-100' : 'opacity-0'}`}
                                 onLoad={() => setImageLoaded(prev => ({ ...prev, [car.id]: true }))}

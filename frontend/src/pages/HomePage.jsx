@@ -152,6 +152,7 @@ const HomePage = () => {
   const fromSearchTimeoutRef = useRef(null);
   const toSearchTimeoutRef = useRef(null);
   const hotelLocationSearchTimeoutRef = useRef(null);
+  const carLocationSearchTimeoutRef = useRef(null);
   const multiCitySearchTimeoutRefs = useRef({});
   
   // Get default dates
@@ -675,8 +676,15 @@ const navigate = useNavigate();
   const loadCarLocations = async (value, setter) => {
     try {
       const trimmed = value.trim();
-      const { items } = await listingsApi.searchCarLocations(trimmed, 10);
-      setter(items || []);
+      if (!trimmed) {
+        setter([]);
+        return;
+      }
+      console.log('Loading car locations for:', trimmed);
+      const data = await listingsApi.searchCarLocations(trimmed, 10);
+      const items = Array.isArray(data) ? data : (data?.items || []);
+      console.log('Car location results:', items);
+      setter(items);
     } catch (err) {
       console.error('Failed to load car locations', err);
       setter([]);
@@ -1934,13 +1942,21 @@ const navigate = useNavigate();
                           });
                           setCarLocationSelected(false);
                           
+                          // Clear previous timeout
+                          if (carLocationSearchTimeoutRef.current) {
+                            clearTimeout(carLocationSearchTimeoutRef.current);
+                          }
+                          
                           // Load location options with debounce
                           if (value.trim().length >= 2) {
-                            setTimeout(() => loadCarLocations(value, setCarLocationOptions), 300);
+                            carLocationSearchTimeoutRef.current = setTimeout(() => {
+                              loadCarLocations(value, setCarLocationOptions);
+                            }, 300);
+                            setShowCarLocationDropdown(true);
                           } else {
                             setCarLocationOptions([]);
+                            setShowCarLocationDropdown(false);
                           }
-                          setShowCarLocationDropdown(true);
                         }}
                         onBlur={() => {
                           // Delay to allow click event to register first
