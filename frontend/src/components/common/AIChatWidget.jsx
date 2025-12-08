@@ -208,7 +208,7 @@ const AIChatWidget = ({
             <div className="flex items-center gap-3">
               <div className="avatar placeholder">
                 <div className="bg-base-100 text-primary rounded-full w-10">
-                  <span className="text-xl">✨</span>
+                  <span className="text-xl">AI</span>
                 </div>
               </div>
               <div>
@@ -265,7 +265,7 @@ const AIChatWidget = ({
                   {msg.role === 'assistant' && (
                     <div className="flex items-center gap-2 mb-1">
                       <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-                        <span className="text-xs">✨</span>
+                        <span className="text-xs">AI</span>
                       </div>
                       <span className="text-xs font-semibold text-primary">AI Assistant</span>
                     </div>
@@ -363,7 +363,7 @@ const AIChatWidget = ({
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="✨ Type your message..."
+                placeholder="Type your message..."
                 className="w-full input input-bordered pr-12 focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300"
                 disabled={loading || !sessionId}
               />

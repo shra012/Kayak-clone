@@ -230,7 +230,7 @@ const AgentInlineChat = ({
           <div className="flex items-center gap-3">
             <div className="avatar placeholder">
               <div className="bg-gradient-to-br from-primary to-secondary text-primary-content rounded-full w-10">
-                <span className="text-lg">✨</span>
+                <span className="text-lg">AI</span>
               </div>
             </div>
             <div>
@@ -306,7 +306,7 @@ const AgentInlineChat = ({
                 {msg.role === 'assistant' && (
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-                      <span className="text-xs">✨</span>
+                      <span className="text-xs">AI</span>
                     </div>
                     <span className="text-xs font-semibold text-primary">AI Assistant</span>
                   </div>
@@ -364,7 +364,7 @@ const AgentInlineChat = ({
               <input
                 type="text"
                 className="input input-bordered w-full pr-12 bg-base-100/80 backdrop-blur-sm focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300"
-                placeholder="✨ Ask me anything..."
+                placeholder="Ask me anything..."
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 disabled={!sessionId || loading}
