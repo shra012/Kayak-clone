@@ -332,8 +332,14 @@ def should_use_langgraph(message: str, context: Optional[Dict[str, Any]] = None)
     )
 
 
-def format_supabase_response(response: Dict[str, Any]) -> str:
+def format_supabase_response(response: Dict[str, Any], chat_mode: Optional[str] = None) -> str:
     """Return conversational answer for Supabase results, preferring LLM summaries."""
+    llm_answer = response.get("llm_answer")
+    
+    # In booking_chat mode, return ONLY the natural language response
+    if chat_mode == "booking_chat" and llm_answer:
+        return llm_answer
+    
     rows = response.get("result")
     if rows is None:
         rows = response.get("rows") or response.get("data")
@@ -346,7 +352,6 @@ def format_supabase_response(response: Dict[str, Any]) -> str:
         except Exception:
             result_text = str(rows)
 
-    llm_answer = response.get("llm_answer")
     explanation = response.get("explanation") or "Here are the latest results I found."
     leading_text = llm_answer or explanation
 
@@ -368,9 +373,14 @@ def format_supabase_response(response: Dict[str, Any]) -> str:
     return f"{leading_text}\n\n{detail_block}" if detail_block else leading_text
 
 
-def format_generic_agent_response(response: Dict[str, Any]) -> str:
+def format_generic_agent_response(response: Dict[str, Any], chat_mode: Optional[str] = None) -> str:
     """Return readable answer for weather/search tool calls."""
-    explanation = response.get("explanation") or response.get("llm_answer") or "Here is what I found."
+    # Prioritize LLM-generated natural language response
+    llm_answer = response.get("llm_answer")
+    if llm_answer:
+        return llm_answer
+    
+    explanation = response.get("explanation") or "Here is what I found."
     result = response.get("result") or response.get("rows") or response.get("raw")
 
     if result is None:
@@ -635,10 +645,14 @@ async def send_message(session_id: str, request: ChatMessageRequest):
     bundle_data = None  # Initialize bundle_data
     message_lower = request.message.lower()
     
-    # Booking-only chat mode: natural language answers, no actions
+    # Booking-only chat mode: natural language answers using LangGraph for weather, search, etc.
     if context.get("chat_mode") == "booking_chat":
         # Pass deal cache context to the booking chat agent
         enriched_context = context.copy()
+        
+        # Add a clear instruction that this is a conversational chat
+        enriched_context["is_chat_only"] = True
+        
         if context.get("bundle_id") or context.get("deal_ids"):
             # Include deal information from cache
             deal_info = []
@@ -656,7 +670,9 @@ async def send_message(session_id: str, request: ChatMessageRequest):
                         })
             enriched_context["deals_context"] = deal_info
         
+        # Use LangGraph agent for intelligent routing (weather, search, mongo, supabase)
         ai_response = await generate_ai_response(request.message, enriched_context)
+        
         return ChatMessageResponse(
             session_id=session_id,
             response=ai_response,
@@ -1335,7 +1351,11 @@ async def generate_ai_response(user_message: str, context: Dict[str, Any]) -> st
     needs_weather = is_weather_question(user_message)
     needs_search = is_search_question(user_message)
     needs_mongo = is_mongo_question(user_message) or context_ready_for_mongo(context)
-    needs_langgraph = needs_supabase or needs_weather or needs_search or needs_mongo
+    
+    # In booking_chat mode, ALWAYS use LangGraph so it can route intelligently
+    # (weather, search, mongo, supabase) with fallback to search for general questions
+    is_booking_chat = context.get("chat_mode") == "booking_chat"
+    needs_langgraph = is_booking_chat or needs_supabase or needs_weather or needs_search or needs_mongo
 
     if needs_langgraph:
         if needs_supabase and not context.get("user_id"):
@@ -1347,13 +1367,25 @@ async def generate_ai_response(user_message: str, context: Dict[str, Any]) -> st
             )
             if not agent_response:
                 return "I'm having trouble fetching that information right now."
+            
+            # Handle errors with friendly messages in booking_chat mode
             if agent_response.get("error"):
-                return agent_response.get("error") or "I'm having trouble fetching that information right now."
+                error_msg = agent_response.get("error") or "I'm having trouble fetching that information right now."
+                if is_booking_chat:
+                    # Provide user-friendly error messages in chat mode
+                    if "log in" in error_msg.lower():
+                        return error_msg
+                    elif "not configured" in error_msg.lower():
+                        return "I'm having trouble accessing that information right now. Please try again later."
+                    else:
+                        return "I'm sorry, I couldn't retrieve that information. Could you try rephrasing your question?"
+                return error_msg
 
             source = agent_response.get("source")
+            chat_mode = context.get("chat_mode")
             if source == "supabase":
-                return format_supabase_response(agent_response)
-            return format_generic_agent_response(agent_response)
+                return format_supabase_response(agent_response, chat_mode)
+            return format_generic_agent_response(agent_response, chat_mode)
         except Exception as exc:
             return f"I ran into an error while answering that: {exc}"
 
