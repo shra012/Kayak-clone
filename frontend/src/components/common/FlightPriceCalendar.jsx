@@ -33,15 +33,19 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
     queryKey: ['flight-prices', from, to, startDate, endDate],
     queryFn: async () => {
       if (!from || !to) {
+        console.log('FlightPriceCalendar: Missing from/to', { from, to });
         return { prices: {} };
       }
       try {
+        console.log('FlightPriceCalendar: Fetching prices', { from, to, startDate, endDate });
         const data = await listingsApi.getFlightPricesByDate({
           from,
           to,
           startDate,
           endDate,
         });
+        
+        console.log('FlightPriceCalendar: Received data', data);
         
         // Backend returns array format: [{date, price}, ...]
         // Convert to object format: {date: price, ...}
@@ -50,6 +54,7 @@ const FlightPriceCalendar = ({ selectedDate, onDateSelect, from, to, minDate }) 
           data.forEach(item => {
             pricesMap[item.date] = Math.round(item.price);
           });
+          console.log('FlightPriceCalendar: Converted prices map', pricesMap);
           return { prices: pricesMap };
         }
         

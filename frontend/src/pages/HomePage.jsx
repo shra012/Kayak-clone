@@ -151,6 +151,7 @@ const HomePage = () => {
   const toDropdownRef = useRef(null);
   const fromSearchTimeoutRef = useRef(null);
   const toSearchTimeoutRef = useRef(null);
+  const hotelLocationSearchTimeoutRef = useRef(null);
   const multiCitySearchTimeoutRefs = useRef({});
   
   // Get default dates
@@ -631,8 +632,16 @@ const navigate = useNavigate();
   // Load hotel location options (cities and property names)
   const loadHotelLocationOptions = async (searchTerm) => {
     try {
-      const { items } = await listingsApi.searchHotelLocations(searchTerm, 10);
-      setHotelLocationOptions(items || []);
+      const trimmed = searchTerm.trim();
+      if (!trimmed) {
+        setHotelLocationOptions([]);
+        return;
+      }
+      console.log('Loading hotel locations for:', trimmed);
+      const data = await listingsApi.searchHotelLocations(trimmed, 10);
+      const items = Array.isArray(data) ? data : (data?.items || []);
+      console.log('Hotel location results:', items);
+      setHotelLocationOptions(items);
     } catch (error) {
       console.error('Failed to load hotel locations', error);
       setHotelLocationOptions([]);
@@ -1753,13 +1762,21 @@ const navigate = useNavigate();
                           });
                           setHotelLocationSelected(false);
                           
+                          // Clear previous timeout
+                          if (hotelLocationSearchTimeoutRef.current) {
+                            clearTimeout(hotelLocationSearchTimeoutRef.current);
+                          }
+                          
                           // Load location options with debounce
                           if (value.trim().length >= 2) {
-                            setTimeout(() => loadHotelLocationOptions(value), 300);
+                            hotelLocationSearchTimeoutRef.current = setTimeout(() => {
+                              loadHotelLocationOptions(value);
+                            }, 300);
+                            setShowHotelLocationDropdown(true);
                           } else {
                             setHotelLocationOptions([]);
+                            setShowHotelLocationDropdown(false);
                           }
-                          setShowHotelLocationDropdown(true);
                         }}
                         onBlur={() => {
                           // Delay to allow click event to register first
