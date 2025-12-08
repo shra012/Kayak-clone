@@ -13,6 +13,7 @@ import authRoutes from './auth.routes.js';
 import ownerRoutes from './owner.routes.js';
 import profileRoutes from './profile.routes.js';
 import reviewsRoutes from './reviews.routes.js';
+import trackingRoutes from './tracking.routes.js';
 
 const router = express.Router();
 const API_VERSION = process.env.API_VERSION || 'v1';
@@ -21,7 +22,7 @@ router.use(requestId);
 
 router.use(`/${API_VERSION}/auth`, authRoutes);
 router.use(`/${API_VERSION}/users`, userRoutes);
-router.use(`/${API_VERSION}/listings`, listingsRoutes);
+router.use(`/${API_VERSION}`, listingsRoutes);
 router.use(`/${API_VERSION}/bookings`, bookingsRoutes);
 router.use(`/${API_VERSION}/payments`, paymentsRoutes);
 router.use(`/${API_VERSION}/admin`, adminRoutes);
@@ -32,5 +33,6 @@ router.use(`/${API_VERSION}/images`, imagesRoutes);
 router.use(`/${API_VERSION}/owner`, ownerRoutes);
 router.use(`/${API_VERSION}/profile`, profileRoutes);
 router.use(`/${API_VERSION}/reviews`, reviewsRoutes);
+router.use(`/${API_VERSION}/tracking`, trackingRoutes);
 
 export default router;

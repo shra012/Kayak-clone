@@ -24,7 +24,6 @@ class IntentParser:
         Example: "I've got Oct 25–27, SFO to anywhere warm, total budget $1,000 for two"
         """
         constraints = session_context.copy() if session_context else {}
-        
         # Build context string from session
         context_str = ""
         if session_context:
@@ -135,62 +134,17 @@ Return ONLY valid JSON with extracted fields. Omit fields that aren't mentioned 
     
     def needs_clarification(self, constraints: Dict[str, Any]) -> Optional[str]:
         """
-        Determine if we need to ask a clarifying question based on travel type
-        Returns most critical missing information first
-        Budget is optional for simple searches
+        Determine if we need to ask a clarifying question
+        Maximum of one clarifying question
         """
-        intent_type = constraints.get("intent_type", "")
+        if not constraints.get("check_in") or not constraints.get("check_out"):
+            return "What are your travel dates?"
         
-        # For flight bookings - ask dates first, then route
-        if "flight" in intent_type or "fly" in intent_type:
-            # At minimum, need departure date (check_in)
-            if not constraints.get("check_in"):
-                return "What is your departure date?"
-            if not constraints.get("origin"):
-                return "Where are you flying from?"
-            if not constraints.get("destination"):
-                return "Where would you like to fly to?"
-            # If user specified round-trip but no return date, ask for it
-            if constraints.get("trip_type") == "round-trip" and not constraints.get("check_out"):
-                return "What is your return date?"
-            # Return date (check_out) is optional for one-way flights
-            # Budget optional for flights
-            return None
+        if not constraints.get("origin"):
+            return "Where are you traveling from?"
         
-        # For hotel/stay bookings - only need destination and dates
-        elif "hotel" in intent_type or "stay" in intent_type:
-            if not constraints.get("destination"):
-                return "Which city are you looking to stay in?"
-            if not constraints.get("check_in") or not constraints.get("check_out"):
-                return "What are your check-in and check-out dates?"
-            # Budget optional for hotels
-            return None
+        if not constraints.get("budget"):
+            return "What's your total budget for this trip?"
         
-        # For car rentals - need pickup location and dates
-        elif "car" in intent_type:
-            if not constraints.get("check_in") or not constraints.get("check_out"):
-                return "What are your rental dates (pickup and return)?"
-            if not constraints.get("destination"):
-                return "Which city or airport do you need the car?"
-            # Budget optional for car rentals
-            return None
-        
-        # For bundles - need everything
-        elif "bundle" in intent_type or "package" in intent_type:
-            if not constraints.get("destination"):
-                return "Where would you like to go?"
-            if not constraints.get("check_in") or not constraints.get("check_out"):
-                return "What are your travel dates?"
-            if not constraints.get("origin"):
-                return "Where are you traveling from?"
-            if not constraints.get("budget"):
-                return "What's your budget for this trip?"
-            return None
-        
-        # For general travel - ask for essentials
-        else:
-            if not constraints.get("destination"):
-                return "Where would you like to go?"
-            if not constraints.get("check_in") or not constraints.get("check_out"):
-                return "What are your travel dates?"
-            return None
+        return None  # Have enough information
+
