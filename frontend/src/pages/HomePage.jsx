@@ -647,8 +647,10 @@ const navigate = useNavigate();
   const loadCarLocations = async (value, setter) => {
     try {
       const trimmed = value.trim();
-      const { items } = await listingsApi.searchCarLocations(trimmed, 10);
-      setter(items || []);
+      const result = await listingsApi.searchCarLocations(trimmed, 10);
+      // Handle the response - result should be { items: [...] }
+      const items = result?.items || result || [];
+      setter(items);
     } catch (err) {
       console.error('Failed to load car locations', err);
       setter([]);
