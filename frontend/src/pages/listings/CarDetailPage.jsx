@@ -10,21 +10,41 @@ import { FaCar, FaUsers, FaCog, FaGasPump, FaMapMarkerAlt, FaStar } from 'react-
 const storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'firegram-1r.appspot.com';
 
 const resolveCarImageUrl = (rawUrl) => {
-  if (!rawUrl) return null;
+  if (!rawUrl || rawUrl === 'null' || rawUrl === 'undefined') return null;
 
   // If it's already a full URL, return it
-  if (rawUrl.startsWith('http')) {
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
     return rawUrl;
   }
 
   // If it's a Firebase storage path, construct the URL
   let path = rawUrl;
-  if (!path.startsWith('kayak/')) {
-    path = `kayak/cars/${path}`;
+  
+  // Handle different path formats
+  if (path.startsWith('kayak/product/cars/')) {
+    // Already in correct format
+  } else if (path.startsWith('kayak/cars/')) {
+    // Convert old format to new format
+    path = path.replace('kayak/cars/', 'kayak/product/cars/');
+  } else if (!path.startsWith('kayak/')) {
+    // Add kayak/product/cars/ prefix if not present
+    path = `kayak/product/cars/${path}`;
   }
 
   const encodedPath = encodeURIComponent(path);
   return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodedPath}?alt=media`;
+};
+
+// Helper to get car image from multiple possible fields
+const getCarImage = (car) => {
+  // Check all possible image fields in priority order
+  return car.imageStoragePath || 
+         car.imageUrl || 
+         car.images?.[0] || 
+         car.image ||
+         car.photo ||
+         car.photoUrl ||
+         null;
 };
 
 const CarDetailPage = () => {
@@ -45,9 +65,7 @@ const CarDetailPage = () => {
 
   useDocumentTitle(car ? `${car.model || car.type} - Car Details` : 'Car Details');
 
-  const carImageUrl = car?.imageStoragePath 
-    ? resolveCarImageUrl(car.imageStoragePath)
-    : car?.imageUrl || null;
+  const carImageUrl = car ? resolveCarImageUrl(getCarImage(car)) : null;
 
   const handleBookNow = async () => {
     // Track the click

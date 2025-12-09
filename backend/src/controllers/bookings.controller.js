@@ -103,3 +103,40 @@ export const confirmBooking = async (req, res, next) => {
   }
 };
 
+export const cancelBooking = async (req, res, next) => {
+  try {
+    const { bookingId } = req.params;
+    const userId = req.user?.id;
+
+    // Get booking to verify ownership
+    const booking = await bookingsService.getBookingById(bookingId);
+    
+    if (!booking) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: 'Booking not found' });
+    }
+
+    // Check if user is the booking owner or has admin role
+    // For owners, we need to check if the booking is for their property/car
+    // This will be handled by checking the listing ownership in the service
+    if (userId && booking.userId !== userId && req.user?.role !== 'admin') {
+      // Check if user is owner of the property/car
+      const isOwner = await bookingsService.checkBookingOwnership(bookingId, userId);
+      if (!isOwner) {
+        return res.status(403).json({ code: 'FORBIDDEN', message: 'You can only cancel your own bookings or bookings for your properties' });
+      }
+    }
+
+    const cancelledBooking = await bookingsService.cancelBooking(bookingId);
+    res.json(cancelledBooking);
+  } catch (error) {
+    logger.error('Error cancelling booking:', error);
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ code: 'NOT_FOUND', message: error.message });
+    }
+    if (error.message.includes('Cannot cancel')) {
+      return res.status(400).json({ code: 'BAD_REQUEST', message: error.message });
+    }
+    next(error);
+  }
+};
+

@@ -7,18 +7,6 @@ import { useToast } from '../../hooks/useToast';
 import { FaCar, FaUsers, FaMapMarkerAlt, FaCalendarAlt, FaClock, FaTimes } from 'react-icons/fa';
 import { US_STATES } from '../../constants/usStates';
 
-// Helper function to get car type icon
-const getCarTypeIcon = (type) => {
-  const typeLower = type?.toLowerCase() || '';
-  if (typeLower.includes('economy') || typeLower.includes('compact')) return '🚗';
-  if (typeLower.includes('suv') || typeLower.includes('sport utility')) return '🚙';
-  if (typeLower.includes('sports') || typeLower.includes('premium') || typeLower.includes('luxury')) return '🏎️';
-  if (typeLower.includes('minivan') || typeLower.includes('van')) return '🚐';
-  if (typeLower.includes('full-size') || typeLower.includes('fullsize')) return '🚘';
-  if (typeLower.includes('convertible')) return '🚕';
-  return '🚗'; // Default
-};
-
 const defaultFilters = {
   location: '',
   state: '',
@@ -116,26 +104,43 @@ const CarsPage = () => {
   const placeholderImage = 'https://via.placeholder.com/400x300/4A5568/FFFFFF?text=Car+Image';
 
   const resolveCarImageUrl = (rawUrl) => {
-    if (!rawUrl) return placeholderImage;
-
-    // If it's a full URL, still rewrite the path segment if needed
-    if (rawUrl.startsWith('http')) {
-      return rawUrl.replace('/kayak/cars/', '/kayak/product/cars/');
+    if (!rawUrl || rawUrl === 'null' || rawUrl === 'undefined') {
+      return placeholderImage;
     }
 
+    // If it's already a full URL, return it
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+      return rawUrl;
+    }
+
+    // If it's a Firebase storage path, construct the URL
     let path = rawUrl;
-    if (path.startsWith('kayak/cars/')) {
+    
+    // Handle different path formats
+    if (path.startsWith('kayak/product/cars/')) {
+      // Already in correct format
+    } else if (path.startsWith('kayak/cars/')) {
+      // Convert old format to new format
       path = path.replace('kayak/cars/', 'kayak/product/cars/');
-    } else if (path.startsWith('kayak/product/cars/')) {
-      // already correct
-    } else if (path.startsWith('kayak/')) {
-      // keep other kayak paths as-is
-    } else {
+    } else if (!path.startsWith('kayak/')) {
+      // Add kayak/product/cars/ prefix if not present
       path = `kayak/product/cars/${path}`;
     }
 
     const encodedPath = encodeURIComponent(path);
     return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodedPath}?alt=media`;
+  };
+  
+  // Helper to get car image from multiple possible fields
+  const getCarImage = (car) => {
+    // Check all possible image fields in priority order
+    return car.imageStoragePath || 
+           car.imageUrl || 
+           car.images?.[0] || 
+           car.image ||
+           car.photo ||
+           car.photoUrl ||
+           null;
   };
 
   // Calculate rental duration in days
@@ -188,6 +193,17 @@ const CarsPage = () => {
       const data = await listingsApi.searchCars(params);
       
       let filteredResults = data.items || [];
+      
+      // Debug: Log first car to see what image fields are available
+      if (filteredResults.length > 0) {
+        console.log('Sample car data:', {
+          id: filteredResults[0].id,
+          imageStoragePath: filteredResults[0].imageStoragePath,
+          imageUrl: filteredResults[0].imageUrl,
+          images: filteredResults[0].images,
+          allKeys: Object.keys(filteredResults[0])
+        });
+      }
       
       // Apply seats filter on client side
       if (filtersToApply.seats && filtersToApply.seats !== 'any') {
@@ -568,7 +584,7 @@ const CarsPage = () => {
                     onChange={(e) => setExpandedFilterSections(prev => ({ ...prev, vehicle: e.target.checked }))}
                   />
                   <div className="collapse-title text-sm font-semibold px-3 py-2 min-h-0">
-                    🚗 Vehicle
+                    Vehicle
                   </div>
                   <div className="collapse-content px-3 pb-3 space-y-3">
                     {/* Car Type Filter with Icons */}
@@ -585,7 +601,7 @@ const CarsPage = () => {
                     <option value="any">All Types</option>
                     {availableCarTypes.map(type => (
                           <option key={type} value={type}>
-                            {getCarTypeIcon(type)} {type}
+                            {type}
                           </option>
                     ))}
                   </select>
@@ -650,7 +666,7 @@ const CarsPage = () => {
                 </div>
 
                 {/* Price & Sort Section */}
-                <div className="collapse collapse-arrow bg-base-200 mb-2">
+                <div className="collapse collapse-arrow bg-base-200 mb-2" style={{ overflow: 'visible' }}>
                   <input
                     type="checkbox"
                     checked={expandedFilterSections.priceSort}
@@ -659,7 +675,7 @@ const CarsPage = () => {
                   <div className="collapse-title text-sm font-semibold px-3 py-2 min-h-0">
                     💰 Price & Sort
                   </div>
-                  <div className="collapse-content px-3 pb-3 space-y-3">
+                  <div className="collapse-content px-3 pb-3 space-y-3" style={{ overflow: 'visible' }}>
                 {/* Price Range Filter */}
                     <div className="form-control">
                       <label className="label py-1">
@@ -702,7 +718,7 @@ const CarsPage = () => {
                       <label className="label py-1">
                         <span className="label-text text-xs">Sort By</span>
                   </label>
-                      <div className="dropdown dropdown-end w-full">
+                      <div className="dropdown dropdown-top dropdown-end w-full">
                         <label tabIndex={0} className="btn btn-sm btn-outline w-full justify-between">
                           <span className="flex items-center gap-2">
                             {filters.sort === 'price-asc' && <>💰 Lowest Price</>}
@@ -715,7 +731,7 @@ const CarsPage = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
                         </label>
-                        <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-64 p-2 shadow-lg border border-base-300">
+                        <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[9999] w-full p-2 shadow-lg border border-base-300 mb-2">
                           <li>
                             <a
                               onClick={() => {
@@ -816,9 +832,9 @@ const CarsPage = () => {
                 <h1 className="text-xl sm:text-2xl font-bold">
                 {pagination ? `${pagination.totalItems} Car${pagination.totalItems !== 1 ? 's' : ''} Found` : 'Search Results'}
               </h1>
-            </div>
+              </div>
               
-              {/* Sort Dropdown - Desktop */}
+              {/* Sort Dropdown - Always Visible */}
               <div className="dropdown dropdown-end">
                 <label tabIndex={0} className="btn btn-sm btn-outline">
                   <span className="flex items-center gap-2">
@@ -826,6 +842,7 @@ const CarsPage = () => {
                     {filters.sort === 'price-desc' && <>💸 Highest Price</>}
                     {filters.sort === 'seats-desc' && <>👥 Most Seats</>}
                     {filters.sort === 'vendor-asc' && <>🏢 Vendor A-Z</>}
+                    {!['price-asc', 'price-desc', 'seats-desc', 'vendor-asc'].includes(filters.sort) && <>Sort By</>}
                   </span>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -902,7 +919,6 @@ const CarsPage = () => {
                       onClick={() => handleQuickFilter('type', type)}
                       className={`btn btn-sm btn-outline flex-shrink-0 gap-1 transition-all ${filters.type === type ? 'btn-primary shadow-md' : 'hover:btn-primary'}`}
                     >
-                      <span className="text-base">{getCarTypeIcon(type)}</span>
                       <span>{type}</span>
                     </button>
                   ))}
@@ -1055,11 +1071,42 @@ const CarsPage = () => {
                               </div>
                             )}
                             <img
-                                src={resolveCarImageUrl(car.imageUrl)}
+                                src={(() => {
+                                  const imageSource = getCarImage(car);
+                                  const resolvedUrl = resolveCarImageUrl(imageSource);
+                                  if (!imageSource) {
+                                    console.warn(`Car ${car.id} (${car.vendor} ${car.type}) has no image fields:`, {
+                                      id: car.id,
+                                      imageStoragePath: car.imageStoragePath,
+                                      imageUrl: car.imageUrl,
+                                      images: car.images,
+                                      image: car.image,
+                                      photo: car.photo,
+                                      photoUrl: car.photoUrl,
+                                      allKeys: Object.keys(car).filter(k => k.toLowerCase().includes('image') || k.toLowerCase().includes('photo'))
+                                    });
+                                  } else {
+                                    console.log(`Car ${car.id} image source:`, imageSource, '→ resolved:', resolvedUrl);
+                                  }
+                                  return resolvedUrl;
+                                })()}
                                 alt={`${car.type} - ${car.vendor}`}
                                 className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded[car.id] ? 'opacity-100' : 'opacity-0'}`}
                                 onLoad={() => setImageLoaded(prev => ({ ...prev, [car.id]: true }))}
                                 onError={(e) => {
+                                  console.error(`Failed to load image for car ${car.id} (${car.vendor} ${car.type}):`, {
+                                    attemptedUrl: e.target.src,
+                                    imageSource: getCarImage(car),
+                                    car: { 
+                                      id: car.id,
+                                      imageStoragePath: car.imageStoragePath, 
+                                      imageUrl: car.imageUrl, 
+                                      images: car.images, 
+                                      image: car.image,
+                                      photo: car.photo,
+                                      photoUrl: car.photoUrl
+                                    }
+                                  });
                                   e.target.src = placeholderImage;
                                   setImageLoaded(prev => ({ ...prev, [car.id]: true }));
                                 }}
@@ -1081,10 +1128,9 @@ const CarsPage = () => {
                               <div className="flex justify-between items-start mb-3">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-2xl">{getCarTypeIcon(car.type)}</span>
                                     <h3 className="text-2xl font-bold">{car.type}</h3>
                                     <span className="badge badge-sm badge-outline">
-                                      {getCarTypeIcon(car.type)} {car.type}
+                                      {car.type}
                                     </span>
                                   </div>
                                   <p className="text-base-content/70 flex items-center gap-2 mb-2">

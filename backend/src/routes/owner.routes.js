@@ -1,7 +1,8 @@
 import express from 'express';
 import { authenticateToken, requireOwner } from '../middleware/auth.js';
-import { getMongoDB } from '../config/database.js';
+import { getMongoDB, getPostgresPool } from '../config/database.js';
 import { logger } from '../config/logger.js';
+import { ObjectId } from 'mongodb';
 
 const router = express.Router();
 
@@ -25,26 +26,59 @@ router.get('/dashboard', async (req, res) => {
     const hotelIds = hotelDocs.map(h => h.id || h._id);
     const carIds = carDocs.map(c => c.id || c._id);
     
-    // Get bookings for owner's properties
-    const bookings = await db.collection('bookings').find({
-      $or: [
-        { 'itinerary.hotelId': { $in: hotelIds } },
-        { 'itinerary.carId': { $in: carIds } }
-      ],
-      status: 'confirmed'
-    }).toArray();
+    // Get bookings for owner's properties from PostgreSQL
+    const pool = getPostgresPool();
     
-    // Calculate total revenue
-    const totalRevenue = bookings.reduce((sum, booking) => {
-      return sum + (booking.price?.amount || 0);
-    }, 0);
+    // Get all bookings for owner's properties (not just confirmed)
+    let bookingsQuery = `
+      SELECT b.status, b.price_amount
+      FROM bookings b
+      WHERE (
+        (b.booking_type = 'hotel' AND (b.itinerary->>'hotelId') = ANY($1::text[]))
+        OR
+        (b.booking_type = 'car' AND (b.itinerary->>'carId') = ANY($2::text[]))
+      )
+    `;
+    
+    const allBookings = await pool.query(bookingsQuery, [hotelIds, carIds]);
+    
+    // Count bookings by status
+    const statusCounts = {
+      pending: 0,
+      confirmed: 0,
+      cancelled: 0,
+      completed: 0,
+      failed: 0
+    };
+    
+    let totalRevenue = 0;
+    
+    allBookings.rows.forEach((booking) => {
+      const status = booking.status?.toLowerCase();
+      if (statusCounts.hasOwnProperty(status)) {
+        statusCounts[status]++;
+      }
+      // Only count revenue from confirmed bookings
+      if (status === 'confirmed' && booking.price_amount) {
+        totalRevenue += parseFloat(booking.price_amount);
+      }
+    });
+    
+    const totalBookings = allBookings.rows.length;
     
     res.json({
       stats: {
         totalProperties: hotelDocs.length + carDocs.length,
         totalHotels: hotelDocs.length,
         totalCars: carDocs.length,
-        totalBookings: bookings.length,
+        totalBookings: totalBookings,
+        bookingsByStatus: {
+          pending: statusCounts.pending,
+          confirmed: statusCounts.confirmed,
+          cancelled: statusCounts.cancelled,
+          completed: statusCounts.completed,
+          failed: statusCounts.failed
+        },
         totalRevenue: totalRevenue,
         averageRating: 0
       }
@@ -441,6 +475,137 @@ router.delete('/cars/:carId', async (req, res) => {
   } catch (error) {
     logger.error('Error deleting car:', error);
     res.status(500).json({ error: 'Failed to delete car' });
+  }
+});
+
+// Get owner's bookings
+router.get('/bookings', async (req, res) => {
+  try {
+    const ownerId = req.user.id;
+    const { status, bookingType, limit = 50, offset = 0 } = req.query;
+    
+    const db = await getMongoDB();
+    const pool = getPostgresPool();
+    
+    // Get property IDs owned by this owner
+    const [hotelDocs, carDocs] = await Promise.all([
+      db.collection('hotels').find({ ownerId }).toArray(),
+      db.collection('cars').find({ ownerId }).toArray()
+    ]);
+    
+    const hotelIds = hotelDocs.map(h => (h.id || h._id).toString());
+    const carIds = carDocs.map(c => (c.id || c._id).toString());
+    
+    if (hotelIds.length === 0 && carIds.length === 0) {
+      return res.json({
+        items: [],
+        pagination: {
+          total: 0,
+          limit: parseInt(limit, 10),
+          offset: parseInt(offset, 10),
+        }
+      });
+    }
+    
+    // Build query to find bookings for owner's properties
+    let query = `
+      SELECT b.*
+      FROM bookings b
+      WHERE (
+        (b.booking_type = 'hotel' AND (b.itinerary->>'hotelId') = ANY($1::text[]))
+        OR
+        (b.booking_type = 'car' AND (b.itinerary->>'carId') = ANY($2::text[]))
+      )
+    `;
+    const params = [hotelIds, carIds];
+    let paramIndex = 3;
+    
+    if (status) {
+      query += ` AND b.status = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+    
+    if (bookingType) {
+      query += ` AND b.booking_type = $${paramIndex}`;
+      params.push(bookingType);
+      paramIndex++;
+    }
+    
+    const baseQuery = query;
+    const limitValue = parseInt(limit, 10);
+    const offsetValue = parseInt(offset, 10);
+    const queryWithPaging = `${baseQuery} ORDER BY b.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(limitValue, offsetValue);
+    
+    // Get bookings and count
+    const [result, countResult] = await Promise.all([
+      pool.query(queryWithPaging, params),
+      pool.query(
+        `SELECT COUNT(*) AS total FROM (${baseQuery}) as sub`,
+        params.slice(0, params.length - 2)
+      ),
+    ]);
+    
+    const totalItems = parseInt(countResult.rows[0].total, 10);
+    
+    // Get user info for bookings
+    const userIds = [...new Set(result.rows.map((b) => b.user_id).filter(Boolean))];
+    const usersMap = {};
+    if (userIds.length > 0) {
+      const usersCollection = db.collection('users');
+      const objectIds = userIds.map(id => {
+        try {
+          return typeof id === 'string' ? new ObjectId(id) : id;
+        } catch {
+          return null;
+        }
+      }).filter(Boolean);
+      
+      if (objectIds.length > 0) {
+        const users = await usersCollection
+          .find({ _id: { $in: objectIds } })
+          .project({ email: 1, firstName: 1, lastName: 1 })
+          .toArray();
+        
+        users.forEach((u) => {
+          usersMap[u._id.toString()] = {
+            id: u._id.toString(),
+            email: u.email || null,
+            firstName: u.firstName || null,
+            lastName: u.lastName || null,
+          };
+        });
+      }
+    }
+    
+    const bookings = result.rows.map((booking) => ({
+      id: booking.id,
+      userId: booking.user_id,
+      user: usersMap[booking.user_id] || null,
+      bookingType: booking.booking_type,
+      status: booking.status,
+      price: {
+        amount: parseFloat(booking.price_amount),
+        currency: booking.price_currency,
+      },
+      itinerary: booking.itinerary ? (typeof booking.itinerary === 'string' ? JSON.parse(booking.itinerary) : booking.itinerary) : null,
+      metadata: booking.metadata ? (typeof booking.metadata === 'string' ? JSON.parse(booking.metadata) : booking.metadata) : {},
+      createdAt: booking.created_at,
+      updatedAt: booking.updated_at,
+    }));
+    
+    res.json({
+      items: bookings,
+      pagination: {
+        total: totalItems,
+        limit: limitValue,
+        offset: offsetValue,
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching owner bookings:', error);
+    res.status(500).json({ code: 'ERROR', message: error.message });
   }
 });
 

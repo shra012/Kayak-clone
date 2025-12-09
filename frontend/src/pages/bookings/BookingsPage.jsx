@@ -24,14 +24,34 @@ const resolveHotelImageUrl = (rawUrl) => {
 };
 
 const resolveCarImageUrl = (rawUrl) => {
-  if (!rawUrl) return null;
-  if (rawUrl.startsWith('http')) return rawUrl;
+  if (!rawUrl || rawUrl === 'null' || rawUrl === 'undefined') return null;
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) return rawUrl;
+  
   let path = rawUrl;
-  if (!path.startsWith('kayak/')) {
-    path = `kayak/cars/${path}`;
+  // Handle different path formats
+  if (path.startsWith('kayak/product/cars/')) {
+    // Already in correct format
+  } else if (path.startsWith('kayak/cars/')) {
+    // Convert old format to new format
+    path = path.replace('kayak/cars/', 'kayak/product/cars/');
+  } else if (!path.startsWith('kayak/')) {
+    // Add kayak/product/cars/ prefix if not present
+    path = `kayak/product/cars/${path}`;
   }
+  
   const encodedPath = encodeURIComponent(path);
   return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encodedPath}?alt=media`;
+};
+
+// Helper to get car image from multiple possible fields
+const getCarImage = (car) => {
+  return car?.imageStoragePath || 
+         car?.imageUrl || 
+         car?.images?.[0] || 
+         car?.image ||
+         car?.photo ||
+         car?.photoUrl ||
+         null;
 };
 
 const US_CITIES = [
@@ -57,6 +77,9 @@ const BookingsPage = () => {
   const [selectedBookingForReview, setSelectedBookingForReview] = useState(null);
   const [reviewData, setReviewData] = useState({ rating: 5, comment: '' });
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [selectedBookingForCancel, setSelectedBookingForCancel] = useState(null);
+  const [cancellingBooking, setCancellingBooking] = useState(false);
   const [billingInfo, setBillingInfo] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -129,6 +152,40 @@ const BookingsPage = () => {
     setSelectedBookingForReview(booking);
     setReviewData({ rating: 5, comment: '' });
     setReviewModalOpen(true);
+  };
+
+  const handleOpenCancelModal = (booking) => {
+    setSelectedBookingForCancel(booking);
+    setCancelModalOpen(true);
+  };
+
+  const handleCloseCancelModal = () => {
+    setCancelModalOpen(false);
+    setSelectedBookingForCancel(null);
+  };
+
+  const handleCancelBooking = async () => {
+    if (!selectedBookingForCancel) return;
+
+    try {
+      setCancellingBooking(true);
+      await bookingsApi.cancelBooking(selectedBookingForCancel.id);
+      toast.showSuccess('Booking cancelled successfully');
+      handleCloseCancelModal();
+      // Reload bookings
+      await loadBookings();
+    } catch (error) {
+      console.error('Failed to cancel booking:', error);
+      toast.showError(error.response?.data?.message || 'Failed to cancel booking. Please try again.');
+    } finally {
+      setCancellingBooking(false);
+    }
+  };
+
+  const canCancelBooking = (booking) => {
+    const status = booking.status?.toLowerCase();
+    // Can cancel if status is pending or confirmed (not cancelled or completed)
+    return status === 'pending' || status === 'confirmed';
   };
 
   const handleSubmitReview = async () => {
@@ -601,6 +658,14 @@ const BookingsPage = () => {
                             >
                               View Details
                             </button>
+                            {canCancelBooking(booking) && (
+                              <button
+                                className="btn btn-sm btn-error btn-outline"
+                                onClick={() => handleOpenCancelModal(booking)}
+                              >
+                                Cancel Booking
+                              </button>
+                            )}
                             {booking.status === 'confirmed' && booking.timeline === 'past' && (
                               <button
                                 className="btn btn-sm btn-primary"
@@ -620,6 +685,76 @@ const BookingsPage = () => {
             </div>
           )}
         </div>
+
+        {/* Cancel Booking Modal */}
+        {cancelModalOpen && (
+          <div className="modal modal-open">
+            <div className="modal-box">
+              <h3 className="font-bold text-lg mb-4">Cancel Booking</h3>
+              
+              {selectedBookingForCancel && (
+                <div className="mb-4">
+                  <div className="alert alert-warning">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span>Are you sure you want to cancel this booking?</span>
+                  </div>
+
+                  <div className="mt-4 p-4 bg-base-200 rounded-lg">
+                    <p className="font-semibold capitalize">
+                      {selectedBookingForCancel.bookingType} Booking
+                    </p>
+                    {selectedBookingForCancel.itinerary?.hotelName && (
+                      <p className="text-sm text-base-content/70">{selectedBookingForCancel.itinerary.hotelName}</p>
+                    )}
+                    {selectedBookingForCancel.itinerary?.vendor && (
+                      <p className="text-sm text-base-content/70">{selectedBookingForCancel.itinerary.vendor}</p>
+                    )}
+                    {selectedBookingForCancel.itinerary?.outbound && (
+                      <p className="text-sm text-base-content/70">
+                        {selectedBookingForCancel.itinerary.outbound.from} → {selectedBookingForCancel.itinerary.outbound.to}
+                      </p>
+                    )}
+                    <p className="text-lg font-bold text-primary mt-2">
+                      {selectedBookingForCancel.price?.currency || 'USD'} {selectedBookingForCancel.price?.amount?.toFixed(2) || '0.00'}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 text-sm text-base-content/70">
+                    <p>⚠️ This action cannot be undone.</p>
+                    <p>• Your booking will be cancelled immediately</p>
+                    <p>• Refund will be processed according to the cancellation policy</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="modal-action">
+                <button
+                  className="btn btn-ghost"
+                  onClick={handleCloseCancelModal}
+                  disabled={cancellingBooking}
+                >
+                  Keep Booking
+                </button>
+                <button
+                  className="btn btn-error"
+                  onClick={handleCancelBooking}
+                  disabled={cancellingBooking}
+                >
+                  {cancellingBooking ? (
+                    <>
+                      <span className="loading loading-spinner loading-sm"></span>
+                      Cancelling...
+                    </>
+                  ) : (
+                    'Yes, Cancel Booking'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Review Modal */}
         {reviewModalOpen && (
@@ -777,9 +912,17 @@ const BookingsPage = () => {
                       <div className="w-full h-64 bg-base-200 rounded-lg overflow-hidden mb-4">
                         {(() => {
                           const car = bookingData.car;
-                          const imageUrl = car.imageStoragePath 
-                            ? resolveCarImageUrl(car.imageStoragePath)
-                            : car.imageUrl || car.images?.[0] || null;
+                          const imageSource = getCarImage(car);
+                          const imageUrl = imageSource ? resolveCarImageUrl(imageSource) : null;
+                          
+                          if (!imageSource) {
+                            console.warn(`Car booking image missing for ${car.vendor} ${car.type}:`, {
+                              imageStoragePath: car.imageStoragePath,
+                              imageUrl: car.imageUrl,
+                              images: car.images,
+                              image: car.image
+                            });
+                          }
                           
                           return imageUrl ? (
                             <img
@@ -787,6 +930,11 @@ const BookingsPage = () => {
                               alt={`${car.vendor} ${car.type}`}
                               className="w-full h-full object-cover"
                               onError={(e) => {
+                                console.error(`Failed to load car booking image:`, {
+                                  attemptedUrl: e.target.src,
+                                  imageSource,
+                                  car: { id: car.id, vendor: car.vendor, type: car.type }
+                                });
                                 e.target.style.display = 'none';
                                 e.target.nextSibling.style.display = 'flex';
                               }}

@@ -26,6 +26,7 @@ import AgentFlightsPage from './pages/listings/AgentFlightsPage';
 import OwnerDashboard from './pages/owner/OwnerDashboard';
 import OwnerHotelsPage from './pages/owner/OwnerHotelsPage';
 import OwnerCarsPage from './pages/owner/OwnerCarsPage';
+import OwnerBookingsPage from './pages/owner/OwnerBookingsPage';
 import AddHotelPage from './pages/owner/AddHotelPage';
 import AddCarPage from './pages/owner/AddCarPage';
 
@@ -148,6 +149,14 @@ function App() {
           element={
             <ProtectedRoute requireOwner>
               <AddCarPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/owner/bookings"
+          element={
+            <ProtectedRoute requireOwner>
+              <OwnerBookingsPage />
             </ProtectedRoute>
           }
         />

@@ -73,6 +73,12 @@ export const ownerApi = {
     return data;
   },
 
+  // Get owner's bookings
+  getBookings: async (params = {}) => {
+    const { data } = await apiClient.get('/owner/bookings', { params });
+    return data;
+  },
+
   // Get dashboard stats
   getDashboardStats: async () => {
     const { data } = await apiClient.get('/owner/dashboard');

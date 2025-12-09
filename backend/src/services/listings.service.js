@@ -1093,7 +1093,12 @@ export const getCarLocations = async (query, limit = 10) => {
     const regex = new RegExp(query, 'i');
     const cities = await collection.distinct('city', { city: regex });
     
-    return cities.slice(0, limit);
+    // Return as objects with name property (matching frontend expectations)
+    return cities.slice(0, limit).map(city => ({
+      name: city,
+      displayName: city,
+      type: 'location',
+    }));
   } catch (error) {
     logger.error('Error in getCarLocations service:', error);
     throw error;

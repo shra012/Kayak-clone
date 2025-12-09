@@ -113,6 +113,9 @@ const OwnerDashboard = () => {
                 </div>
                 <FaUsers className="text-4xl text-primary opacity-50" />
               </div>
+              <Link to="/owner/bookings" className="btn btn-sm btn-ghost mt-4">
+                View Bookings →
+              </Link>
             </div>
           </div>
 
@@ -166,6 +169,23 @@ const OwnerDashboard = () => {
                 </Link>
                 <Link to="/owner/cars/new" className="btn btn-outline">
                   Add New Car
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="card bg-base-100/95 backdrop-blur-sm shadow-xl">
+            <div className="card-body">
+              <h2 className="card-title">
+                <FaUsers className="text-primary" />
+                Bookings
+              </h2>
+              <p className="text-base-content/70 mb-4">
+                View and manage bookings for your properties and cars.
+              </p>
+              <div className="card-actions">
+                <Link to="/owner/bookings" className="btn btn-primary">
+                  View All Bookings
                 </Link>
               </div>
             </div>
